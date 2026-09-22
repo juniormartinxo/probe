@@ -1,6 +1,6 @@
 # Viabilidade da tradução local e das avaliações do Jev
 
-Status: plano aprovado pelo usuário em 22/09/2026. [Checks](checks.md) e [corpus](corpus.md) derivados; os gabaritos concretos ainda requerem revisão humana. Nenhum ensaio real executado.
+Status: plano e gabaritos do [corpus](corpus.md) aprovados pelo usuário em 22/09/2026; [checks](checks.md) derivados. O escopo autorizado permanece somente planejamento: estas aprovações não autorizam implementação ou ensaios. Nenhum ensaio real executado.
 
 ## Problem
 

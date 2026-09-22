@@ -1,6 +1,6 @@
 # Corpus de referência — revisão 1
 
-Status: proposta para revisão humana, anterior a qualquer geração. A aprovação do plano não aprova automaticamente estes textos ou gabaritos. Todos os exemplos são sintéticos.
+Status: revisão 1 aprovada pelo usuário nesta conversa em 22/09/2026, antes de qualquer geração. Todos os exemplos são sintéticos.
 
 Este documento é a fonte dos 18 casos. Na implementação, sua representação estruturada deve preservar os textos e as expectativas; mudanças de significado exigem nova revisão. Cada execução identificará os hashes do corpus e do gabarito. Somente contexto, perguntas, respostas e mudança proposta entram nos modelos. Títulos, gabaritos, justificativas e notas de revisão ficam fora dos payloads.
 
@@ -255,6 +255,6 @@ Invariantes: preservar Jordan e Casey; manter sem resolução a autoria da propo
 
 ## Revisão humana antes da coleta
 
-Revisão dos textos e gabaritos: **pendente**. Revisor: não registrado. Data: não registrada. Aprovação ou correção deve identificar esta revisão do corpus.
+Revisão dos textos e gabaritos: **aprovada**. Revisor: usuário responsável pelo projeto, nesta conversa. Data: 22/09/2026. A aprovação refere-se à revisão 1 deste corpus e não antecipa a avaliação das traduções que serão geradas.
 
 Pontos para avaliar: o significado das seis rubricas; os rótulos propostos, especialmente R08, R09 e R11; a distinção entre dependência e agrupamento em R10/R12; as invariantes das seis traduções. Estes casos verificam uma hipótese delimitada, não representam uma amostra suficiente para medir a qualidade geral do modelo.
