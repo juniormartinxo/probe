@@ -1,6 +1,6 @@
 # Viabilidade da tradução local e das avaliações do Jev
 
-Status: plano para revisão humana. Desenho do MVP aprovado; este plano ainda não aprovado. Nenhum ensaio real executado.
+Status: plano aprovado pelo usuário em 22/09/2026. [Checks](checks.md) e [corpus](corpus.md) derivados; os gabaritos concretos ainda requerem revisão humana. Nenhum ensaio real executado.
 
 ## Problem
 
@@ -214,10 +214,10 @@ Uso ausente não significa custo zero. Só converter tokens em dinheiro com tari
 
 | Assumption | Chosen default | Rationale | Confirmed? |
 | --- | --- | --- | --- |
-| Delimitação da primeira entrega | Tradução e Jev neste plano; CLIs e conectividade em outro. | Testar a hipótese central sem acoplar ensaios independentes. | n |
-| Runtime inicial | LM Studio existente, URL e modelo configurados explicitamente. | Já há executável instalado; isso não fixa o runtime do produto. | n |
-| Ambiente da bancada | WSL, Node 24 disponível e PNPM, sem alterar versões globais. | Aproveita o ambiente inspecionado e a stack prevista. | n |
-| Revisão semântica | Arquivo de revisão preenchido pelo usuário e associado à execução. | Dispensa interface de produto e avaliação por modelo de fronteira. | n |
+| Delimitação da primeira entrega | Tradução e Jev neste plano; CLIs e conectividade em outro. | Testar a hipótese central sem acoplar ensaios independentes. | y — plano aprovado em 22/09/2026 |
+| Runtime inicial | LM Studio existente, URL e modelo configurados explicitamente. | Já há executável instalado; isso não fixa o runtime do produto. | y — plano aprovado em 22/09/2026 |
+| Ambiente da bancada | WSL, Node 24 disponível e PNPM, sem alterar versões globais. | Aproveita o ambiente inspecionado e a stack prevista. | y — plano aprovado em 22/09/2026 |
+| Revisão semântica | Arquivo de revisão preenchido pelo usuário e associado à execução. | Dispensa interface de produto e avaliação por modelo de fronteira. | y — plano aprovado em 22/09/2026 |
 
 **Open questions:** none — as escolhas de desenho desta entrega têm defaults explícitos acima. Isso não confirma disponibilidade operacional: os pré-requisitos abaixo continuam pendentes para a coleta real.
 
@@ -246,7 +246,7 @@ Assinatura futura: `MODE=fixture` por padrão; `RUN_ID` gerado na coleta se omit
 
 `RUN_ID` explícito aceita letras ASCII, números, hífen e sublinhado, de 1 a 64 caracteres, nunca um caminho arbitrário. Timeouts são inteiros positivos e limite de saída inteiro de 1 a 2048. Destinos são endpoint oficial Jev e URL configurada do servidor local, sem varredura de rede. Segredos são fornecidos pelo ambiente, não por argumentos CLI.
 
-As nove dimensões consideradas para a futura derivação são: validação/limites (AC 5–8, 13–14, 21, 27); falha parcial (AC 16, 24, 28–30); repetição/duplicatas (AC 26–27); autorização/rate limits (AC 2–4, 27, 31, parada sem retry); concorrência/ordem (AC 25 e pares identificados); ciclo de vida (AC 26, 30 e ausência de limpeza automática); dependências externas (AC 12–17, 21, 28–29); transições (AC 9–10, 24, 36); observabilidade (AC 1, 17, 22, 33–37). A tabela formal Swept com provas pertence a checks.md e ainda não foi criada.
+As nove dimensões consideradas para a derivação são: validação/limites (AC 5–8, 13–14, 21, 27); falha parcial (AC 16, 24, 28–30); repetição/duplicatas (AC 26–27); autorização/rate limits (AC 2–4, 27, 31, parada sem retry); concorrência/ordem (AC 25 e pares identificados); ciclo de vida (AC 26, 30 e ausência de limpeza automática); dependências externas (AC 12–17, 21, 28–29); transições (AC 9–10, 24, 36); observabilidade (AC 1, 17, 22, 33–37). A tabela formal Swept com as provas previstas está em [checks.md](checks.md).
 
 ## Sources
 
