@@ -2,7 +2,7 @@
 
 Data: 22 de setembro de 2026.
 
-Status: consolidação do brainstorming para revisão. Este documento registra o produto, as decisões e o caminho de desenvolvimento. Não constitui um plano de implementação aprovado nem autoriza iniciar código, instalações, chamadas pagas ou deploy.
+Status: desenho aprovado pelo usuário em 22 de setembro de 2026. A aprovação permite avançar ao planejamento das entregas; não constitui aprovação de um plano de implementação nem autoriza iniciar código da aplicação, instalações, chamadas pagas ou deploy.
 
 ## 1. Objetivo e autoridade
 
