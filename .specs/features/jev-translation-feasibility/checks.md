@@ -5,7 +5,7 @@ Plan: `.specs/features/jev-translation-feasibility/plan.md`
 
 51 checks em 5 slices · 1 one-way door · 3 pré-requisitos operacionais para coleta real, mantidos no plano.
 
-Status: obrigações derivadas do plano aprovado em 22/09/2026. **Provas de comportamento pendentes: os testes e a bancada ainda não foram implementados.** Validar este documento não executa nem comprova os checks.
+Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas (C3 e C10 parciais, ver cada check); C13–C51 pendentes.** Validar este documento não executa nem comprova os checks.
 
 Comando disponível: `make check-proof`, usando o runner nativo do Node 24 observado no WSL. Os seletores abaixo reservam nomes `C<n>: descrição` nos futuros arquivos `tests/ai-study/*.test.mjs`. O comando usa `--test-isolation=none` e exige no TAP pelo menos um check nomeado executado, sem skip/TODO, além da saída zero do Node. As provas devem isolar seu estado explicitamente; testes de concorrência ainda precisam criar os processos ou chamadas que sua obrigação exige. Arquivo ausente, teste ausente, skip ou zero testes executados não encerram um check. A existência e a execução do teste selecionado deverão ser verificadas na fase de implementação e pelo verificador independente. Não foram adicionados testes vazios para produzir sucesso artificial.
 
@@ -17,39 +17,51 @@ O [corpus de referência](corpus.md) contém os textos e gabaritos propostos. Ap
 
 **C1** - Na fronteira `make ai-study-dry-run`, configuração válida retorna manifesto com modo, hashes de corpus e gabarito, modelos solicitados, limites 20/24 e destinos sem credenciais (AC 1, 8).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C1:'`
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C2** - Dry-run em ambos os modos e coleta fixture produzem zero tentativas de rede e zero invocações de modelos, comprovadas por transportes que falham se usados (AC 2).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C2:'`
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C3** - Preparação, coleta e relatório, em fixture e live com serviços controlados, invocam zero processos Codex, Claude, Grok, agy ou Cloak (AC 3).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C3:'`
+Status: parcial em 30/09/2026 — prova executada para preparação (dry-run fixture e live) e coleta fixture; a coleta live com serviços controlados e o relatório dependem de S2/S3/S5 e devem ser acrescentados a esta prova.
 
 **C4** - A fronteira de comandos aceita somente os modos `fixture` e `live`, seleciona `fixture` na omissão e rejeita outro modo com código 2 (AC 4–5).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C4:'`
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C5** - Configuração inválida na fronteira encerra com código 2 antes de coletar; diagnóstico identifica a configuração, sem expor valor secreto (AC 5, Observable). Exercitar tabela: campos live obrigatórios ausentes, RUN_ID vazio explícito/65 caracteres/caminho/não ASCII, timeout zero/negativo/fracionário/não numérico, saída 0/2049/fracionária, argumento desconhecido e corpus ilegível.
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C5:'`
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C6** - O corpus carregado apresenta exatamente R01–R12 e T01–T06 em ordem numérica, sem IDs repetidos; IDs ausentes, extras ou repetidos são rejeitados antes de coletar (AC 6, Observable).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C6:'`
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C7** - Cada um dos 12 casos R tem exatamente os seis julgamentos identificados, rótulo `yes`/`no`/`insufficient` e justificativa não vazia; campo ausente, extra, duplicado, rótulo inválido ou justificativa vazia invalida o corpus com código 2 (AC 7, Observable).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C7:'`
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C8** - Uma execução vincula todos os seus resultados ao mesmo corpus e gabarito por hash; alteração de qualquer um durante a execução impede comparação entre revisões (AC 8, Relations).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C8:'`
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C9** - `make ai-study-run` com modo omitido conclui com código 0 e artefatos `fixture` em `artifacts/ai-study/<run-id>/`, com `schema_version: 1` (AC 9, Landing 1).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C9:'`
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C10** - Tentativa de incorporar resposta fixture em execução live ou resposta live em execução fixture é rejeitada com código 2, preservando as evidências anteriores (AC 10).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C10:'`
+Status: parcial em 30/09/2026 — resposta live em coleta fixture rejeitada na fronteira `make` com código 2; resposta fixture em coleta live só está provada no coletor (`runCollection`), pois `ai-study-run MODE=live` depende dos adaptadores de S2/S3.
 
 **C11** - Configuração válida aceita RUN_ID de 1 e 64 caracteres ASCII permitidos, timeout inteiro positivo e saída de 1 e 2048 tokens; limites de chamadas permanecem 20/24 (AC 5, 27, Observable).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C11:'`
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C12** - A preparação resolve os defaults publicados: corpus versionado, RUN_ID gerado na coleta, timeouts local/Jev 120/30 segundos e saída 2048; relatório exige RUN_ID, live exige URL/modelo local e chave/modelo Jev, token local é opcional; não oferece seleção parcial, retry ou paralelismo por flags (Observable).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C12:'`
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 ### S2 - Traduções reais rastreáveis
 
