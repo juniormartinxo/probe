@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import test from 'node:test';
 
 import { createCallBudget } from '../../src/ai-study/calls.mjs';
 import { planItems, runCollection } from '../../src/ai-study/collect.mjs';
-import { evidenceDirFor, JEV_ENDPOINT, resolveConfig } from '../../src/ai-study/config.mjs';
+import { JEV_ENDPOINT, resolveConfig } from '../../src/ai-study/config.mjs';
 import { JUDGMENT_IDS, loadCorpus, sha256 } from '../../src/ai-study/corpus.mjs';
 import { createJevTransport } from '../../src/ai-study/jev.mjs';
 import { createLmStudioTransport } from '../../src/ai-study/lmstudio.mjs';
@@ -159,6 +159,12 @@ function countsTable(markdown, heading) {
 }
 
 const header = (markdown) => markdown.slice(0, markdown.indexOf('\n## '));
+// Códigos gravados nas evidências só aparecem como código (entre crases), ao lado de um rótulo em português.
+const EVIDENCE_CODES = /\b(pt_missing|en_missing|pt_invalid|en_invalid|reference_mismatch|instructions_mismatch|criteria_mismatch|jev_model_mismatch|jev_model_unknown|invalid_translation|temporary|not_evidence|not_in_manifest)\b/;
+function assertNoBareCodes(markdown) {
+  const prose = withoutFences(markdown).replace(/`[^`\n]*`/g, '');
+  assert.doesNotMatch(prose, EVIDENCE_CODES, 'código em inglês solto na prosa');
+}
 const withoutFences = (markdown) => markdown.replace(/^(`{3,})text\n[\s\S]*?\n\1$/gm, '');
 
 test('C41: make ai-study-report gera Markdown só das evidências da execução, sem rede ou modelos; RUN_ID ausente ou inválido encerra com código 2', () => {
@@ -199,9 +205,16 @@ test('C42: o Markdown apresenta as seis seções na ordem aprovada, em portuguê
   const sandbox = makeSandbox();
   fixtureRun(sandbox, 'c42-base');
   // Saída com crases e barras: aparece literal, sem escapes, numa cerca mais longa.
-  variant(sandbox, 'c42-base', 'c42', ({ edit }) =>
-    edit('results/001-R01-translate-pt-en.json', (r) => ({ ...r, translation: { ...r.translation, derived_text: 'Text with ``` fence | pipe\n**not bold**' } })),
-  );
+  variant(sandbox, 'c42-base', 'c42', ({ edit }) => {
+    edit('results/001-R01-translate-pt-en.json', (r) => ({ ...r, translation: { ...r.translation, derived_text: 'Text with ``` fence | pipe\n**not bold**' } }));
+    // Texto livre das evidências com quebra de linha e título: fica numa linha.
+    edit('manifest.json', (m) => ({
+      ...m,
+      reason: 'motivo\n## Seção falsa do motivo',
+      skipped_items: [{ item: 'R12-evaluate-en', reason: 'invalid_translation\n## Seção falsa do item' }],
+      translation: { ...m.translation, template: { ...m.translation.template, justification: 'adaptação\n\n## Seção falsa do template' } },
+    }));
+  });
   // Texto livre do revisor com quebra de linha e título: fica numa linha e não abre seção.
   const [r01] = reviewAll(readRun(sandbox, 'c42'));
   writeReview(sandbox, 'c42', {
@@ -211,6 +224,8 @@ test('C42: o Markdown apresenta as seis seções na ordem aprovada, em portuguê
   const { markdown } = report(sandbox, 'c42');
   assert.deepEqual(markdown.match(/^## .*$/gm), SECTIONS.map((s) => `## ${s}`));
   assert.ok(markdown.includes('  - Justificativa: Preservado. ## Seção falsa'));
+  assert.ok(markdown.includes('(adaptação ## Seção falsa do template)'));
+  assertNoBareCodes(markdown);
   assert.deepEqual(SECTIONS, ['Configuração e proveniência', 'Completude', 'Originais e traduções', 'Revisão semântica', 'Comparação Jev', 'Limitações']);
   for (const label of ['Estado técnico', 'Conclusão', 'Recomendação humana']) assert.match(header(markdown), new RegExp(`^- ${label}: `, 'm'));
 
@@ -253,8 +268,9 @@ test('C43: o relatório mostra acertos, erros e ausências por julgamento em cad
     assert.deepEqual(individual[j], conflict ? [1, 0, 11, 1, 1, 10] : [1, 0, 11, 2, 0, 10], `individual ${j}`);
     assert.deepEqual(paired[j], conflict ? [1, 0, 0, 0, 1, 0] : [1, 0, 0, 1, 0, 0], `pareado ${j}`);
   }
-  assert.match(jev, /^- `R02`: pt_invalid$/m);
-  assert.match(jev, /^- `R03`: pt_missing, en_missing$/m);
+  assert.match(jev, /^- `R02`: braço PT inválido \(`pt_invalid`\)$/m);
+  assert.match(jev, /^- `R03`: braço PT ausente \(`pt_missing`\), braço EN ausente \(`en_missing`\)$/m);
+  assertNoBareCodes(jev);
   assert.match(jev, /^- `R02-evaluate-pt`: `invalid_response`, .*problemas: ID ausente answers_conflict/m);
   assert.match(jev, /^\| `answers_conflict` \| no \| no \(acerto\) \| yes \(erro\) \|$/m);
 });
@@ -297,6 +313,9 @@ test('C44: a revisão semântica aceita só pending, faithful ou meaning_changed
   assert.match(report(sandbox, 'c44', { expect: 2 }).stderr, /pertence à execução outra-execucao/);
   writeFileSync(join(sandbox.evidenceDir, 'c44', 'review.json'), '{"schema_version": 1,');
   assert.match(report(sandbox, 'c44', { expect: 2 }).stderr, /review\.json de c44 recusado:\n {2}- JSON inválido/);
+  rmSync(join(sandbox.evidenceDir, 'c44', 'review.json'));
+  mkdirSync(join(sandbox.evidenceDir, 'c44', 'review.json'));
+  assert.match(report(sandbox, 'c44', { expect: 2 }).stderr, /review\.json de c44 ilegível: EISDIR/);
 });
 
 test('C45: coleta com item faltante ou tradução pendente é inconclusive mesmo com todos os pares avaliados de acordo com o gabarito', async () => {
@@ -419,6 +438,12 @@ test('C48: o relatório identifica a amostra de 12 casos sem alegar acurácia ge
   assert.equal(fixtureJev.match(/uso: indisponível — ausência de uso informado não é custo zero/g).length, 24);
   const liveJev = section(report(sandbox, 'c48-live').markdown, 'Comparação Jev');
   assert.equal(liveJev.match(/uso informado: \{"input_tokens":400,"output_tokens":12\}/g).length, 24);
+  // Tradução sem uso informado também não vira custo zero.
+  const fixtureTranslations = section(report(sandbox, 'c48-fixture').markdown, 'Originais e traduções');
+  assert.equal(fixtureTranslations.match(/tokens: indisponível — [^;]+; ausência de uso informado não é custo zero/g).length, 18);
+  // Distribuições e confianças descritas são as gravadas, por julgamento.
+  assert.match(liveJev, /Distribuições e confianças são descritivas, não limiares de produção\./);
+  assert.equal(liveJev.match(/^ {2}- `\w+`: escolha (yes|no|insufficient); distribuição yes [\d.]+ \/ no [\d.]+ \/ insufficient [\d.]+; confiança 0\.7$/gm).length, 24 * 6);
 });
 
 test('C49: todo relatório fixture identifica os resultados como simulados, sem apresentá-los como validação real, VRAM ou ganho de tradução', async () => {
@@ -433,7 +458,7 @@ test('C49: todo relatório fixture identifica os resultados como simulados, sem 
   assert.match(section(fixture.markdown, 'Limitações'), /^- Resultados simulados \(fixture\): não são validação real do candidato, medição de VRAM nem ganho de tradução\./m);
   assert.match(fixture.markdown, /^- Modo e proveniência: `fixture` \/ `fixture` \(simulado\)$/m);
   const completeness = section(fixture.markdown, 'Completude');
-  assert.match(completeness, /^- Integração local real T01–T06 \(EN→PT\): sem prova — evidência fixture/m);
+  assert.match(completeness, /^- Integração local real dos casos T \(EN→PT\): sem prova — evidência fixture/m);
   assert.match(completeness, /^- Integração real tradução PT→EN e Jev pareado: sem prova — evidência fixture/m);
   assert.match(header(fixture.markdown), /^- Conclusão: `inconclusive`$/m);
   assert.match(completeness, /^ {2}- `simulated`: resultados simulados \(fixture\) não decidem sobre o candidato$/m);
@@ -468,7 +493,7 @@ test('verificadores de C50 e C51: evidência live com o template oficial adotado
   for (const [runId, pattern] of [
     ['v-template', /template oficial não confirmado/],
     ['v-q4', /quantização Q4_K_M, não Q6_K/],
-    ['v-tokens', /T01: sem contagem pelo tokenizer correspondente/],
+    ['v-tokens', /T01: contagem pelo tokenizer outro, não translategemma-12b-it@q6_k/],
   ]) {
     const proof = proveLiveTranslation(loadRun(sandbox.evidenceDir, runId), adopted);
     assert.equal(proof.proven, false, runId);
@@ -483,27 +508,6 @@ test('verificadores de C50 e C51: evidência live com o template oficial adotado
   // Discordância com o gabarito não afeta a prova de integração.
   await liveCollection(sandbox, 'v-discorda', { fetch: services({ choose: (_i, _j, expected) => otherChoice(expected) }) });
   assert.equal(proveLiveRelational(loadRun(sandbox.evidenceDir, 'v-discorda'), adopted).proven, true);
-});
-
-// C50 e C51 só se provam com evidência live real, identificada por RUN_ID no repositório; sem ela o
-// teste fica TODO, que `make check-proof` não aceita como prova.
-const liveRunId = process.env.RUN_ID ?? '';
-const liveOnly = liveRunId ? {} : { todo: 'exige RUN_ID de uma coleta live real' };
-const loadLiveRun = () => {
-  assert.ok(liveRunId, 'RUN_ID de uma coleta live real ausente: fixture não supre esta prova');
-  return loadRun(evidenceDirFor(repoRoot), liveRunId);
-};
-
-test('C50: evidência live de T01–T06 identifica servidor e modelo Q6_K, template confirmado, contagem correspondente, seis traduções EN→PT e durações reais', liveOnly, () => {
-  const proof = proveLiveTranslation(loadLiveRun());
-  assert.deepEqual(proof.problems, []);
-  assert.equal(proof.proven, true);
-});
-
-test('C51: evidência live de ao menos um caso R tem tradução PT→EN e duas respostas Jev da mesma versão com seis resultados válidos cada', liveOnly, () => {
-  const proof = proveLiveRelational(loadLiveRun());
-  assert.deepEqual(proof.problems, []);
-  assert.ok(proof.cases.length > 0);
 });
 
 test('C54: make ai-study-report invoca zero processos Codex, Claude, Grok, agy ou Cloak', async () => {
@@ -565,7 +569,7 @@ test('C57: make ai-study-report preserva byte a byte, sem limpeza, as evidência
   const before = snapshotFiles(sandbox.evidenceDir);
 
   const first = report(sandbox, 'c57').markdown;
-  assert.match(section(report(sandbox, 'c57-incompleta').markdown, 'Completude'), /`manifest\.json\.123\.abc\.tmp` \(temporary\)/);
+  assert.match(section(report(sandbox, 'c57-incompleta').markdown, 'Completude'), /`manifest\.json\.123\.abc\.tmp` — arquivo temporário \(`temporary`\)/);
   assert.equal(report(sandbox, 'c57').markdown, first, 'mesmas evidências, mesmo relatório');
   assert.deepEqual(snapshotFiles(sandbox.evidenceDir), before);
   assert.deepEqual(listRuns(sandbox).sort(), ['c57', 'c57-incompleta']);
@@ -587,6 +591,9 @@ test('C58: make ai-study-report recusa com código 2 evidências de outra execu�
     ['c58-schema-resultado', ({ edit }) => edit('results/002-R01-evaluate-pt.json', (r) => ({ ...r, schema_version: 2 })), /002-R01-evaluate-pt\.json: schema_version 2 não é 1/],
     ['c58-schema-comparacao', ({ edit }) => edit('comparison.json', (c) => ({ ...c, schema_version: '1' })), /comparison\.json: schema_version "1" não é 1/],
     ['c58-revisao-outra', ({ dir }) => writeFileSync(join(dir, 'review.json'), JSON.stringify({ schema_version: 1, run_id: 'c58', translations: [] })), /review\.json de c58-revisao-outra recusado:\n {2}- pertence à execução c58$/m],
+    ['c58-sem-contagens', ({ edit }) => edit('comparison.json', ({ counts, ...c }) => c), /comparison\.json: contagens ausentes ou malformadas/],
+    ['c58-par-sem-braco', ({ edit }) => edit('comparison.json', (c) => ({ ...c, evaluations: c.evaluations.filter((e) => e.item !== 'R01-evaluate-en') })), /comparison\.json: par completo R01 sem os dois braços avaliados/],
+    ['c58-avaliacao-alheia', ({ edit }) => edit('comparison.json', (c) => ({ ...c, evaluations: [...c.evaluations, { ...c.evaluations[0], item: 'R99-evaluate-pt' }] })), /comparison\.json: avaliação R99-evaluate-pt não corresponde a um resultado desta execução/],
     ['c58-schema-revisao', ({ dir }) => writeFileSync(join(dir, 'review.json'), JSON.stringify({ schema_version: 2, run_id: 'c58-schema-revisao', translations: [] })), /review\.json de c58-schema-revisao recusado:\n {2}- schema_version 2 não é 1/],
   ]) {
     variant(sandbox, 'c58', runId, mutate);

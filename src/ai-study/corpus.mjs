@@ -186,12 +186,20 @@ function exactKeys(value, keys, where, problems) {
     return;
   }
   for (const key of keys) if (!Object.hasOwn(value, key)) problems.push(`${where}: campo ausente ${key}`);
+  extraKeys(value, keys, where, problems);
+}
+
+export function extraKeys(value, keys, where, problems) {
   for (const key of Object.keys(value)) if (!keys.includes(key)) problems.push(`${where}: campo extra ${key}`);
+}
+
+export function isNonBlank(value) {
+  return typeof value === 'string' && value.trim() !== '';
 }
 
 function nonEmpty(value, keys, where, problems) {
   if (!isObject(value)) return;
   for (const key of keys) {
-    if (typeof value[key] !== 'string' || value[key].trim() === '') problems.push(`${where}: ${key} vazio`);
+    if (!isNonBlank(value[key])) problems.push(`${where}: ${key} vazio`);
   }
 }

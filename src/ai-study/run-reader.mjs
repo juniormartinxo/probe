@@ -1,6 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { ARMS } from './comparison.mjs';
+import { isObject } from './corpus.mjs';
 import { UsageError } from './errors.mjs';
 import { SCHEMA_VERSION } from './evidence.mjs';
 
@@ -99,12 +101,55 @@ export function loadRun(evidenceDir, runId, { corpusInfo = null } = {}) {
   let comparison = null;
   if (existsSync(join(runDir, 'comparison.json'))) {
     comparison = readJsonFile(join(runDir, 'comparison.json'), 'comparison.json', problems);
-    if (comparison) sameRun('comparison.json', comparison);
+    if (comparison) {
+      sameRun('comparison.json', comparison);
+      problems.push(...comparisonShapeProblems(comparison, byItem));
+    }
   }
   for (const file of readdirSync(runDir).filter((f) => TEMPORARY_FILE.test(f))) ignored.push({ file, reason: 'temporary' });
 
   if (problems.length > 0) throw refused(runId, problems);
-  return { runDir, manifest, results, comparison, ignored };
+  return { runDir, manifest, results, byItem, comparison, ignored };
+}
+
+// Forma que o relatório lê da comparação: avaliações das evidências desta execução, contagens inteiras
+// pelos mesmos julgamentos nos dois braços e pares completos com os dois braços avaliados. Comparação
+// malformada é evidência recusada (código 2), não erro interno.
+function comparisonShapeProblems(comparison, byItem) {
+  const problems = [];
+  const label = 'comparison.json';
+  const evaluations = Array.isArray(comparison.evaluations) ? comparison.evaluations : null;
+  if (!evaluations) problems.push(`${label}: evaluations deve ser uma lista`);
+  for (const e of evaluations ?? []) {
+    const record = byItem.get(e?.item);
+    if (!record || record.item.kind !== 'evaluation' || record.item.case_id !== e.case_id || record.item.arm !== e.arm || record.evaluation.status !== e.status) {
+      problems.push(`${label}: avaliação ${e?.item} não corresponde a um resultado desta execução`);
+    } else if (!Array.isArray(e.judgments) || e.judgments.some((j) => !isObject(j) || typeof j.judgment !== 'string')) {
+      problems.push(`${label}: avaliação ${e.item} sem a lista de julgamentos`);
+    }
+  }
+  if (!Array.isArray(comparison.pairs) || comparison.pairs.some((p) => !isObject(p) || !Array.isArray(p.reasons))) {
+    problems.push(`${label}: pairs deve ser uma lista de pares com motivos`);
+  }
+  const { individual, paired } = comparison.counts ?? {};
+  const judgments = Object.keys(individual?.by_arm?.[ARMS[0]] ?? {});
+  const countsOk = (counts) =>
+    ARMS.every((arm) =>
+      isObject(counts?.by_arm?.[arm]) &&
+      Object.keys(counts.by_arm[arm]).join() === judgments.join() &&
+      judgments.every((j) => ['hit', 'miss', 'absent'].every((k) => Number.isInteger(counts.by_arm[arm][j]?.[k]))),
+    );
+  if (!Number.isInteger(individual?.denominator) || judgments.length === 0 || !countsOk(individual) || !countsOk(paired)) {
+    problems.push(`${label}: contagens ausentes ou malformadas`);
+  } else if (!Array.isArray(paired.cases) || paired.denominator !== paired.cases.length) {
+    problems.push(`${label}: pares completos inconsistentes com o denominador pareado`);
+  } else {
+    for (const caseId of paired.cases) {
+      const armsOk = ARMS.every((arm) => (evaluations ?? []).some((e) => e?.case_id === caseId && e.arm === arm && Array.isArray(e.judgments)));
+      if (!armsOk) problems.push(`${label}: par completo ${caseId} sem os dois braços avaliados`);
+    }
+  }
+  return problems;
 }
 
 function refused(runId, problems) {

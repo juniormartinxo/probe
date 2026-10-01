@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { isObject, sha256 } from './corpus.mjs';
+import { extraKeys, isNonBlank, isObject, sha256 } from './corpus.mjs';
 import { UsageError } from './errors.mjs';
 import { SCHEMA_VERSION } from './evidence.mjs';
 
@@ -19,11 +19,17 @@ export function outputHash(text) {
 // Tradução sem entrada na revisão fica `pending`. Revisão de outra execução, de uma saída diferente da
 // gravada ou fora do domínio recusa o relatório (código 2), sem adivinhar a intenção do revisor.
 export function loadReview(runDir, runId, translations) {
-  let review;
+  let raw;
   try {
-    review = JSON.parse(readFileSync(join(runDir, REVIEW_FILE), 'utf8'));
+    raw = readFileSync(join(runDir, REVIEW_FILE), 'utf8');
   } catch (error) {
     if (error.code === 'ENOENT') return { present: false, translations: new Map(), recommendation: null };
+    throw new UsageError(`${REVIEW_FILE} de ${runId} ilegível: ${error.code ?? error.message}`);
+  }
+  let review;
+  try {
+    review = JSON.parse(raw);
+  } catch {
     throw new UsageError(`${REVIEW_FILE} de ${runId} recusado:\n  - JSON inválido`);
   }
   const problems = validateReview(review, runId, translations);
@@ -38,7 +44,7 @@ export function loadReview(runDir, runId, translations) {
 export function validateReview(review, runId, translations) {
   if (!isObject(review)) return ['a revisão deve ser um objeto JSON'];
   const problems = [];
-  onlyKeys(review, ['schema_version', 'run_id', 'translations', 'recommendation'], 'revisão', problems);
+  extraKeys(review, ['schema_version', 'run_id', 'translations', 'recommendation'], 'revisão', problems);
   if (review.schema_version !== SCHEMA_VERSION) problems.push(`schema_version ${JSON.stringify(review.schema_version)} não é ${SCHEMA_VERSION}`);
   if (review.run_id !== runId) problems.push(`pertence à execução ${review.run_id}`);
 
@@ -52,7 +58,7 @@ export function validateReview(review, runId, translations) {
       problems.push(`${label}: deve ser um objeto`);
       continue;
     }
-    onlyKeys(entry, ['item', 'output_sha256', 'status', 'reviewer', 'justification'], label, problems);
+    extraKeys(entry, ['item', 'output_sha256', 'status', 'reviewer', 'justification'], label, problems);
     if (seen.has(entry.item)) problems.push(`${label}: revisão repetida`);
     seen.add(entry.item);
     if (!outputs.has(entry.item)) problems.push(`${label}: não é uma tradução concluída desta execução`);
@@ -60,8 +66,8 @@ export function validateReview(review, runId, translations) {
       problems.push(`${label}: status ${JSON.stringify(entry.status ?? null)} fora de ${REVIEW_STATES.join(', ')}`);
     }
     if (entry.status === 'pending' || !outputs.has(entry.item)) continue;
-    if (!nonBlank(entry.reviewer)) problems.push(`${label}: ${entry.status} exige revisor`);
-    if (!nonBlank(entry.justification)) problems.push(`${label}: ${entry.status} exige justificativa`);
+    if (!isNonBlank(entry.reviewer)) problems.push(`${label}: ${entry.status} exige revisor`);
+    if (!isNonBlank(entry.justification)) problems.push(`${label}: ${entry.status} exige justificativa`);
     const expected = outputs.get(entry.item);
     if (expected === null) problems.push(`${label}: tradução sem saída para revisar`);
     else if (entry.output_sha256 !== expected) {
@@ -73,21 +79,13 @@ export function validateReview(review, runId, translations) {
   if (recommendation !== null) {
     if (!isObject(recommendation)) problems.push('recommendation deve ser um objeto ou null');
     else {
-      onlyKeys(recommendation, ['decision', 'reviewer', 'justification'], 'recommendation', problems);
+      extraKeys(recommendation, ['decision', 'reviewer', 'justification'], 'recommendation', problems);
       if (!RECOMMENDATIONS.includes(recommendation.decision)) {
         problems.push(`recommendation: decisão ${JSON.stringify(recommendation.decision ?? null)} fora de ${RECOMMENDATIONS.join(', ')}`);
       }
-      if (!nonBlank(recommendation.reviewer)) problems.push('recommendation: exige revisor');
-      if (!nonBlank(recommendation.justification)) problems.push('recommendation: exige justificativa');
+      if (!isNonBlank(recommendation.reviewer)) problems.push('recommendation: exige revisor');
+      if (!isNonBlank(recommendation.justification)) problems.push('recommendation: exige justificativa');
     }
   }
   return problems;
-}
-
-function nonBlank(value) {
-  return typeof value === 'string' && value.trim() !== '';
-}
-
-function onlyKeys(value, keys, where, problems) {
-  for (const key of Object.keys(value)) if (!keys.includes(key)) problems.push(`${where}: campo extra ${key}`);
 }

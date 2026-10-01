@@ -2,7 +2,8 @@
 
 PYTHON ?= python3
 NODE ?= node
-TEST_FILES ?= tests/ai-study/*.test.mjs
+# Provas live (C50/C51) leem a coleta real identificada por RUN_ID: só entram quando ele é informado.
+TEST_FILES ?= tests/ai-study/*.test.mjs $(if $(RUN_ID),tests/ai-study/live/*.test.mjs)
 TLC_SKILL_DIR ?= .claude/skills/tlc-spec-lean
 FEATURE ?= jev-translation-feasibility
 AI_STUDY_CLI ?= src/ai-study/cli.mjs
@@ -17,10 +18,13 @@ help:
 	  '  make ai-study-dry-run [MODE=fixture|live]  Imprime o manifesto da coleta, sem executar nada.' \
 	  '  make ai-study-run [MODE=fixture|live] [RUN_ID=id]  Coleta fixture (simulada) ou live (LM Studio e Jev).' \
 	  '  make ai-study-report RUN_ID=id  Gera artifacts/ai-study-reports/<id>.md só das evidências, sem modelos ou rede.' \
-	  '    Revisão humana em artifacts/ai-study/<id>/review.json (schema_version, run_id, translations, recommendation).' \
+	  '    Revisão humana em artifacts/ai-study/<id>/review.json: {"schema_version": 1, "run_id": "<id>", "translations": [...], "recommendation": ...}' \
+	  '      translations[]: item (ex. T01-translate-en-pt), output_sha256 (impresso no relatório), status pending|faithful|meaning_changed,' \
+	  '        reviewer e justification (obrigatórios em faithful e meaning_changed); tradução ausente da lista fica pending.' \
+	  '      recommendation: null ou {decision: keep_candidate|reject_candidate|expand_study, reviewer, justification}.' \
 	  '  make plan-validate [FEATURE=nome]  Valida um plano tlc-spec-lean.' \
 	  '  make checks-validate [FEATURE=nome]  Valida a estrutura dos checks.' \
-	  '  make check-proof TEST_FLAGS="--test-name-pattern=^C1:"  Executa uma prova quando implementada.' \
+	  '  make check-proof TEST_FLAGS="--test-name-pattern=^C1:" [RUN_ID=id]  Executa uma prova; C50/C51 exigem RUN_ID de coleta live real.' \
 	  '  make commit-validate MESSAGE="docs: descricao"  Valida a mensagem de commit.' \
 	  'Configuração pelo ambiente ou pela linha de comando; segredos (TYPESAFE_API_KEY, LOCAL_API_TOKEN) só pelo ambiente.' \
 	  'Uma coleta por vez em artifacts/ai-study; após uma queda, confira que nenhuma coleta roda e remova artifacts/ai-study/.collection.lock.'

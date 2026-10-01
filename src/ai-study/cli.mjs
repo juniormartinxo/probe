@@ -14,7 +14,7 @@ import { createJevTransport } from './jev.mjs';
 import { createLmStudioTransport } from './lmstudio.mjs';
 import { formatDryRun, formatRunSummary } from './manifest.mjs';
 import { buildReport, formatReportSummary, translationsOf } from './report.mjs';
-import { loadReview } from './review.mjs';
+import { loadReview, REVIEW_FILE } from './review.mjs';
 import { loadRun } from './run-reader.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -65,7 +65,7 @@ export async function main(argv, env, io, { signal } = {}) {
 function writeReport(runId, env, io) {
   const loaded = loadRun(evidenceDirFor(repoRoot), runId);
   const review = loadReview(loaded.runDir, runId, translationsOf(loaded).map((r) => r.translation));
-  const { markdown, summary } = buildReport(loaded, review);
+  const { markdown, summary } = buildReport(loaded, review, { reviewPath: displayPath(repoRoot, join(loaded.runDir, REVIEW_FILE)) });
   // Evidências já omitem segredos; a revisão humana ou um arquivo editado podem não omitir.
   const secrets = SECRET_NAMES.map((name) => env[name]);
   const reportDir = reportDirFor(repoRoot);
