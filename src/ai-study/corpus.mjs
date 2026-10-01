@@ -81,7 +81,7 @@ export function assertSameReference(records) {
   }
 }
 
-function sha256(data) {
+export function sha256(data) {
   return `sha256:${createHash('sha256').update(data).digest('hex')}`;
 }
 

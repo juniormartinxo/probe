@@ -5,7 +5,7 @@ import { buildComparison } from './comparison.mjs';
 import { fileHash, JUDGMENT_IDS } from './corpus.mjs';
 import { IncompleteError, UsageError } from './errors.mjs';
 import { createRunDir, SCHEMA_VERSION, writeJsonAtomic } from './evidence.mjs';
-import { buildJevBody, JEV_RUBRIC, questionHashes, rubricRevision, usageInfo, validateEvaluation } from './jev.mjs';
+import { buildJevBody, evaluationRecord, JEV_RUBRIC, rubricRevision } from './jev.mjs';
 import { publicConfig } from './manifest.mjs';
 import { renderPrompt, templateRevision, TRANSLATION_TEMPLATE } from './template.mjs';
 import { checkIdentity, checkInputTokens, invalidTranslationReason, runtimeInfo } from './translation.mjs';
@@ -257,30 +257,14 @@ export async function runCollection({
         else translations.set(item.case_id, { item: item.id, text: response.output });
       } else {
         if (item.arm === 'en') record.derived_from = translations.get(item.case_id).item;
-        const problems = validateEvaluation(response.results, payload.judgments);
-        record.evaluation = {
-          run_id: runId,
-          case_id: item.case_id,
-          arm: item.arm,
-          requested_model: payload.body.model,
-          returned_model: response.model ?? null,
-          rubric_id: manifest.evaluation.rubric_id,
-          rubric_revision: manifest.evaluation.rubric_revision,
-          ...questionHashes(payload.body),
-          status: problems.length === 0 ? 'valid' : 'invalid_response',
-          problems,
-          results:
-            problems.length === 0
-              ? response.results.map(({ judgment, choice, probabilities, confidence }) => ({
-                  judgment,
-                  choice,
-                  probabilities,
-                  confidence,
-                }))
-              : null,
-          usage: usageInfo(response.usage),
-          duration_ms: durationMs,
-        };
+        record.evaluation = evaluationRecord({
+          runId,
+          item,
+          body: payload.body,
+          response,
+          judgments: payload.judgments,
+          durationMs,
+        });
         evaluations.push(record);
       }
       writeJsonAtomic(join(runDir, 'results', `${String(index + 1).padStart(3, '0')}-${item.id}.json`), record);

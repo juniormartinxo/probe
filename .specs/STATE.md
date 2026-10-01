@@ -27,6 +27,14 @@ S3 implementada em `src/ai-study/jev.mjs` (rubricas únicas em inglês derivadas
 3. **Origem do candidato (mradermacher)**: conferir uma única vez, numa etapa de preparação, o SHA-256 do arquivo GGUF Q6_K instalado contra o hash publicado no Hugging Face para `mradermacher/translategemma-12b-it-GGUF`, registrando o resultado na evidência. Não recalcular a cada coleta.
 4. **C50**: permanece na S5, depois das salvaguardas da S4. Com os itens 1 e 2 resolvidos, foi proposto um ensaio live só da tradução (1–2 casos, sem Jev) para antecipar problemas; ele não está no plano e a coleta real continua dependendo de autorização explícita do usuário no momento da execução.
 
+**Escolhas da S3 a confirmar pelo usuário** (nenhuma afrouxa AC ou check; levantadas no review do PR da S3):
+
+1. **Rubricas em inglês**: `JEV_RUBRIC` em `src/ai-study/jev.mjs` é uma versão em inglês das rubricas da revisão 1 de `corpus.md`, escrita pelo agente e ainda sem revisão humana. Como instruções e critérios são o que fica fixo entre os braços, o texto deve ser revisado antes da coleta real. Qualquer alteração muda `rubric_revision`.
+2. **Tolerância da soma**: o limite é 0,000001 mais uma folga de 1e-12 para o arredondamento de ponto flutuante. Sem ela, `0.5 + 0.25 + 0.249999` (distância exata de 0,000001) seria rejeitada. C25 prova as três bordas.
+3. **Modelo Jev não identificado**: se uma resposta não traz `model`, o par fica `incomplete` (`jev_model_unknown`). Sem o modelo, não há como confirmar a mesma versão resolvida nos dois braços.
+4. **Resposta inválida encerra a coleta**: a resposta é gravada como `invalid_response` e a coleta para com `incomplete` e código 1. Isso antecipa AC 29 (S4); C34 continua sendo a prova de S4.
+5. **Rótulos do texto avaliado**: o braço PT envia `caseText` com rótulos em português ("Contexto:", "A — Pergunta:"); o braço EN recebe esses rótulos traduzidos, junto com o restante do texto. IDs de caso, de item e de julgamento ficam fora dos dois textos.
+
 **Verification profile**: `light`, padrão do harness; nenhuma elevação foi escolhida. A implementação posterior exige verificador independente conforme a tlc-spec-lean.
 
 **Checks tooling**: `make plan-validate` e `make checks-validate` validam estrutura. `make check-proof TEST_FLAGS='--test-name-pattern=^C1:'` selecionará a prova futura; arquivos de testes ausentes são erro. C1–C20 têm prova executada e verificação independente PASS (S1+S2, em `166a2b9`, relatório em `verification.md`); C21–C28, C52 e C53 têm prova executada (S3), sem verificação independente ainda; C29–C51 e C54 continuam pendentes. Node 24.14.0 foi confirmado no WSL; runner nativo adotado como escolha reversível, sem adicionar Vitest ou dependências.

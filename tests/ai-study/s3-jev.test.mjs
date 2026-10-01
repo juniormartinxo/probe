@@ -126,6 +126,8 @@ test('C21: o adaptador Jev envia os seis julgamentos como perguntas Choice indep
     assert.equal(call.method, 'POST');
     assert.equal(call.href, 'https://api.typesafe.ai/v1/systemone');
     assert.equal(call.headers.authorization, `Bearer ${KEY}`);
+    assert.equal(call.headers['content-type'], 'application/json');
+    assert.deepEqual(Object.keys(call.headers).sort(), ['authorization', 'content-type']);
     assert.deepEqual(Object.keys(call.body), ['state', 'model', 'questions'], 'corpo completo');
     assert.equal(call.body.model, JEV_MODEL);
     assert.deepEqual(Object.keys(call.body.questions), [...JUDGMENT_IDS], 'os seis julgamentos na mesma chamada');
@@ -291,6 +293,8 @@ test('C25: a validação Jev só aceita seis resultados choice válidos e gera i
 
   const rejected = [
     ['lista ausente', null, /lista de resultados/],
+    ['resultado não objeto', [...validResults().slice(1), null], /resultado não é objeto/],
+    ['resultado em texto', [...validResults().slice(1), 'b_depends_on_a: yes'], /resultado não é objeto/],
     ['ID ausente', validResults().slice(1), /ID ausente b_depends_on_a/],
     ['ID extra', [...validResults(), { judgment: 'other', ...answer() }], /ID extra other/],
     ['ID repetido', [...validResults(), { judgment: 'complements', ...answer() }], /ID repetido complements/],
@@ -471,13 +475,16 @@ test('C28: par sem braço válido ou com configuração divergente fica incomple
     ['par completo', [record('R01', 'pt'), record('R01', 'en')], []],
     ['braço PT ausente', [record('R01', 'en')], ['pt_missing']],
     ['braço EN ausente', [record('R01', 'pt')], ['en_missing']],
-    ['braço inválido', [record('R01', 'pt'), record('R01', 'en', { evaluation: { status: 'invalid_response', results: null } })], ['en_invalid']],
+    ['dois braços ausentes', [], ['pt_missing', 'en_missing']],
+    ['braço EN inválido', [record('R01', 'pt'), record('R01', 'en', { evaluation: { status: 'invalid_response', results: null } })], ['en_invalid']],
+    ['braço PT inválido', [record('R01', 'pt', { evaluation: { status: 'invalid_response', results: null } }), record('R01', 'en')], ['pt_invalid']],
     ['corpus divergente', [record('R01', 'pt'), record('R01', 'en', { record: { corpus_hash: 'sha256:outro' } })], ['reference_mismatch']],
     ['gabarito divergente', [record('R01', 'pt', { record: { gabarito_hash: 'sha256:outro' } }), record('R01', 'en')], ['reference_mismatch']],
     ['instruções divergentes', [record('R01', 'pt'), record('R01', 'en', { evaluation: { instructions_hash: questionHashes(otherBody).instructions_hash } })], ['instructions_mismatch']],
     ['critérios divergentes', [record('R01', 'pt'), record('R01', 'en', { evaluation: { criteria_hash: questionHashes(otherCriteria).criteria_hash } })], ['criteria_mismatch']],
     ['versão Jev divergente', [record('R01', 'pt'), record('R01', 'en', { evaluation: { returned_model: 'jev-v2' } })], ['jev_model_mismatch']],
-    ['versão Jev não identificada', [record('R01', 'pt', { evaluation: { returned_model: null } }), record('R01', 'en')], ['jev_model_unknown']],
+    ['versão Jev PT não identificada', [record('R01', 'pt', { evaluation: { returned_model: null } }), record('R01', 'en')], ['jev_model_unknown']],
+    ['versão Jev EN não identificada', [record('R01', 'pt'), record('R01', 'en', { evaluation: { returned_model: null } })], ['jev_model_unknown']],
   ];
   assert.notEqual(questionHashes(otherBody).instructions_hash, questionHashes(buildJevBody({ model: JEV_MODEL, text: 'x' })).instructions_hash);
   assert.notEqual(questionHashes(otherCriteria).criteria_hash, questionHashes(buildJevBody({ model: JEV_MODEL, text: 'x' })).criteria_hash);

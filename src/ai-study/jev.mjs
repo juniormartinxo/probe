@@ -1,6 +1,4 @@
-import { createHash } from 'node:crypto';
-
-import { canonicalJson, CHOICES, JUDGMENT_IDS } from './corpus.mjs';
+import { canonicalJson, CHOICES, JUDGMENT_IDS, sha256 } from './corpus.mjs';
 
 // Rubricas únicas em inglês para os dois braços: versão em inglês das rubricas da revisão 1 do corpus.
 // O estado varia entre original e tradução; instruções e critérios nunca variam.
@@ -63,7 +61,7 @@ export function questionHashes(body) {
 }
 
 // Probabilidades somam 1 a no máximo 0,000001; a folga cobre só o arredondamento de ponto flutuante.
-export const SUM_TOLERANCE = 0.000001;
+const SUM_TOLERANCE = 0.000001;
 const FLOAT_SLACK = 1e-12;
 
 const isUnit = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
@@ -81,29 +79,52 @@ export function validateEvaluation(results, judgments = JUDGMENT_IDS) {
     else if (n > 1) problems.push(`ID repetido ${id}`);
   }
   for (const r of results) {
-    const where = `${r?.judgment}`;
+    const label = `${r?.judgment}`;
     if (!isObject(r)) {
-      problems.push(`${where}: resultado não é objeto`);
+      problems.push(`${label}: resultado não é objeto`);
       continue;
     }
-    if (r.type !== 'choice') problems.push(`${where}: tipo ${JSON.stringify(r.type ?? null)} não é choice`);
-    if (!CHOICES.includes(r.choice)) problems.push(`${where}: escolha ${JSON.stringify(r.choice ?? null)} fora do domínio`);
+    if (r.type !== 'choice') problems.push(`${label}: tipo ${JSON.stringify(r.type ?? null)} não é choice`);
+    if (!CHOICES.includes(r.choice)) problems.push(`${label}: escolha ${JSON.stringify(r.choice ?? null)} fora do domínio`);
     if (!isObject(r.probabilities)) {
-      problems.push(`${where}: probabilidades ausentes`);
+      problems.push(`${label}: probabilidades ausentes`);
     } else {
-      for (const key of Object.keys(r.probabilities)) if (!CHOICES.includes(key)) problems.push(`${where}: probabilidade extra ${key}`);
+      for (const key of Object.keys(r.probabilities)) if (!CHOICES.includes(key)) problems.push(`${label}: probabilidade extra ${key}`);
       const values = CHOICES.map((choice) => r.probabilities[choice]);
       CHOICES.forEach((choice, i) => {
-        if (!isUnit(values[i])) problems.push(`${where}: probabilidade de ${choice} ausente, não finita ou fora de [0,1]`);
+        if (!isUnit(values[i])) problems.push(`${label}: probabilidade de ${choice} ausente, não finita ou fora de [0,1]`);
       });
       if (values.every(isUnit)) {
         const sum = values.reduce((a, b) => a + b, 0);
-        if (Math.abs(sum - 1) > SUM_TOLERANCE + FLOAT_SLACK) problems.push(`${where}: soma das probabilidades ${sum} fora da tolerância`);
+        if (Math.abs(sum - 1) > SUM_TOLERANCE + FLOAT_SLACK) problems.push(`${label}: soma das probabilidades ${sum} fora da tolerância`);
       }
     }
-    if (!isUnit(r.confidence)) problems.push(`${where}: confiança ausente, não finita ou fora de [0,1]`);
+    if (!isUnit(r.confidence)) problems.push(`${label}: confiança ausente, não finita ou fora de [0,1]`);
   }
   return problems;
+}
+
+// Registro de uma avaliação por caso e braço; resposta inválida fica sem escolhas, nunca inferidas.
+export function evaluationRecord({ runId, item, body, response, judgments, durationMs, rubric = JEV_RUBRIC }) {
+  const problems = validateEvaluation(response.results, judgments);
+  return {
+    run_id: runId,
+    case_id: item.case_id,
+    arm: item.arm,
+    requested_model: body.model,
+    returned_model: response.model ?? null,
+    rubric_id: rubric.id,
+    rubric_revision: rubricRevision(rubric),
+    ...questionHashes(body),
+    status: problems.length === 0 ? 'valid' : 'invalid_response',
+    problems,
+    results:
+      problems.length === 0
+        ? response.results.map(({ judgment, choice, probabilities, confidence }) => ({ judgment, choice, probabilities, confidence }))
+        : null,
+    usage: usageInfo(response.usage),
+    duration_ms: durationMs,
+  };
 }
 
 const USAGE_UNAVAILABLE = 'o Jev não informou uso nesta chamada; ausência não é custo zero';
@@ -147,8 +168,4 @@ export function createJevTransport(config, { fetch = globalThis.fetch } = {}) {
       };
     },
   };
-}
-
-function sha256(data) {
-  return `sha256:${createHash('sha256').update(data).digest('hex')}`;
 }
