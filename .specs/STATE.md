@@ -8,7 +8,7 @@ As decisões de produto aprovadas estão no [desenho consolidado do MVP](../docs
 
 **Authorized scope**: implementação da S1 (PRB-2) autorizada pelo usuário em 30/09/2026 ao invocar a implementação do card. S2–S5, coleta real e instalação de dependências continuam dependendo de autorização explícita.
 
-**Where**: S1 implementada em `src/ai-study/` com corpus estruturado `src/ai-study/corpus/revision-1.json` (textos e gabaritos da revisão 1, conferidos contra corpus.md por teste). Comandos `make ai-study-dry-run` e `make ai-study-run` (fixture por omissão). C1–C12 com provas em `tests/ai-study/s1-*.test.mjs`, executadas por `make check-proof`; C3 e C10 são parciais até existir a coleta live (ver checks.md). Nenhum modelo foi chamado.
+**Where**: S1 implementada em `src/ai-study/` com corpus estruturado `src/ai-study/corpus/revision-1.json` (textos e gabaritos da revisão 1, conferidos contra corpus.md por teste). Comandos `make ai-study-dry-run` e `make ai-study-run` (fixture por omissão). C1–C12 com provas em `tests/ai-study/s1-*.test.mjs`, executadas por `make check-proof`; as partes live de C3 e C10 foram movidas para C52–C54 (S3/S5) por decisão do usuário em 30/09/2026. Nenhum modelo foi chamado.
 
 **Next step**: verificador independente da S1, conforme a tlc-spec-lean; depois S2 (PRB-3). `MODE=live` em `ai-study-run` encerra com código 2 até existirem os adaptadores de S2/S3.
 
@@ -18,7 +18,7 @@ As decisões de produto aprovadas estão no [desenho consolidado do MVP](../docs
 
 **Verification profile**: `light`, padrão do harness; nenhuma elevação foi escolhida. A implementação posterior exige verificador independente conforme a tlc-spec-lean.
 
-**Checks tooling**: `make plan-validate` e `make checks-validate` validam estrutura. `make check-proof TEST_FLAGS='--test-name-pattern=^C1:'` selecionará a prova futura; arquivos de testes ausentes são erro. C1–C12 têm prova executada (C3 e C10 parciais); C13–C51 continuam pendentes. Node 24.14.0 foi confirmado no WSL; runner nativo adotado como escolha reversível, sem adicionar Vitest ou dependências.
+**Checks tooling**: `make plan-validate` e `make checks-validate` validam estrutura. `make check-proof TEST_FLAGS='--test-name-pattern=^C1:'` selecionará a prova futura; arquivos de testes ausentes são erro. C1–C12 têm prova executada; C13–C54 continuam pendentes. Node 24.14.0 foi confirmado no WSL; runner nativo adotado como escolha reversível, sem adicionar Vitest ou dependências.
 
 **Uncommitted**: conferir `git status`. Evidências ficam em `artifacts/`, ignorado pelo Git.
 

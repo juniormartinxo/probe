@@ -3,9 +3,9 @@
 Profile: light
 Plan: `.specs/features/jev-translation-feasibility/plan.md`
 
-51 checks em 5 slices · 1 one-way door · 3 pré-requisitos operacionais para coleta real, mantidos no plano.
+54 checks em 5 slices · 1 one-way door · 3 pré-requisitos operacionais para coleta real, mantidos no plano.
 
-Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas (C3 e C10 parciais, ver cada check); C13–C51 pendentes.** Validar este documento não executa nem comprova os checks.
+Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas; C13–C54 pendentes.** Em 30/09/2026 o usuário aprovou mover as partes live de C3 e C10, que dependem dos adaptadores, para C52–C54 em S3 e S5. Validar este documento não executa nem comprova os checks.
 
 Comando disponível: `make check-proof`, usando o runner nativo do Node 24 observado no WSL. Os seletores abaixo reservam nomes `C<n>: descrição` nos futuros arquivos `tests/ai-study/*.test.mjs`. O comando usa `--test-isolation=none` e exige no TAP pelo menos um check nomeado executado, sem skip/TODO, além da saída zero do Node. As provas devem isolar seu estado explicitamente; testes de concorrência ainda precisam criar os processos ou chamadas que sua obrigação exige. Arquivo ausente, teste ausente, skip ou zero testes executados não encerram um check. A existência e a execução do teste selecionado deverão ser verificadas na fase de implementação e pelo verificador independente. Não foram adicionados testes vazios para produzir sucesso artificial.
 
@@ -23,9 +23,9 @@ Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C2:'`
 Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
-**C3** - Preparação, coleta e relatório, em fixture e live com serviços controlados, invocam zero processos Codex, Claude, Grok, agy ou Cloak (AC 3).
+**C3** - Preparação (dry-run fixture e live) e coleta fixture invocam zero processos Codex, Claude, Grok, agy ou Cloak; coleta live e relatório seguem em C52 e C54 (AC 3).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C3:'`
-Status: parcial em 30/09/2026 — prova executada para preparação (dry-run fixture e live) e coleta fixture; a coleta live com serviços controlados e o relatório dependem de S2/S3/S5 e devem ser acrescentados a esta prova.
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C4** - A fronteira de comandos aceita somente os modos `fixture` e `live`, seleciona `fixture` na omissão e rejeita outro modo com código 2 (AC 4–5).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C4:'`
@@ -51,9 +51,9 @@ Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C9:'`
 Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
-**C10** - Tentativa de incorporar resposta fixture em execução live ou resposta live em execução fixture é rejeitada com código 2, preservando as evidências anteriores (AC 10).
+**C10** - Na fronteira `make ai-study-run`, transporte ou resposta live em execução fixture é rejeitado com código 2, preservando as evidências anteriores; no coletor, transporte ou resposta fixture em execução live também é rejeitado; a mesma rejeição na fronteira live segue em C53 (AC 10).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C10:'`
-Status: parcial em 30/09/2026 — transporte live em coleta fixture rejeitado na fronteira `make` com código 2 (injeção só por pré-carga de teste; a bancada não aceita respostas externas); transporte ou resposta fixture em coleta live só está provado no coletor (`runCollection`), pois `ai-study-run MODE=live` depende dos adaptadores de S2/S3. A proveniência registrada vem do transporte construído para o modo, não do rótulo da resposta.
+Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`). A proveniência registrada vem do transporte construído para o modo; a bancada não aceita respostas externas, e a injeção do teste usa pré-carga do Node.
 
 **C11** - Configuração válida aceita RUN_ID de 1 e 64 caracteres ASCII permitidos, timeout inteiro positivo e saída de 1 e 2048 tokens; limites de chamadas permanecem 20/24 (AC 5, 27, Observable).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C11:'`
@@ -114,6 +114,12 @@ Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C27:'`
 
 **C28** - Par sem um braço válido ou com divergência de corpus/gabarito, instruções, critérios ou versão Jev resolvida é marcado incompleto e excluído do denominador pareado; o resultado individual concluído continua visível (AC 24).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C28:'`
+
+**C52** - `make ai-study-run MODE=live` com LM Studio e Jev controlados invoca zero processos Codex, Claude, Grok, agy ou Cloak (AC 3; parte live movida de C3).
+Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C52:'`
+
+**C53** - Na fronteira `make ai-study-run MODE=live` com serviços controlados, transporte ou resposta fixture é rejeitado com código 2, preservando as evidências anteriores (AC 10; parte live movida de C10).
+Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C53:'`
 
 ### S4 - Coleta limitada com preservação na falha
 
@@ -188,21 +194,24 @@ Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C50:' RUN_ID="$RUN_ID"
 **C51** - Evidência live de ao menos um caso R contém tradução PT→EN e duas respostas Jev da mesma versão, cada uma com seis resultados válidos; concordância ou discordância com o gabarito fica contabilizada separadamente do sucesso de integração (S3 Independent test).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C51:' RUN_ID="$RUN_ID"`
 
+**C54** - `make ai-study-report RUN_ID=...` invoca zero processos Codex, Claude, Grok, agy ou Cloak (AC 3; parte do relatório movida de C3).
+Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C54:'`
+
 ## Coverage
 
 Esta tabela aloca os membros a provas futuras. `-` significa nenhum membro sem check atribuído, **não** prova executada ou resultado aprovado. Todos os checks estão pendentes de execução.
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
-| AC S1 (10) | `1` C1 · `2` C2 · `3` C3 · `4` C4 · `5` C5 C11 C12 · `6` C6 · `7` C7 · `8` C8 · `9` C9 · `10` C10 | - |
+| AC S1 (10) | `1` C1 · `2` C2 · `3` C3 C52 C54 · `4` C4 · `5` C5 C11 C12 · `6` C6 · `7` C7 · `8` C8 · `9` C9 · `10` C10 C53 | - |
 | AC S2 (7) | `11` C13 · `12` C14 · `13` C15 · `14` C16 · `15` C17 · `16` C18 · `17` C19 | - |
 | AC S3 (7) | `18` C21 · `19` C22 · `20` C23 · `21` C25 · `22` C26 · `23` C27 · `24` C28 | - |
 | AC S4 (7) | `25` C29 · `26` C30 · `27` C31 · `28` C33 · `29` C34 · `30` C35 · `31` C36 | - |
 | AC S5 (6) | `32` C41 · `33` C42 · `34` C43 · `35` C44 · `36` C45 · `37` C46 | - |
 | Landing (1) | bancada Make + `schema_version: 1` + diretório de evidências C9 C39 C40 C41 | - |
 | Relations (7) | execução C8 C40 · revisão corpus/gabarito C8 C47 · configuração C1 C40 · item planejado C33 C34 · tradução C13 C17 · avaliação C26 · revisão semântica/relatório C40 C41 C44 | - |
-| Comandos publicados (4) | `ai-study-dry-run` C1 C2 · `ai-study-run MODE=fixture` C9 · `ai-study-run MODE=live` C34 C50 C51 · `ai-study-report` C41 | - |
-| Códigos da fronteira (3) | `0` C9 · `1` C34 · `2` C4 C5 C10 C30 C41 | - |
+| Comandos publicados (4) | `ai-study-dry-run` C1 C2 · `ai-study-run MODE=fixture` C9 · `ai-study-run MODE=live` C34 C50 C51 C52 C53 · `ai-study-report` C41 C54 | - |
+| Códigos da fronteira (3) | `0` C9 · `1` C34 · `2` C4 C5 C10 C30 C41 C53 | - |
 | Configuração inicial (2 assemblies) | entrada CLI de coleta C1 C9 C12 · entrada CLI de relatório C41 | - |
 | Configurações publicadas (11) | `MODE` C4 · `RUN_ID` C5 C11 C12 · `CORPUS` C6 C12 · `LOCAL_BASE_URL` C5 C12 C38 · `LOCAL_MODEL` C5 C12 C20 · `LOCAL_API_TOKEN` C12 C36 · `TYPESAFE_API_KEY` C5 C12 C36 · `JEV_MODEL` C5 C12 C23 · `LOCAL_TIMEOUT_SECONDS` C5 C11 C12 C33 · `JEV_TIMEOUT_SECONDS` C5 C11 C12 C33 · `LOCAL_MAX_OUTPUT_TOKENS` C5 C11 C12 | - |
 | Modos (3) | `fixture` C4 C9 · `live` C4 C50 C51 · outro C4 | - |
@@ -231,25 +240,25 @@ Esta tabela aloca os membros a provas futuras. `-` significa nenhum membro sem c
 | Persistência atômica (4) | manifesto antes de substituir C35 · manifesto depois C35 · resultado antes C35 · resultado depois C35 | - |
 | Segredos (4) | chave C36 · token C36 · URL credenciada C36 · cabeçalho de autenticação C36 | - |
 | Saídas redigidas (6) | stdout C36 · stderr C36 · manifesto C36 · resultado C36 · relatório C36 · diagnóstico HTTP/parsing C36 | - |
-| CLIs excluídas (5) | Codex C3 · Claude C3 · Grok C3 · agy C3 · Cloak C3 | - |
+| CLIs excluídas (5) | Codex C3 C52 C54 · Claude C3 C52 C54 · Grok C3 C52 C54 · agy C3 C52 C54 · Cloak C3 C52 C54 | - |
 | Relatório (6) | configuração/proveniência C42 · completude C42 · originais/traduções C42 · revisão semântica C42 · comparação Jev C42 C43 · limitações C42 C48 | - |
 | Revisão semântica (3) | `pending` C44 C45 · `faithful` C44 · `meaning_changed` C44 | - |
 | Recomendação humana (3) | `keep_candidate` C46 · `reject_candidate` C46 · `expand_study` C46 | - |
 | Conclusão sem evidência completa (2) | coleta faltante C45 · revisão pendente C45 | - |
 | Proveniência no relatório (2) | fixture simulado C49 · live identificado C50 C51 | - |
 
-Claims sobre códigos de saída e comandos (C1, C4–C7, C9–C10, C30, C34, C41) exigem atravessar a fronteira do comando publicado. Provas dos adaptadores inspecionam a requisição completa e o resultado persistido. C25, C27 e C28 devem cobrir cada linha das suas tabelas de decisão, além do caminho de integração. C50–C51 não exigem concordância perfeita do modelo com o gabarito: provam integração, enquanto C27/C43 medem a concordância observada.
+Claims sobre códigos de saída e comandos (C1, C4–C7, C9–C10, C30, C34, C41, C52–C54) exigem atravessar a fronteira do comando publicado. Provas dos adaptadores inspecionam a requisição completa e o resultado persistido. C25, C27 e C28 devem cobrir cada linha das suas tabelas de decisão, além do caminho de integração. C50–C51 não exigem concordância perfeita do modelo com o gabarito: provam integração, enquanto C27/C43 medem a concordância observada.
 
 ## Swept
 
 - validation: C4–C8, C11–C16, C25, C31; C5 C11 C15 C25 explicitam as bordas.
-- failure modes: C10 C14 C16 C18 C28 C33 C34 C35.
+- failure modes: C10 C53 C14 C16 C18 C28 C33 C34 C35.
 - idempotency: C30 C31 C37; coleta repetida não sobrescreve nem reutiliza silenciosamente.
-- authorization: C2 C3 C12 C22 C31 C36 C38; não há API recebida nem autenticação de usuário nesta entrega.
+- authorization: C2 C3 C52 C54 C12 C22 C31 C36 C38; não há API recebida nem autenticação de usuário nesta entrega.
 - concurrency: C24 C29 C32 C35; exclusão local e uma chamada em andamento.
 - data lifecycle: C8 C17 C26 C30 C37 C39 C40 C44 C47.
 - dependency failure: C14 C16 C18 C20 C25 C33 C34; simulação não fecha C50 C51.
-- state transitions: C9 C10 C28 C33 C34 C44 C45 C46.
+- state transitions: C9 C10 C53 C28 C33 C34 C44 C45 C46.
 - observability: C1 C19 C26 C36 C42 C43 C48 C49.
 
 ## Handoff
