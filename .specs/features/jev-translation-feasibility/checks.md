@@ -118,6 +118,7 @@ Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`, tra
 **C25** - A validação Jev só aceita seis IDs únicos esperados de tipo `choice`, escolha no domínio, três probabilidades finitas em [0,1] com soma a distância ≤0,000001 de 1 e confiança finita em [0,1]; qualquer violação gera `invalid_response` sem inferir escolha de prosa (AC 21).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C25:'`
 Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`, transportes controlados).
+Leitura aceita pelo usuário em 01/10/2026 (review do PR #4): ≤0,000001, com folga de 1e-12 só para arredondamento de ponto flutuante.
 
 **C26** - Avaliação persistida identifica execução, caso, braço, escolha, distribuição, confiança, modelo retornado, uso informado e duração; ausência de uso fica identificada, sem virar zero (AC 22, Relations).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C26:'`

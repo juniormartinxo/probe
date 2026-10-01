@@ -27,13 +27,20 @@ S3 implementada em `src/ai-study/jev.mjs` (rubricas únicas em inglês derivadas
 3. **Origem do candidato (mradermacher)**: conferir uma única vez, numa etapa de preparação, o SHA-256 do arquivo GGUF Q6_K instalado contra o hash publicado no Hugging Face para `mradermacher/translategemma-12b-it-GGUF`, registrando o resultado na evidência. Não recalcular a cada coleta.
 4. **C50**: permanece na S5, depois das salvaguardas da S4. Com os itens 1 e 2 resolvidos, foi proposto um ensaio live só da tradução (1–2 casos, sem Jev) para antecipar problemas; ele não está no plano e a coleta real continua dependendo de autorização explícita do usuário no momento da execução.
 
-**Escolhas da S3 a confirmar pelo usuário** (nenhuma afrouxa AC ou check; levantadas no review do PR da S3):
+**Escolhas da S3, decididas pelo usuário em 01/10/2026 no review do PR #4** (nenhuma afrouxa AC ou check):
 
-1. **Rubricas em inglês**: `JEV_RUBRIC` em `src/ai-study/jev.mjs` é uma versão em inglês das rubricas da revisão 1 de `corpus.md`, escrita pelo agente e ainda sem revisão humana. Como instruções e critérios são o que fica fixo entre os braços, o texto deve ser revisado antes da coleta real. Qualquer alteração muda `rubric_revision`.
-2. **Tolerância da soma**: o limite é 0,000001 mais uma folga de 1e-12 para o arredondamento de ponto flutuante. Sem ela, `0.5 + 0.25 + 0.249999` (distância exata de 0,000001) seria rejeitada. C25 prova as três bordas.
-3. **Modelo Jev não identificado**: se uma resposta não traz `model`, o par fica `incomplete` (`jev_model_unknown`). Sem o modelo, não há como confirmar a mesma versão resolvida nos dois braços.
-4. **Resposta inválida encerra a coleta**: a resposta é gravada como `invalid_response` e a coleta para com `incomplete` e código 1. Isso antecipa AC 29 (S4); C34 continua sendo a prova de S4.
+1. **Rubricas em inglês**: `JEV_RUBRIC` em `src/ai-study/jev.mjs` é uma versão em inglês das rubricas da revisão 1 de `corpus.md`, escrita pelo agente e ainda sem revisão humana. Como instruções e critérios são o que fica fixo entre os braços, o texto deve ser revisado antes da coleta real. Qualquer alteração muda `rubric_revision`. Decisão: revisar na vez da coleta; é condição de entrada de C51/S5 (ver Condições de entrada da S5).
+2. **Tolerância da soma**: o limite é 0,000001 mais uma folga de 1e-12 para o arredondamento de ponto flutuante. Sem ela, `0.5 + 0.25 + 0.249999` (distância exata de 0,000001) seria rejeitada. C25 prova as três bordas. Decisão: aceita, registrada junto do C25 em `checks.md`.
+3. **Modelo Jev não identificado**: se uma resposta não traz `model`, o par fica `incomplete` (`jev_model_unknown`). Sem o modelo, não há como confirmar a mesma versão resolvida nos dois braços. Decisão: aceita, regra rígida mantida; usar o modelo solicitado como fallback esconderia uma troca de versão entre os braços (AC 20).
+4. **Resposta inválida encerra a coleta**: a resposta é gravada como `invalid_response` e a coleta para com `incomplete` e código 1. Isso antecipa AC 29 (S4); C34 continua sendo a prova de S4. Decisão: confirmada como intencional. A assimetria em relação à tradução inválida, que deixa a coleta seguir, vem do plano: a AC 16 só impede o braço EN, e a AC 29 manda encerrar com código 1. Também foi aceita a alteração do C3, que passou a exigir parada em `template_unverified` com zero processos e zero rede.
 5. **Rótulos do texto avaliado**: o braço PT envia `caseText` com rótulos em português ("Contexto:", "A — Pergunta:"); o braço EN recebe esses rótulos traduzidos, junto com o restante do texto. IDs de caso, de item e de julgamento ficam fora dos dois textos.
+
+**Condições de entrada da S5/C51** (bloqueios formais da coleta live real, além das Decisões 1 e 2):
+
+- Rubricas em `src/ai-study/jev.mjs` (`JEV_RUBRIC`) revisadas por humano, com atenção especial aos critérios `yes` e `no`. Esses critérios são texto novo, sem equivalente no corpus.
+- Confirmar na documentação do Jev se `POST /v1/systemone` devolve `model`. Sem esse campo, todo par fica `jev_model_unknown` e o denominador pareado será 0.
+
+**Pendência para a S4** (sem bloqueio): se a gravação de `comparison.json` falhar dentro de um `finish` disparado por `stop()`, o motivo original (por exemplo `invalid_response`) é substituído por `internal_error` no manifesto. O motivo original deveria ser preservado.
 
 **Verification profile**: `light`, padrão do harness; nenhuma elevação foi escolhida. A implementação posterior exige verificador independente conforme a tlc-spec-lean.
 
