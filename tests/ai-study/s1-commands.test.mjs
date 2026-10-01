@@ -121,15 +121,18 @@ test('C3: preparação e coleta fixture invocam zero processos Codex, Claude, Gr
     runMake(sandbox, 'ai-study-dry-run'),
     runMake(sandbox, 'ai-study-dry-run', { vars: { MODE: 'live', ...validLive }, env: liveEnv }),
     runMake(sandbox, 'ai-study-run', { vars: { RUN_ID: 'c3-fixture' } }),
-    runMake(sandbox, 'ai-study-run', { vars: { MODE: 'live', ...validLive }, env: liveEnv }),
+    runMake(sandbox, 'ai-study-run', { vars: { MODE: 'live', RUN_ID: 'c3-live', ...validLive }, env: liveEnv }),
   ];
   for (const run of runs.slice(0, 3)) assert.equal(run.status, 0, run.output);
   const last = runs.at(-1);
-  // Coleta live ainda não existe nesta entrega: recusada antes de construir transportes.
-  assertUsageFailure(last, /coleta live ainda não está disponível/, 'run live');
-  assert.deepEqual(listRuns(sandbox), ['c3-fixture']);
+  // Desde a S3 a coleta live existe; com o template versionado não oficial ela para antes de qualquer chamada.
+  // A coleta live com serviços controlados segue em C52.
+  assert.equal(last.status, 2, last.output);
+  assert.equal(last.nodeStatus, 1, 'coleta live incompleta');
+  assert.match(last.stderr, /template oficial não confirmado/);
+  assert.deepEqual(listRuns(sandbox).sort(), ['c3-fixture', 'c3-live']);
   assert.equal(last.shimCalls, '', 'nenhuma CLI excluída executada');
-  assert.deepEqual(last.guard.attempts.filter((a) => a.kind === 'process'), []);
+  assert.deepEqual(last.guard.attempts, [], 'nenhum processo nem rede');
 
   // Nenhum módulo da bancada importa criação de processos.
   const srcDir = join(repoRoot, 'src/ai-study');

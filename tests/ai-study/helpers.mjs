@@ -12,6 +12,12 @@ const guardPath = fileURLToPath(new URL('./support/guard.mjs', import.meta.url))
 // Pré-cargas só de teste: transporte Jev live, ou resposta Jev live de um transporte fixture, na coleta fixture.
 export const liveJevInFixture = fileURLToPath(new URL('./support/live-jev-in-fixture.mjs', import.meta.url));
 export const liveJevResponseInFixture = fileURLToPath(new URL('./support/live-jev-response-in-fixture.mjs', import.meta.url));
+// Pré-cargas só de teste: LM Studio e Jev controlados na coleta live; as variantes declaram o Jev como fixture.
+export const liveServices = fileURLToPath(new URL('./support/live-services.mjs', import.meta.url));
+export const liveServicesFixtureJev = fileURLToPath(new URL('./support/live-services-fixture-jev.mjs', import.meta.url));
+export const liveServicesFixtureJevResponse = fileURLToPath(
+  new URL('./support/live-services-fixture-jev-response.mjs', import.meta.url),
+);
 
 export const validLive = Object.freeze({
   LOCAL_BASE_URL: 'http://127.0.0.1:1234/v1',
@@ -46,6 +52,7 @@ export function makeSandbox() {
     shimLog,
     repo,
     guardLog: join(dir, 'guard.log'),
+    servicesLog: join(dir, 'services.log'),
     evidenceDir: join(repo, 'artifacts', 'ai-study'),
   };
 }
@@ -56,6 +63,7 @@ function baseEnv(sandbox, env, preload) {
     HOME: sandbox.dir,
     LANG: 'C.UTF-8',
     AI_STUDY_GUARD_LOG: sandbox.guardLog,
+    AI_STUDY_SERVICES_LOG: sandbox.servicesLog,
     NODE_OPTIONS: [guardPath, ...preload].map((path) => `--import=${path}`).join(' '),
     ...env,
   };
@@ -104,6 +112,11 @@ export function readGuard(sandbox) {
     loaded: entries.filter((e) => e.kind === 'loaded').length,
     attempts: entries.filter((e) => e.kind !== 'loaded'),
   };
+}
+
+export function readServices(sandbox) {
+  if (!existsSync(sandbox.servicesLog)) return [];
+  return readFileSync(sandbox.servicesLog, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
 }
 
 export function parseManifest(stdout) {

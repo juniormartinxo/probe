@@ -5,7 +5,7 @@ Plan: `.specs/features/jev-translation-feasibility/plan.md`
 
 54 checks em 5 slices · 1 one-way door · 3 pré-requisitos operacionais para coleta real, mantidos no plano.
 
-Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas. S2 implementada em 01/10/2026: C13–C20 com provas executadas por transportes controlados. C21–C54 pendentes.** Em 30/09/2026 o usuário aprovou mover as partes live de C3 e C10, que dependem dos adaptadores, para C52–C54 em S3 e S5. Validar este documento não executa nem comprova os checks.
+Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas. S2 implementada em 01/10/2026: C13–C20 com provas executadas por transportes controlados. S3 implementada em 01/10/2026: C21–C28, C52 e C53 com provas executadas por transportes e serviços controlados. C29–C51 e C54 pendentes.** Em 30/09/2026 o usuário aprovou mover as partes live de C3 e C10, que dependem dos adaptadores, para C52–C54 em S3 e S5. Validar este documento não executa nem comprova os checks.
 
 Comando disponível: `make check-proof`, usando o runner nativo do Node 24 observado no WSL. Os seletores abaixo reservam nomes `C<n>: descrição` nos futuros arquivos `tests/ai-study/*.test.mjs`. O comando usa `--test-isolation=none` e exige no TAP pelo menos um check nomeado executado, sem skip/TODO, além da saída zero do Node. As provas devem isolar seu estado explicitamente; testes de concorrência ainda precisam criar os processos ou chamadas que sua obrigação exige. Arquivo ausente, teste ausente, skip ou zero testes executados não encerram um check. A existência e a execução do teste selecionado deverão ser verificadas na fase de implementação e pelo verificador independente. Não foram adicionados testes vazios para produzir sucesso artificial.
 
@@ -101,33 +101,44 @@ Status: prova executada em 01/10/2026 (S2, `tests/ai-study/s2-translation.test.m
 
 **C21** - A fronteira do adaptador Jev envia exatamente os seis julgamentos como perguntas `Choice` independentes na mesma chamada, cada uma com critérios `yes`, `no`, `insufficient` (AC 18).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C21:'`
+Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`, transportes controlados).
 
 **C22** - Payloads completos para tradução e Jev contêm zero gabaritos, justificativas de referência ou revisões humanas; sentinelas exclusivas desses campos não aparecem em nenhum estado enviado (AC 19).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C22:'`
+Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`, transportes controlados).
 
 **C23** - Cada par enviado mantém instruções em inglês, rubricas, IDs, critérios e modelo Jev iguais; a única variação de conteúdo é o texto original versus tradução, com IDs/etapas fora do texto traduzido (AC 20).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C23:'`
+Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`, transportes controlados).
 
 **C24** - Na ordem do corpus, R01 envia PT antes de EN, R02 envia EN antes de PT, e a alternância continua até R12, preservando identificação de caso e braço em cada resultado (Flow).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C24:'`
+Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`, transportes controlados).
 
 **C25** - A validação Jev só aceita seis IDs únicos esperados de tipo `choice`, escolha no domínio, três probabilidades finitas em [0,1] com soma a distância ≤0,000001 de 1 e confiança finita em [0,1]; qualquer violação gera `invalid_response` sem inferir escolha de prosa (AC 21).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C25:'`
+Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`, transportes controlados).
+Leitura aceita pelo usuário em 01/10/2026 (review do PR #4): ≤0,000001, com folga de 1e-12 só para arredondamento de ponto flutuante.
 
 **C26** - Avaliação persistida identifica execução, caso, braço, escolha, distribuição, confiança, modelo retornado, uso informado e duração; ausência de uso fica identificada, sem virar zero (AC 22, Relations).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C26:'`
+Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`, transportes controlados).
 
 **C27** - Para cada julgamento e braço, escolha válida igual ao gabarito conta acerto, escolha válida diferente conta erro e ausência de escolha válida conta ausência; `insufficient` é uma escolha, não um resultado ausente (AC 23).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C27:'`
+Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`, transportes controlados).
 
 **C28** - Par sem um braço válido ou com divergência de corpus/gabarito, instruções, critérios ou versão Jev resolvida é marcado incompleto e excluído do denominador pareado; o resultado individual concluído continua visível (AC 24).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C28:'`
+Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`, transportes controlados).
 
 **C52** - `make ai-study-run MODE=live` com LM Studio e Jev controlados invoca zero processos Codex, Claude, Grok, agy ou Cloak (AC 3; parte live movida de C3).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C52:'`
+Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`): `fetch` controlado de LM Studio e Jev por pré-carga de teste, que também confirma template e contagem só no teste (STATE.md, Decisões 1 e 2).
 
 **C53** - Na fronteira `make ai-study-run MODE=live` com serviços controlados, transporte ou resposta fixture é rejeitado com código 2, preservando as evidências anteriores (AC 10; parte live movida de C10).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C53:'`
+Status: prova executada em 01/10/2026 (S3, `tests/ai-study/s3-jev.test.mjs`): `fetch` controlado de LM Studio e Jev por pré-carga de teste, que também confirma template e contagem só no teste (STATE.md, Decisões 1 e 2).
 
 ### S4 - Coleta limitada com preservação na falha
 

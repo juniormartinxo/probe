@@ -52,7 +52,9 @@ export function formatDryRun(config, corpusInfo, items) {
 export function formatRunSummary(outcome, runDirDisplay) {
   const { manifest } = outcome;
   const lines = [
-    'Coleta fixture concluída: resultados simulados; não comprovam tradução real, avaliação Jev, VRAM ou ganho de tradução.',
+    manifest.mode === 'fixture'
+      ? 'Coleta fixture concluída: resultados simulados; não comprovam tradução real, avaliação Jev, VRAM ou ganho de tradução.'
+      : 'Coleta live concluída: a conclusão técnica não indica qualidade das traduções nem concordância com o gabarito.',
     `modo: ${manifest.mode}`,
     `run_id: ${manifest.run_id}`,
     `estado: ${manifest.status}`,

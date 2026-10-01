@@ -1,9 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 
+import { buildComparison } from './comparison.mjs';
 import { fileHash, JUDGMENT_IDS } from './corpus.mjs';
 import { IncompleteError, UsageError } from './errors.mjs';
 import { createRunDir, SCHEMA_VERSION, writeJsonAtomic } from './evidence.mjs';
+import { buildJevBody, evaluationRecord, JEV_RUBRIC, rubricRevision } from './jev.mjs';
 import { publicConfig } from './manifest.mjs';
 import { renderPrompt, templateRevision, TRANSLATION_TEMPLATE } from './template.mjs';
 import { checkIdentity, checkInputTokens, invalidTranslationReason, runtimeInfo } from './translation.mjs';
@@ -54,6 +56,7 @@ export async function runCollection({
   // Derivações válidas por caso: item de origem e texto literal enviado ao braço inglês.
   const translations = new Map();
   const invalidTranslations = new Set();
+  const evaluations = [];
   const template = {
     id: translationTemplate.id,
     revision: templateRevision(translationTemplate),
@@ -91,6 +94,11 @@ export async function runCollection({
       model_state: null,
       template,
     },
+    evaluation: {
+      requested_model: config.jev.model,
+      rubric_id: JEV_RUBRIC.id,
+      rubric_revision: rubricRevision(JEV_RUBRIC),
+    },
   };
   const manifestPath = join(runDir, 'manifest.json');
   const save = () => {
@@ -98,10 +106,22 @@ export async function runCollection({
     manifest.not_executed_items = manifest.planned_items.filter((id) => !completed.has(id));
     writeJsonAtomic(manifestPath, manifest);
   };
+  // A comparação acompanha qualquer término: resultados individuais concluídos continuam visíveis.
+  // Se ela não puder ser gravada, o manifesto termina `incomplete` com `internal_error`, nunca `running`.
   const finish = (status, reason) => {
-    manifest.status = status;
-    manifest.reason = reason;
     manifest.finished_at = now().toISOString();
+    const reference = { corpus_hash: corpusInfo.corpusHash, gabarito_hash: corpusInfo.gabaritoHash };
+    try {
+      writeJsonAtomic(
+        join(runDir, 'comparison.json'),
+        buildComparison({ runId, corpus: corpusInfo.corpus, reference, records: evaluations }),
+      );
+    } catch (error) {
+      Object.assign(manifest, { status: 'incomplete', reason: 'internal_error' });
+      save();
+      throw error;
+    }
+    Object.assign(manifest, { status, reason });
     save();
   };
   const ensureCorpusUnchanged = () => {
@@ -165,7 +185,7 @@ export async function runCollection({
         save();
         continue;
       }
-      const payload = buildPayload(item, cases.get(item.case_id), translations);
+      const payload = buildPayload(item, cases.get(item.case_id), translations, config.jev.model);
       const transport = item.kind === 'translation' ? transports.local : transports.jev;
       // A proveniência vem do transporte construído para o modo; a resposta só pode confirmá-la.
       rejectMixedProvenance(transport.provenance, item);
@@ -241,12 +261,24 @@ export async function runCollection({
         };
         if (invalidReason) invalidTranslations.add(item.case_id);
         else translations.set(item.case_id, { item: item.id, text: response.output });
-      } else if (item.arm === 'en') {
-        record.derived_from = translations.get(item.case_id).item;
+      } else {
+        if (item.arm === 'en') record.derived_from = translations.get(item.case_id).item;
+        record.evaluation = evaluationRecord({
+          runId,
+          item,
+          body: payload.body,
+          response,
+          judgments: payload.judgments,
+          durationMs,
+        });
+        evaluations.push(record);
       }
       writeJsonAtomic(join(runDir, 'results', `${String(index + 1).padStart(3, '0')}-${item.id}.json`), record);
       manifest.completed_items.push(item.id);
       save();
+      if (record.evaluation?.status === 'invalid_response') {
+        stop('invalid_response', `${item.id}: resposta Jev inválida (${record.evaluation.problems.join('; ')})`);
+      }
     }
   } catch (error) {
     // Erro inesperado (disco, permissão): o manifesto não fica preso em `running`.
@@ -265,10 +297,12 @@ export async function runCollection({
 }
 
 // Conteúdo enviado ao serviço; o item identifica a chamada e não entra no texto.
-function buildPayload(item, source, translations) {
+// Na avaliação, `body` é o corpo HTTP do Jev: estado do braço, modelo e as seis perguntas Choice.
+function buildPayload(item, source, translations, jevModel) {
   if (item.kind === 'translation') {
     return { direction: item.direction, text: item.direction === 'pt->en' ? caseText(source) : source.original };
   }
   const text = item.arm === 'pt' ? caseText(source) : translations.get(item.case_id)?.text;
-  return { arm: item.arm, text, judgments: [...JUDGMENT_IDS] };
+  const judgments = [...JUDGMENT_IDS];
+  return { arm: item.arm, text, judgments, body: buildJevBody({ model: jevModel, text, judgments }) };
 }
