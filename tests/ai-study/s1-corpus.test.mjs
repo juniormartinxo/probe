@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import { createCallBudget } from '../../src/ai-study/calls.mjs';
 import { runCollection } from '../../src/ai-study/collect.mjs';
 import { resolveConfig } from '../../src/ai-study/config.mjs';
 import { assertSameReference, JUDGMENT_IDS, loadCorpus } from '../../src/ai-study/corpus.mjs';
@@ -146,7 +147,7 @@ test('C8: resultados de uma execução ficam vinculados aos mesmos hashes e alte
   const corpusPath = writeCorpusVariant(sandbox, 'mutavel', () => {});
   const config = resolveConfig('run', { CORPUS: corpusPath, RUN_ID: 'c8-changed' }, { repoRoot });
   const corpusInfo = loadCorpus(config.corpusPath);
-  const fixture = createFixtureTransports();
+  const fixture = createFixtureTransports({ budget: createCallBudget() });
   let calls = 0;
   const transports = {
     local: {
@@ -162,6 +163,7 @@ test('C8: resultados de uma execução ficam vinculados aos mesmos hashes e alte
       },
     },
     jev: fixture.jev,
+    budget: fixture.budget,
   };
   await assert.rejects(
     runCollection({ config, corpusInfo, transports, evidenceDir: sandbox.evidenceDir }),

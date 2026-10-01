@@ -20,7 +20,8 @@ help:
 	  '  make checks-validate [FEATURE=nome]  Valida a estrutura dos checks.' \
 	  '  make check-proof TEST_FLAGS="--test-name-pattern=^C1:"  Executa uma prova quando implementada.' \
 	  '  make commit-validate MESSAGE="docs: descricao"  Valida a mensagem de commit.' \
-	  'Configuração pelo ambiente ou pela linha de comando; segredos (TYPESAFE_API_KEY, LOCAL_API_TOKEN) só pelo ambiente.'
+	  'Configuração pelo ambiente ou pela linha de comando; segredos (TYPESAFE_API_KEY, LOCAL_API_TOKEN) só pelo ambiente.' \
+	  'Uma coleta por vez em artifacts/ai-study; após uma queda, confira que nenhuma coleta roda e remova artifacts/ai-study/.collection.lock.'
 
 plan-validate:
 	$(PYTHON) "$(TLC_SKILL_DIR)/scripts/validate_plan.py" "$(FEATURE)" --strict

@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import { createCallBudget } from '../../src/ai-study/calls.mjs';
 import { runCollection } from '../../src/ai-study/collect.mjs';
 import { selectTransports } from '../../src/ai-study/cli.mjs';
 import { LIMITS, redact, resolveConfig } from '../../src/ai-study/config.mjs';
@@ -281,7 +282,7 @@ test('C10: resposta com proveniência diferente do modo é rejeitada com código
   assert.equal(responseEvidence.results[0].provenance, 'fixture');
 
   // Coletor em modo live: transporte simulado ou resposta que se declara simulada são rejeitados.
-  const fixture = createFixtureTransports();
+  const fixture = createFixtureTransports({ budget: createCallBudget() });
   // Desde a S2 o coletor live confirma template e candidato e conta tokens antes de traduzir.
   const liveLocal = {
     provenance: 'live',
@@ -313,7 +314,7 @@ test('C10: resposta com proveniência diferente do modo é rejeitada com código
       runCollection({
         config: liveConfig(runId),
         corpusInfo,
-        transports: { local: liveLocal, jev },
+        transports: { budget: createCallBudget(), local: liveLocal, jev },
         evidenceDir: sandbox.evidenceDir,
         translationTemplate,
       }),

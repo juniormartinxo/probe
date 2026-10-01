@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import { createCallBudget } from '../../src/ai-study/calls.mjs';
 import { caseText, runCollection } from '../../src/ai-study/collect.mjs';
 import { buildComparison, compareChoice, pairCase, scoreEvaluation } from '../../src/ai-study/comparison.mjs';
 import { JEV_ENDPOINT, resolveConfig } from '../../src/ai-study/config.mjs';
@@ -84,10 +85,12 @@ function services({ jev = () => ({ body: { model: JEV_MODEL, answers: allAnswers
 
 // Adaptadores reais com fetch controlado; a contagem de tokens é controlada (C16: o LM Studio não a expõe).
 function adapters(config, fetch) {
-  const local = createLmStudioTransport(config, { fetch });
+  const budget = createCallBudget(config.limits);
+  const local = createLmStudioTransport(config, { fetch, budget });
   return {
+    budget,
     local: { ...local, countTokens: async () => ({ count: 100, tokenizer: LOCAL_MODEL }) },
-    jev: createJevTransport(config, { fetch }),
+    jev: createJevTransport(config, { fetch, budget }),
   };
 }
 

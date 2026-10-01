@@ -1,4 +1,4 @@
-import { createCallBudget, httpError } from './calls.mjs';
+import { httpError, requireBudget } from './calls.mjs';
 import { canonicalJson, CHOICES, isObject, JUDGMENT_IDS, sha256 } from './corpus.mjs';
 
 // Rubricas únicas em inglês para os dois braços: versão em inglês das rubricas da revisão 1 do corpus.
@@ -137,7 +137,8 @@ export function usageInfo(usage) {
 
 // Transporte live do Jev: um POST por braço com as seis perguntas, sem SDK e sem retries.
 // Cada avaliação é um único pedido HTTP contado no orçamento da execução, com o prazo Jev.
-export function createJevTransport(config, { fetch = globalThis.fetch, budget = createCallBudget(config.limits) } = {}) {
+export function createJevTransport(config, { fetch = globalThis.fetch, budget } = {}) {
+  requireBudget(budget, 'createJevTransport');
   const { endpoint, apiKey, timeoutSeconds } = config.jev;
   return {
     provenance: 'live',
@@ -156,7 +157,8 @@ export function createJevTransport(config, { fetch = globalThis.fetch, budget = 
         try {
           parsed = JSON.parse(raw);
         } catch {
-          // Corpo fora de JSON vira `invalid_response` registrada (AC 21); segredos são omitidos na gravação.
+          // Diferente de readJsonBody (LM Studio), que encerra a coleta: aqui o corpo fora de JSON é guardado e
+          // vira `invalid_response` registrada (AC 21); segredos são omitidos na gravação.
           return { provenance: 'live', model: null, results: null, usage: null, raw_body: raw };
         }
         return {

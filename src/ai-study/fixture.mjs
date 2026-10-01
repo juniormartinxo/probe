@@ -1,8 +1,9 @@
-import { createCallBudget } from './calls.mjs';
+import { requireBudget } from './calls.mjs';
 
 // Respostas controladas: transportes e respostas identificados como `fixture`, nunca derivados de modelos.
 // As chamadas simuladas também passam pelo orçamento da execução (AC 27), sem prazo: não há espera.
-export function createFixtureTransports({ budget = createCallBudget() } = {}) {
+export function createFixtureTransports({ budget } = {}) {
+  requireBudget(budget, 'createFixtureTransports');
   return {
     budget,
     local: {

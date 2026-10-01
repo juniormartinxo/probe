@@ -1,4 +1,4 @@
-import { createCallBudget, httpError, readJsonBody } from './calls.mjs';
+import { httpError, readJsonBody, requireBudget } from './calls.mjs';
 
 // Transporte live do LM Studio: REST v0 do servidor configurado, sem SDK e sem retries.
 // Só consulta e usa o modelo solicitado: não carrega outro, não instala runtime, não baixa pesos.
@@ -6,7 +6,8 @@ import { createCallBudget, httpError, readJsonBody } from './calls.mjs';
 const COUNT_UNAVAILABLE =
   'o LM Studio não expõe contagem de tokens por HTTP antes do envio, e a bancada não tem tokenizer correspondente configurado';
 
-export function createLmStudioTransport(config, { fetch = globalThis.fetch, budget = createCallBudget(config.limits) } = {}) {
+export function createLmStudioTransport(config, { fetch = globalThis.fetch, budget } = {}) {
+  requireBudget(budget, 'createLmStudioTransport');
   const { baseUrl, model, apiToken, timeoutSeconds, maxOutputTokens } = config.local;
   // REST v0 fica na raiz do servidor: preserva o prefixo de um proxy e tira só o sufixo /v1 da API compatível.
   // Origem e caminho descartam usuário, senha e query da URL; o token vai só no cabeçalho.

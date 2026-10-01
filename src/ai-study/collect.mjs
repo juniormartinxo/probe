@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 
-import { ServiceCallError } from './calls.mjs';
+import { requireBudget, ServiceCallError } from './calls.mjs';
 import { buildComparison } from './comparison.mjs';
 import { redactText, redactValue, secretValues } from './config.mjs';
 import { fileHash, JUDGMENT_IDS } from './corpus.mjs';
@@ -44,6 +44,7 @@ function generateRunId(now) {
 // Uma coleta por diretório de evidências: a trava é tomada antes de qualquer arquivo ou chamada e
 // liberada em qualquer término.
 export async function runCollection(options) {
+  requireBudget(options.transports.budget, 'runCollection');
   const release = acquireCollectionLock(options.evidenceDir);
   try {
     return await collect(options);
@@ -81,7 +82,7 @@ async function collect({
   // Segredos vão só em cabeçalhos; se um serviço os ecoar, a evidência gravada os omite.
   const secrets = secretValues(config);
   const writeEvidence = (path, value) => writeJsonAtomic(path, redactValue(value, secrets));
-  const callsUsed = () => transports.budget?.snapshot() ?? null;
+  const callsUsed = () => transports.budget.snapshot();
 
   createRunDir(evidenceDir, runDir, runId);
   const manifest = {
@@ -101,15 +102,15 @@ async function collect({
     },
     config: { ...publicConfig(config), run_id: runId },
     limits: { local_calls: config.limits.localCalls, jev_calls: config.limits.jevCalls },
-    // Chamadas tentadas por serviço, falhas inclusive; nulo se os transportes não usam o orçamento.
+    // Chamadas tentadas por serviço, falhas inclusive.
     calls: callsUsed(),
     planned_items: items.map((i) => i.id),
     completed_items: [],
     not_executed_items: items.map((i) => i.id),
     skipped_items: [],
     blocked: null,
-    // Chamada que encerrou a coleta, com o que se sabe do serviço. Se o pedido saiu, ela fica fora de
-    // `not_executed_items`; bloqueada antes do envio (`call_limit`), continua não executada.
+    // Chamada que encerrou a coleta, com o que se sabe do serviço. Só com envio confirmado
+    // (`request_sent: true`) ela sai de `not_executed_items`; bloqueada ou sem envio confirmado, continua lá.
     failure: null,
     translation: {
       requested_model: config.local.model,
@@ -126,7 +127,7 @@ async function collect({
   };
   const manifestPath = join(runDir, 'manifest.json');
   const save = () => {
-    const attempted = manifest.failure?.request_sent === false ? null : manifest.failure?.item;
+    const attempted = manifest.failure?.request_sent === true ? manifest.failure.item : null;
     const finished = new Set([...manifest.completed_items, attempted]);
     manifest.not_executed_items = manifest.planned_items.filter((id) => !finished.has(id));
     manifest.calls = callsUsed();
@@ -179,16 +180,16 @@ async function collect({
     try {
       return await operation();
     } catch (error) {
-      const known = error instanceof ServiceCallError;
-      const message = redactText(error.message, secrets);
+      const failure = ServiceCallError.from(error);
+      const message = redactText(failure.message, secrets);
       manifest.failure = {
         item: label,
         service,
-        reason: known ? error.reason : 'transport_error',
-        request_sent: known ? error.requestSent : null,
-        remote_outcome: known ? error.remoteOutcome : 'unknown',
+        reason: failure.reason,
+        request_sent: failure.requestSent,
+        remote_outcome: failure.remoteOutcome,
         message,
-        ...(known ? error.details : {}),
+        ...failure.details,
       };
       finish('incomplete', manifest.failure.reason);
       throw new IncompleteError(`falha em ${label}: ${message}; coleta incompleta, prefixo preservado`);

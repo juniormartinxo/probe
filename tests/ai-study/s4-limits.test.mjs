@@ -10,7 +10,8 @@ import { caseText, planItems, runCollection } from '../../src/ai-study/collect.m
 import { evidenceDirFor, JEV_ENDPOINT, LIMITS, resolveConfig } from '../../src/ai-study/config.mjs';
 import { JUDGMENT_IDS, loadCorpus } from '../../src/ai-study/corpus.mjs';
 import { IncompleteError, UsageError } from '../../src/ai-study/errors.mjs';
-import { LOCK_NAME, loadRun } from '../../src/ai-study/evidence.mjs';
+import { LOCK_NAME } from '../../src/ai-study/evidence.mjs';
+import { loadRun } from '../../src/ai-study/run-reader.mjs';
 import { createFixtureTransports } from '../../src/ai-study/fixture.mjs';
 import { createJevTransport } from '../../src/ai-study/jev.mjs';
 import { createLmStudioTransport } from '../../src/ai-study/lmstudio.mjs';
@@ -191,6 +192,18 @@ test('C31: a execução envia no máximo 20 chamadas locais e 24 Jev, contando f
     assert.equal(outcome.run.manifest.calls[service].used, nth, `${label}: falha contada`);
   }
 
+  // Orçamento obrigatório: sem ele, cada transporte contaria sozinho e o limite da execução se perderia.
+  const bare = liveConfig('c31-sem-orcamento');
+  assert.throws(() => createLmStudioTransport(bare, { fetch: full.svc.fetch }), /orçamento compartilhado/);
+  assert.throws(() => createJevTransport(bare, { fetch: full.svc.fetch }), /orçamento compartilhado/);
+  assert.throws(() => createFixtureTransports(), /orçamento compartilhado/);
+  const { budget: _, ...unbudgeted } = adapters(bare, full.svc.fetch);
+  await assert.rejects(
+    runCollection({ config: bare, corpusInfo: loadCorpus(bare.corpusPath), transports: unbudgeted, evidenceDir: sandbox.evidenceDir }),
+    /orçamento compartilhado/,
+  );
+  assert.ok(!existsSync(join(sandbox.evidenceDir, 'c31-sem-orcamento')), 'recusa antes de criar a execução');
+
   // Coleta fixture: as chamadas simuladas também passam pelo orçamento.
   const config = resolveConfig('run', { RUN_ID: 'c31-fixture' }, { repoRoot });
   const fixture = await runCollection({
@@ -209,7 +222,10 @@ test('C32: a coleta mantém no máximo uma chamada em andamento, inclusive na ve
   const first = budget.call('local', null, () => new Promise((resolve) => (release = resolve)));
   let started = 0;
   for (const service of ['local', 'jev']) {
-    await assert.rejects(budget.call(service, null, async () => (started += 1)), /uma por vez/);
+    await assert.rejects(
+      budget.call(service, null, async () => (started += 1)),
+      (e) => e instanceof ServiceCallError && e.reason === 'concurrent_call' && e.requestSent === false && /uma por vez/.test(e.message),
+    );
   }
   assert.equal(started, 0, 'a segunda chamada não começou');
   release('ok');
@@ -276,6 +292,17 @@ test('C33: timeout local ou Jev encerra a espera no limite e a coleta incomplete
     assert.deepEqual(manifest.not_executed_items, remainingAfter(item), `${label}: restantes não executados`);
     assert.match(error.message, /coleta incompleta, prefixo preservado/);
   }
+
+  // Falha sem envio confirmado (aqui, na contagem de tokens, antes do pedido): o item continua não executado.
+  const { error, run } = await collect(sandbox, 'c33-sem-envio', {
+    wrap: (t) => ({ ...t, local: { ...t.local, countTokens: async () => Promise.reject(new Error('tokenizer indisponível')) } }),
+  });
+  assert.ok(error instanceof IncompleteError);
+  assert.deepEqual(
+    [run.manifest.failure.item, run.manifest.failure.request_sent, run.manifest.failure.remote_outcome],
+    ['R01-translate-pt-en', null, 'unknown'],
+  );
+  assert.deepEqual(run.manifest.not_executed_items, PLANNED, 'nenhum item tentado com envio confirmado');
 });
 
 // Executa a coleta fixture pela CLI com interrupção (SIGKILL) na n-ésima troca do destino escolhido.
@@ -367,7 +394,7 @@ test('C40: manifesto e registros schema_version 1 mantêm as relações da execu
   const fixtureRun = async (runId) => {
     const config = resolveConfig('run', { RUN_ID: runId }, { repoRoot });
     const corpusInfo = loadCorpus(config.corpusPath);
-    await runCollection({ config, corpusInfo, transports: createFixtureTransports(), evidenceDir: sandbox.evidenceDir });
+    await runCollection({ config, corpusInfo, transports: createFixtureTransports({ budget: createCallBudget() }), evidenceDir: sandbox.evidenceDir });
     return corpusInfo;
   };
   const corpusInfo = await fixtureRun('c40');
@@ -491,7 +518,7 @@ test('C29: duas coletas simultâneas no mesmo diretório de evidências admitem 
   const corpusInfo = loadCorpus(config.corpusPath);
   let release;
   const gate = new Promise((resolve) => (release = resolve));
-  const slow = createFixtureTransports();
+  const slow = createFixtureTransports({ budget: createCallBudget() });
   const running = runCollection({
     config,
     corpusInfo,
@@ -499,7 +526,7 @@ test('C29: duas coletas simultâneas no mesmo diretório de evidências admitem 
     evidenceDir: sandbox.evidenceDir,
   });
   let used = 0;
-  const counted = createFixtureTransports();
+  const counted = createFixtureTransports({ budget: createCallBudget() });
   const spy = { ...counted, local: { ...counted.local, translate: async (r) => ((used += 1), counted.local.translate(r)) } };
   const configB = resolveConfig('run', { RUN_ID: 'c29-modulo-b' }, { repoRoot });
   await assert.rejects(
@@ -509,6 +536,13 @@ test('C29: duas coletas simultâneas no mesmo diretório de evidências admitem 
   assert.equal(used, 0);
   release();
   assert.equal((await running).manifest.status, 'completed');
+
+  // Trava vazia (queda entre criar e escrever): recusa com código 2 e indica a remoção manual.
+  writeFileSync(join(sandbox.evidenceDir, LOCK_NAME), '');
+  const empty = runMake(sandbox, 'ai-study-run', { vars: { RUN_ID: 'c29-trava-vazia' } });
+  assert.equal(empty.nodeStatus, 2, empty.output);
+  assert.match(empty.stderr, /está vazia ou ilegível: .*se nenhuma estiver em andamento, remova o arquivo/);
+  assert.ok(!existsSync(join(sandbox.evidenceDir, 'c29-trava-vazia')));
 
   // Trava de um processo encerrado sem liberá-la: recusa com código 2 e indica a remoção manual.
   const dead = spawnSync(process.execPath, ['-e', '']).pid;
