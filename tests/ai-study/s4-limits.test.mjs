@@ -866,18 +866,21 @@ test('C55: o primeiro SIGINT ou SIGTERM encerra a espera e a coleta como interru
   }
 
   // Sinal fora de uma chamada, entre itens: a coleta para antes do próximo, sem chamada em andamento.
-  const between = await heldAtBarrier(sandbox, 'c55-entre-chamadas', 'after');
-  process.kill(between.pid, 'SIGINT');
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  between.release();
-  const betweenResult = await between.running.done;
-  assert.equal(betweenResult.nodeStatus, 1, betweenResult.output);
-  assert.match(betweenResult.stderr, /coleta interrompida antes de R01-evaluate-pt/);
-  const betweenManifest = assertInterrupted(sandbox, 'c55-entre-chamadas', 'entre chamadas');
-  assert.equal(betweenManifest.failure, null, 'nenhuma chamada interrompida');
-  assert.deepEqual(betweenManifest.completed_items, ['R01-translate-pt-en']);
-  assert.deepEqual(betweenManifest.not_executed_items, remainingAfter('R01-translate-pt-en'));
-  assert.deepEqual(betweenManifest.calls.local, { used: 1, limit: 20 });
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    const runId = `c55-entre-chamadas-${signal.toLowerCase()}`;
+    const between = await heldAtBarrier(sandbox, runId, 'after');
+    process.kill(between.pid, signal);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    between.release();
+    const betweenResult = await between.running.done;
+    assert.equal(betweenResult.nodeStatus, 1, `${signal}: ${betweenResult.output}`);
+    assert.match(betweenResult.stderr, /coleta interrompida antes de R01-evaluate-pt/, signal);
+    const betweenManifest = assertInterrupted(sandbox, runId, `${signal} entre chamadas`);
+    assert.equal(betweenManifest.failure, null, `${signal}: nenhuma chamada interrompida`);
+    assert.deepEqual(betweenManifest.completed_items, ['R01-translate-pt-en'], signal);
+    assert.deepEqual(betweenManifest.not_executed_items, remainingAfter('R01-translate-pt-en'), signal);
+    assert.deepEqual(betweenManifest.calls, { local: { used: 1, limit: 20 }, jev: { used: 0, limit: 24 } }, signal);
+  }
 
   // Sinal antes do envio: a chamada seguinte não sai e o item continua entre os não executados.
   const beforeSend = await heldAtBarrier(sandbox, 'c55-antes-do-envio', 'before');
@@ -912,15 +915,27 @@ test('C55: o primeiro SIGINT ou SIGTERM encerra a espera e a coleta como interru
   const groupManifest = assertInterrupted(sandbox, 'c55-grupo', 'grupo');
   assert.deepEqual([groupManifest.failure.item, groupManifest.failure.remote_outcome], ['R01-evaluate-en', 'unknown']);
 
-  // Segundo sinal: o primeiro já foi consumido (a coleta está presa fora de uma chamada, na barreira), e o
-  // segundo encerra o processo pelo comportamento padrão, sem limpeza; a trava fica para remoção manual.
-  const second = await heldAtBarrier(sandbox, 'c55-segundo', 'before');
-  process.kill(second.pid, 'SIGINT');
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  assert.equal(second.running.child.exitCode, null, 'o primeiro sinal não encerra o processo fora de uma chamada');
-  process.kill(second.pid, 'SIGINT');
-  const result = await second.running.done;
-  assert.equal(result.nodeStatus, 130, `encerrado pelo SIGINT (128 + 2), sem término da coleta: ${result.output}`);
-  assert.equal(readJson(join(sandbox.evidenceDir, 'c55-segundo', 'manifest.json')).status, 'running', 'nenhuma limpeza');
-  assert.equal(readJson(join(sandbox.evidenceDir, LOCK_NAME)).pid, second.pid, 'trava do processo encerrado pelo sinal');
+  // Segundo sinal, do mesmo tipo ou do outro: o primeiro já foi consumido (a coleta está presa fora de uma
+  // chamada, na barreira), e o segundo encerra o processo pelo comportamento padrão, sem limpeza; a trava fica
+  // para remoção manual.
+  const exitCode = { SIGINT: 130, SIGTERM: 143 };
+  for (const [first, second] of [['SIGINT', 'SIGINT'], ['SIGINT', 'SIGTERM'], ['SIGTERM', 'SIGINT'], ['SIGTERM', 'SIGTERM']]) {
+    const runId = `c55-segundo-${first}-${second}`.toLowerCase();
+    const held = await heldAtBarrier(sandbox, runId, 'before');
+    process.kill(held.pid, first);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(held.running.child.exitCode, null, `${first}: o primeiro sinal não encerra o processo fora de uma chamada`);
+    process.kill(held.pid, second);
+    const result = await Promise.race([
+      held.running.done,
+      new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+    assert.ok(result, `${first} → ${second}: o segundo sinal não foi engolido`);
+    assert.equal(result.nodeStatus, exitCode[second], `${first} → ${second}: encerrado pelo segundo sinal (${result.output})`);
+    assert.equal(readJson(join(sandbox.evidenceDir, runId, 'manifest.json')).status, 'running', `${first} → ${second}: nenhuma limpeza`);
+    const lock = join(sandbox.evidenceDir, LOCK_NAME);
+    assert.equal(readJson(lock).pid, held.pid, `${first} → ${second}: trava do processo encerrado pelo sinal`);
+    rmSync(lock);
+    held.release();
+  }
 });

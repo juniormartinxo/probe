@@ -237,7 +237,7 @@ Uso ausente não significa custo zero. Só converter tokens em dinheiro com tari
 | --- | --- | --- |
 | Comandos Make | Modos, parâmetros e configuração inválida | AC 1, 4, 5 e assinatura local abaixo. |
 | Comandos Make | Saída e verbosidade | AC 1, 9, 29, 32; manifesto legível, estado e caminho de artefatos, sem despejar credenciais. |
-| Comandos Make | Códigos de saída | AC 5, 9, 26, 29; 0 concluído, 1 incompleto, 2 uso/configuração inválida. Qualidade não é inferida do código 0. Emenda de 01/10/2026: o código é o da CLI Node; via `make`, ele aparece na linha `make: *** [...] Error N`, e o próprio make sai com 2 em qualquer falha. Para automação, a fonte autoritativa do término é `status`/`failure` do manifesto. Não há entrypoint alternativo. |
+| Comandos Make | Códigos de saída | AC 5, 9, 26, 29; 0 concluído, 1 incompleto, 2 uso/configuração inválida. Qualidade não é inferida do código 0. Emenda de 01/10/2026: o código é o da CLI Node; via `make`, ele aparece na linha `make: *** [...] Error N`, e o próprio make sai com 2 quando o recipe falha (encerrado por um sinal recebido por todo o grupo, como Ctrl+C, ele termina pelo próprio sinal, sem `Error N`). Para automação, a fonte autoritativa do término é `status`/`failure` do manifesto. Não há entrypoint alternativo. |
 | Comandos Make | Falha parcial | AC 28–30; preservar resultados e enumerar os não executados. |
 | Documento | Estrutura, idioma e próxima ação | AC 33–37; prosa em português, originais preservados, revisão e recomendação humana. |
 | Corpus | Agrupamento, nomes e ordem | AC 6–8; casos R e T em ordem numérica e IDs únicos. |

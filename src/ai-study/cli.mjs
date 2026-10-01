@@ -54,10 +54,16 @@ export async function main(argv, env, io, { signal } = {}) {
 }
 
 // O primeiro SIGINT ou SIGTERM encerra a espera e a coleta como `interrupted`, liberando a trava;
-// um segundo sinal segue o comportamento padrão.
+// um segundo sinal, de qualquer dos dois tipos, segue o comportamento padrão.
+const INTERRUPT_SIGNALS = ['SIGINT', 'SIGTERM'];
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const interrupt = new AbortController();
-  const onSignal = () => interrupt.abort();
-  for (const name of ['SIGINT', 'SIGTERM']) process.once(name, onSignal);
+  // Remove os dois listeners no primeiro sinal: com um por tipo, um segundo sinal do outro tipo seria engolido.
+  const onSignal = () => {
+    for (const name of INTERRUPT_SIGNALS) process.off(name, onSignal);
+    interrupt.abort();
+  };
+  for (const name of INTERRUPT_SIGNALS) process.on(name, onSignal);
   process.exitCode = await main(process.argv.slice(2), process.env, process, { signal: interrupt.signal });
 }
