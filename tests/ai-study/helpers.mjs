@@ -100,9 +100,10 @@ export function runMake(sandbox, target, { vars = {}, env = {}, preload = [], ti
   return { ...finish(result, sandbox), nodeStatus: nodeStatusFromMake(result) };
 }
 
-// Mesma fronteira, em segundo plano: para coletas concorrentes reais entre processos.
-export function startMake(sandbox, target, { vars = {}, env = {}, preload = [] } = {}) {
-  const child = spawn('make', makeArgs(sandbox, target, vars), { env: baseEnv(sandbox, env, preload) });
+// Mesma fronteira, em segundo plano: para coletas concorrentes reais entre processos. `processGroup`
+// põe o make num grupo próprio, para sinalizá-lo inteiro como um Ctrl+C do terminal (kill(-pid)).
+export function startMake(sandbox, target, { vars = {}, env = {}, preload = [], processGroup = false } = {}) {
+  const child = spawn('make', makeArgs(sandbox, target, vars), { env: baseEnv(sandbox, env, preload), detached: processGroup });
   let stdout = '';
   let stderr = '';
   child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));
@@ -145,8 +146,10 @@ export function snapshotFiles(root) {
 
 // GNU Make sempre sai com 2 quando o recipe falha; o código real do Node aparece em "Error N".
 // Sem essa linha o teste não distingue o código do Node do 2 genérico do make, então falha.
+// O make encerrado por um sinal (Ctrl+C no grupo) não tem código próprio: nulo.
 function nodeStatusFromMake(result) {
   if (result.status === 0) return 0;
+  if (result.status === null) return null;
   const match = result.stderr.match(/\] Error (\d+)$/m);
   if (!match) throw new Error(`make falhou sem a linha "Error N" com o código do Node:\n${result.stderr}`);
   return Number(match[1]);

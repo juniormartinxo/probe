@@ -816,8 +816,31 @@ test('C39: evidências ficam fora dos arquivos rastreados pelo Git e sobrevivem 
   assert.deepEqual(listRuns(sandbox).sort(), ['c39-incompleta', 'c39-primeira', 'c39-segunda']);
 });
 
+// Coleta fixture presa na barreira da primeira chamada, fora do orçamento (antes dela ou depois que terminou).
+async function heldAtBarrier(sandbox, runId, at) {
+  const barrier = join(sandbox.dir, `barrier-${runId}`);
+  mkdirSync(barrier);
+  const running = startMake(sandbox, 'ai-study-run', {
+    vars: { RUN_ID: runId },
+    env: { AI_STUDY_TEST_BARRIER_DIR: barrier, AI_STUDY_TEST_BARRIER_AT: at },
+    preload: [fixtureBarrier],
+  });
+  const started = () => readdirSync(barrier).filter((f) => f.startsWith('started-'));
+  await until(() => started().length === 1, `${runId}: a coleta chegar à barreira`);
+  return { running, pid: Number(started()[0].slice('started-'.length)), release: () => writeFileSync(join(barrier, 'release'), '') };
+}
+
+function assertInterrupted(sandbox, runId, label) {
+  const { manifest } = readRun(sandbox, runId);
+  assert.equal(manifest.status, 'incomplete', label);
+  assert.equal(manifest.reason, 'interrupted', label);
+  assert.ok(!existsSync(join(sandbox.evidenceDir, LOCK_NAME)), `${label}: trava liberada`);
+  return manifest;
+}
+
 test('C55: o primeiro SIGINT ou SIGTERM encerra a espera e a coleta como interrupted, com código 1 e trava liberada; o segundo segue o padrão', async () => {
   const sandbox = makeSandbox();
+  // Sinal durante uma chamada sem resposta: a espera termina sem alegar cancelamento remoto.
   for (const signal of ['SIGINT', 'SIGTERM']) {
     const runId = `c55-${signal.toLowerCase()}`;
     const before = readServices(sandbox).length;
@@ -830,10 +853,8 @@ test('C55: o primeiro SIGINT ou SIGTERM encerra a espera e a coleta como interru
     await until(() => hanging() !== undefined, `${signal}: a chamada Jev sem resposta`);
     process.kill(hanging().pid, signal);
     const result = await running.done;
-    assert.equal(result.nodeStatus, 1, `${signal}: ${result.output}`);
-    const { manifest } = readRun(sandbox, runId);
-    assert.equal(manifest.status, 'incomplete', signal);
-    assert.equal(manifest.reason, 'interrupted', signal);
+    assert.equal(result.nodeStatus, 1, `${signal}: código 1 na linha "Error 1" (${result.output})`);
+    const manifest = assertInterrupted(sandbox, runId, signal);
     assert.deepEqual(
       [manifest.failure.item, manifest.failure.request_sent, manifest.failure.remote_outcome],
       ['R01-evaluate-en', true, 'unknown'],
@@ -842,27 +863,64 @@ test('C55: o primeiro SIGINT ou SIGTERM encerra a espera e a coleta como interru
     assert.match(manifest.failure.message, /cancelamento da inferência remota não foi confirmado/, signal);
     assert.doesNotMatch(manifest.failure.message, /cancelad[ao]\b/, signal);
     assert.deepEqual(manifest.not_executed_items, remainingAfter('R01-evaluate-en'), signal);
-    assert.ok(!existsSync(join(sandbox.evidenceDir, LOCK_NAME)), `${signal}: trava liberada`);
   }
+
+  // Sinal fora de uma chamada, entre itens: a coleta para antes do próximo, sem chamada em andamento.
+  const between = await heldAtBarrier(sandbox, 'c55-entre-chamadas', 'after');
+  process.kill(between.pid, 'SIGINT');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  between.release();
+  const betweenResult = await between.running.done;
+  assert.equal(betweenResult.nodeStatus, 1, betweenResult.output);
+  assert.match(betweenResult.stderr, /coleta interrompida antes de R01-evaluate-pt/);
+  const betweenManifest = assertInterrupted(sandbox, 'c55-entre-chamadas', 'entre chamadas');
+  assert.equal(betweenManifest.failure, null, 'nenhuma chamada interrompida');
+  assert.deepEqual(betweenManifest.completed_items, ['R01-translate-pt-en']);
+  assert.deepEqual(betweenManifest.not_executed_items, remainingAfter('R01-translate-pt-en'));
+  assert.deepEqual(betweenManifest.calls.local, { used: 1, limit: 20 });
+
+  // Sinal antes do envio: a chamada seguinte não sai e o item continua entre os não executados.
+  const beforeSend = await heldAtBarrier(sandbox, 'c55-antes-do-envio', 'before');
+  process.kill(beforeSend.pid, 'SIGINT');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  beforeSend.release();
+  const beforeResult = await beforeSend.running.done;
+  assert.equal(beforeResult.nodeStatus, 1, beforeResult.output);
+  const beforeManifest = assertInterrupted(sandbox, 'c55-antes-do-envio', 'antes do envio');
+  assert.deepEqual(
+    [beforeManifest.failure.item, beforeManifest.failure.request_sent, beforeManifest.failure.remote_outcome],
+    ['R01-translate-pt-en', false, 'not_sent'],
+  );
+  assert.deepEqual(beforeManifest.not_executed_items, PLANNED);
+  assert.deepEqual(beforeManifest.calls.local, { used: 0, limit: 20 });
+
+  // Ctrl+C real: SIGINT no grupo inteiro, make inclusive. A coleta termina igual; o make morre pelo próprio
+  // sinal ("Interrupt", sem linha "Error N"), e o término autoritativo é o do manifesto.
+  const groupBefore = readServices(sandbox).length;
+  const group = startMake(sandbox, 'ai-study-run', {
+    vars: { MODE: 'live', RUN_ID: 'c55-grupo', ...validLive },
+    env: { TYPESAFE_API_KEY: KEY, AI_STUDY_TEST_FAIL: 'jev:2:hang' },
+    preload: [liveServices],
+    processGroup: true,
+  });
+  await until(() => readServices(sandbox).slice(groupBefore).filter((r) => r.url === JEV_ENDPOINT).length === 2, 'a chamada Jev sem resposta');
+  process.kill(-group.child.pid, 'SIGINT');
+  const groupResult = await group.done;
+  assert.deepEqual([groupResult.status, groupResult.signal, groupResult.nodeStatus], [null, 'SIGINT', null], groupResult.output);
+  assert.match(groupResult.stderr, /coleta interrompida durante a espera/);
+  assert.match(groupResult.stderr, /\] Interrupt$/m);
+  const groupManifest = assertInterrupted(sandbox, 'c55-grupo', 'grupo');
+  assert.deepEqual([groupManifest.failure.item, groupManifest.failure.remote_outcome], ['R01-evaluate-en', 'unknown']);
 
   // Segundo sinal: o primeiro já foi consumido (a coleta está presa fora de uma chamada, na barreira), e o
   // segundo encerra o processo pelo comportamento padrão, sem limpeza; a trava fica para remoção manual.
-  const barrier = join(sandbox.dir, 'barrier');
-  mkdirSync(barrier);
-  const running = startMake(sandbox, 'ai-study-run', {
-    vars: { RUN_ID: 'c55-segundo' },
-    env: { AI_STUDY_TEST_BARRIER_DIR: barrier },
-    preload: [fixtureBarrier],
-  });
-  const started = () => readdirSync(barrier).filter((f) => f.startsWith('started-'));
-  await until(() => started().length === 1, 'a coleta chegar à barreira');
-  const pid = Number(started()[0].slice('started-'.length));
-  process.kill(pid, 'SIGINT');
+  const second = await heldAtBarrier(sandbox, 'c55-segundo', 'before');
+  process.kill(second.pid, 'SIGINT');
   await new Promise((resolve) => setTimeout(resolve, 300));
-  assert.equal(running.child.exitCode, null, 'o primeiro sinal não encerra o processo fora de uma chamada');
-  process.kill(pid, 'SIGINT');
-  const result = await running.done;
+  assert.equal(second.running.child.exitCode, null, 'o primeiro sinal não encerra o processo fora de uma chamada');
+  process.kill(second.pid, 'SIGINT');
+  const result = await second.running.done;
   assert.equal(result.nodeStatus, 130, `encerrado pelo SIGINT (128 + 2), sem término da coleta: ${result.output}`);
   assert.equal(readJson(join(sandbox.evidenceDir, 'c55-segundo', 'manifest.json')).status, 'running', 'nenhuma limpeza');
-  assert.equal(readJson(join(sandbox.evidenceDir, LOCK_NAME)).pid, pid, 'trava do processo encerrado pelo sinal');
+  assert.equal(readJson(join(sandbox.evidenceDir, LOCK_NAME)).pid, second.pid, 'trava do processo encerrado pelo sinal');
 });
