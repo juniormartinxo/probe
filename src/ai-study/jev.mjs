@@ -1,3 +1,4 @@
+import { httpError, requireBudget } from './calls.mjs';
 import { canonicalJson, CHOICES, isObject, JUDGMENT_IDS, sha256 } from './corpus.mjs';
 
 // Rubricas únicas em inglês para os dois braços: versão em inglês das rubricas da revisão 1 do corpus.
@@ -135,36 +136,41 @@ export function usageInfo(usage) {
 }
 
 // Transporte live do Jev: um POST por braço com as seis perguntas, sem SDK e sem retries.
-export function createJevTransport(config, { fetch = globalThis.fetch } = {}) {
+// Cada avaliação é um único pedido HTTP contado no orçamento da execução, com o prazo Jev.
+export function createJevTransport(config, { fetch = globalThis.fetch, budget } = {}) {
+  requireBudget(budget, 'createJevTransport');
   const { endpoint, apiKey, timeoutSeconds } = config.jev;
   return {
     provenance: 'live',
-    async evaluate({ body }) {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(timeoutSeconds * 1000),
-      });
-      // O corpo de erro não é repetido: pode ecoar o pedido ou credenciais.
-      if (!response.ok) throw new Error(`Jev respondeu HTTP ${response.status}`);
-      const raw = await response.text();
-      let parsed;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        return { provenance: 'live', model: null, results: null, usage: null, raw_body: raw };
-      }
-      return {
-        provenance: 'live',
-        model: typeof parsed?.model === 'string' ? parsed.model : null,
-        results: isObject(parsed?.answers)
-          ? Object.entries(parsed.answers).map(([judgment, answer]) =>
-              isObject(answer) ? { ...answer, judgment } : { judgment, answer },
-            )
-          : null,
-        usage: parsed?.usage ?? null,
-      };
-    },
+    evaluate: ({ body }) =>
+      budget.call('jev', timeoutSeconds, async (signal) => {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify(body),
+          signal,
+        });
+        // O corpo de erro não é repetido: pode ecoar o pedido ou credenciais.
+        if (!response.ok) throw httpError('Jev', response.status, 'na avaliação');
+        const raw = await response.text();
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          // Diferente de readJsonBody (LM Studio), que encerra a coleta: aqui o corpo fora de JSON é guardado e
+          // vira `invalid_response` registrada (AC 21); segredos são omitidos na gravação.
+          return { provenance: 'live', model: null, results: null, usage: null, raw_body: raw };
+        }
+        return {
+          provenance: 'live',
+          model: typeof parsed?.model === 'string' ? parsed.model : null,
+          results: isObject(parsed?.answers)
+            ? Object.entries(parsed.answers).map(([judgment, answer]) =>
+                isObject(answer) ? { ...answer, judgment } : { judgment, answer },
+              )
+            : null,
+          usage: parsed?.usage ?? null,
+        };
+      }),
   };
 }

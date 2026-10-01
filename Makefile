@@ -20,7 +20,8 @@ help:
 	  '  make checks-validate [FEATURE=nome]  Valida a estrutura dos checks.' \
 	  '  make check-proof TEST_FLAGS="--test-name-pattern=^C1:"  Executa uma prova quando implementada.' \
 	  '  make commit-validate MESSAGE="docs: descricao"  Valida a mensagem de commit.' \
-	  'Configuração pelo ambiente ou pela linha de comando; segredos (TYPESAFE_API_KEY, LOCAL_API_TOKEN) só pelo ambiente.'
+	  'Configuração pelo ambiente ou pela linha de comando; segredos (TYPESAFE_API_KEY, LOCAL_API_TOKEN) só pelo ambiente.' \
+	  'Uma coleta por vez em artifacts/ai-study; após uma queda, confira que nenhuma coleta roda e remova artifacts/ai-study/.collection.lock.'
 
 plan-validate:
 	$(PYTHON) "$(TLC_SKILL_DIR)/scripts/validate_plan.py" "$(FEATURE)" --strict
@@ -30,11 +31,15 @@ checks-validate:
 
 # Ausência de arquivos de prova é erro, não sucesso.
 # Exige um teste nomeado C<n>: executado, sem aceitar zero testes, skip ou TODO.
+# TEST_FLAGS chega pelo ambiente e é expandido sem glob: padrões como ^(C1|C2): não viram sintaxe do shell.
+check-proof: export AI_STUDY_TEST_FLAGS = $(TEST_FLAGS)
 check-proof:
 	@set -eu; \
+	set -- $(TEST_FILES); \
 	proof_output=$$(mktemp); \
 	trap 'rm -f "$$proof_output"' EXIT; \
-	if RUN_ID="$(RUN_ID)" $(NODE) --test --test-isolation=none --test-reporter=tap $(TEST_FLAGS) $(TEST_FILES) >"$$proof_output" 2>&1; then \
+	set -f; \
+	if RUN_ID="$(RUN_ID)" $(NODE) --test --test-isolation=none --test-reporter=tap $$AI_STUDY_TEST_FLAGS "$$@" >"$$proof_output" 2>&1; then \
 	  proof_status=0; \
 	else proof_status=$$?; fi; \
 	cat "$$proof_output"; \

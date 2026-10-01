@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { createCallBudget } from '../../src/ai-study/calls.mjs';
 import { caseText, runCollection } from '../../src/ai-study/collect.mjs';
 import { resolveConfig } from '../../src/ai-study/config.mjs';
 import { fileHash, loadCorpus } from '../../src/ai-study/corpus.mjs';
@@ -19,7 +20,7 @@ const confirmedTemplate = Object.freeze({
 });
 
 function liveConfig(runId, env = {}) {
-  return resolveConfig('run', { MODE: 'live', RUN_ID: runId, ...validLive, TYPESAFE_API_KEY: 'k', ...env }, { repoRoot });
+  return resolveConfig('run', { MODE: 'live', RUN_ID: runId, ...validLive, TYPESAFE_API_KEY: 'chave-de-teste-s2', ...env }, { repoRoot });
 }
 
 // Transportes controlados de proveniência live; cada chamada fica registrada com o pedido completo.
@@ -76,7 +77,9 @@ async function collect(sandbox, runId, { transports, template = confirmedTemplat
   const corpusInfo = loadCorpus(config.corpusPath);
   let error = null;
   try {
-    await runCollection({ config, corpusInfo, transports, evidenceDir: sandbox.evidenceDir, translationTemplate: template });
+    // Dublês sem orçamento recebem um da execução; adaptadores reais trazem o seu (o mesmo dos dois serviços).
+    const budgeted = { budget: createCallBudget(config.limits), ...transports };
+    await runCollection({ config, corpusInfo, transports: budgeted, evidenceDir: sandbox.evidenceDir, translationTemplate: template });
   } catch (caught) {
     error = caught;
   }
@@ -144,8 +147,9 @@ function lmStudioRoute(call) {
 
 // Adaptador LM Studio real com contagem controlada: o LM Studio não expõe contagem por HTTP (C16).
 function lmStudioWithCount(config, fetch, jev) {
-  const local = createLmStudioTransport(config, { fetch });
-  return { local: { ...local, countTokens: async () => ({ count: 100, tokenizer: MODEL }) }, jev };
+  const budget = createCallBudget(config.limits);
+  const local = createLmStudioTransport(config, { fetch, budget });
+  return { budget, local: { ...local, countTokens: async () => ({ count: 100, tokenizer: MODEL }) }, jev };
 }
 
 test('C13: toda tradução preparada registra original, direção, modelo solicitado e revisão do template, vinculados ao caso e à execução', async () => {
@@ -231,8 +235,9 @@ test('C14: template oficial não confirmado encerra a coleta incomplete com temp
   // Pelo adaptador LM Studio: zero pedidos HTTP.
   const lm = fakeFetch(lmStudioRoute);
   const config = liveConfig('c14-adapter');
+  const budget = createCallBudget(config.limits);
   const adapter = await collect(sandbox, 'c14-adapter', {
-    transports: { local: createLmStudioTransport(config, { fetch: lm.fetch }), jev: controlled().transports.jev },
+    transports: { budget, local: createLmStudioTransport(config, { fetch: lm.fetch, budget }), jev: controlled().transports.jev },
     template: TRANSLATION_TEMPLATE,
   });
   assertIncomplete(adapter, 'template_unverified');
@@ -324,12 +329,13 @@ test('C16: contagem indisponível ou de tokenizer não correspondente bloqueia o
   // O adaptador LM Studio não tem contagem correspondente: bloqueia sem enviar a tradução.
   const lm = fakeFetch(lmStudioRoute);
   const config = liveConfig('c16-adapter');
-  const local = createLmStudioTransport(config, { fetch: lm.fetch });
+  const budget = createCallBudget(config.limits);
+  const local = createLmStudioTransport(config, { fetch: lm.fetch, budget });
   const count = await local.countTokens({ model: MODEL, prompt: 'x' });
   assert.equal(count.count, null);
   assert.ok(count.justification.length > 0);
   assert.deepEqual(lm.calls, [], 'contar não chama a rede');
-  const adapter = await collect(sandbox, 'c16-adapter', { transports: { local, jev: controlled().transports.jev } });
+  const adapter = await collect(sandbox, 'c16-adapter', { transports: { budget, local, jev: controlled().transports.jev } });
   assertIncomplete(adapter, 'token_count_unavailable');
   assert.deepEqual(
     lm.calls.map((c) => `${c.method} ${c.path}`),

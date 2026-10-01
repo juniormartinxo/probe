@@ -78,6 +78,12 @@ export function resolveConfig(command, env, { repoRoot, commandLineNames = [] } 
   const jevModel = nonBlankOrNull('JEV_MODEL');
   const jevApiKey = nonBlankOrNull('TYPESAFE_API_KEY');
   const localApiToken = nonBlankOrNull('LOCAL_API_TOKEN');
+  // Segredo curto coincidiria com texto comum e não poderia ser omitido das evidências (AC 31).
+  for (const [name, value] of [['TYPESAFE_API_KEY', jevApiKey], ['LOCAL_API_TOKEN', localApiToken]]) {
+    if (value !== null && value.length < MIN_REDACTED_SECRET) {
+      problems.push(`${name} curto demais: use ao menos ${MIN_REDACTED_SECRET} caracteres, para que possa ser omitido das evidências`);
+    }
+  }
 
   let localBaseUrl = null;
   if (nonBlankOrNull('LOCAL_BASE_URL')) {
@@ -135,12 +141,45 @@ export function displayPath(repoRoot, path) {
 // uma credencial curta como `u` ou `MODE` corromperia qualquer diagnóstico. Segredos do ambiente
 // são omitidos onde aparecerem.
 export function redact(text, env) {
+  return redactText(text, SECRET_NAMES.map((name) => env[name]));
+}
+
+export function redactText(text, secrets) {
   const structural = text
     .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#]*@/gi, '$1[omitido]@')
     .replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#]*)\?[^\s#]*/gi, '$1?[omitido]');
-  return SECRET_NAMES.map((name) => env[name])
+  return omitSecrets(structural, secrets);
+}
+
+// Valores secretos da configuração: vão só em cabeçalhos, e um serviço pode ecoá-los na resposta.
+export function secretValues(config) {
+  return [config.jev.apiKey, config.local.apiToken];
+}
+
+function omitSecrets(text, secrets) {
+  return secrets
     .filter((value) => typeof value === 'string' && value.length > 0)
-    .reduce((result, secret) => result.split(secret).join('[omitido]'), structural);
+    .reduce((result, secret) => result.split(secret).join('[omitido]'), text);
+}
+
+// Segredo mais curto que isto coincidiria por acaso com texto comum: omiti-lo das evidências corromperia
+// traduções e identificadores. A configuração recusa chave e token mais curtos (código 2), então todo
+// segredo de uma execução é omitido (AC 31).
+export const MIN_REDACTED_SECRET = 8;
+
+// Evidência gravada: omite os segredos em qualquer texto (chaves inclusive), sem reescrever URLs, que
+// podem fazer parte de uma tradução literal. O filtro de tamanho só protege chamadas fora da configuração.
+export function redactValue(value, secrets) {
+  const relevant = secrets.filter((secret) => typeof secret === 'string' && secret.length >= MIN_REDACTED_SECRET);
+  const walk = (v) => {
+    if (typeof v === 'string') return omitSecrets(v, relevant);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v !== null && typeof v === 'object') {
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [omitSecrets(k, relevant), walk(x)]));
+    }
+    return v;
+  };
+  return relevant.length === 0 ? value : walk(value);
 }
 
 export function evidenceDirFor(repoRoot) {

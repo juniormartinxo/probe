@@ -1,268 +1,178 @@
 # Viabilidade da tradução local e das avaliações do Jev verification
 
 **Verdict**: PASS
-**Scope**: S1 + S2 + S3 (C1–C28, C52, C53) - slices construídas (PRB-2, PRB-3, PRB-4); C29–C51 e C54 fora de escopo (não construídos)
+**Scope**: S1 + S2 + S3 + S4 (C1–C40, C52, C53, C55) - slices construídas (PRB-2, PRB-3, PRB-4, PRB-5); C41–C51, C54 e C56–C59 fora de escopo (não construídos)
 **Profile**: light
-**Diff range**: 3985c43..4eea13b (S3, card PRB-4, PR #4); C1–C20 re-provados em HEAD
-**Round**: 2 - full (S3); C1–C20 re-provados em HEAD, citações renovadas nos arquivos que a S3 tocou
-**Verifier**: independent fresh session (author != verifier) - sessão nova do Claude Code no worktree `prb-4`, sem contexto da implementação nem do review
+**Diff range**: 5417c97..7868a78 (fix da Round 4, card PRB-5, PR #5); provas de todos os checks construídos re-executadas em `7868a78`
+**Round**: 5 - scoped
+**Verifier**: independent sub-agent (author != verifier) - sub-agente novo, sem contexto da implementação, do review do PR #5 nem das verificações das Rounds 3 e 4
 
-Verificado em `4eea13b`, Node v24.21.0. Árvore real somente leitura: `git status --porcelain` vazio antes e depois de todas as execuções de prova. Nenhum LM Studio, Jev ou modelo real foi chamado; só os transportes e o `fetch` controlados dos testes.
+Verificado em `7868a78` (HEAD), Node v24.21.0. A árvore real ficou somente leitura. `git status --porcelain` estava vazio antes das provas e continuou vazio depois delas, depois da reprodução dos sinais (script no scratchpad que importa `tests/ai-study/helpers.mjs` e roda em sandboxes temporárias com `TMPDIR` no scratchpad) e depois do experimento com o `cli.mjs` antigo (`git worktree add --detach` no scratchpad, removido ao final; `git worktree list` voltou às duas entradas anteriores; nenhum processo `ai-study` órfão). Depois da escrita deste relatório, a porcelain mostra só ` M .specs/features/jev-translation-feasibility/verification.md`. Não chamei LM Studio, Jev nem modelo real. Usei só os transportes, o `fetch` e os processos controlados dos testes.
 
-Base: `3985c43` é o merge-base com `main`. O código (`src`, `tests`, `Makefile`, `.gitignore`) de `3985c43` é idêntico ao de `166a2b9`, onde o Round 1 foi verificado: `git diff --stat 166a2b9 c2d0fb6 -- src tests Makefile .gitignore` e `git diff --stat c2d0fb6 3985c43 -- ...` são vazios. Por isso o que não mudou é `carried from 166a2b9`.
+**Resultado em uma linha:** 43 de 43 checks construídos estão provados, com asserção localizada. O FAIL da Round 4 (C55, segundo sinal de outro tipo engolido) está corrigido em `src/ai-study/cli.mjs:63-67` e provado nas quatro combinações; reproduzi o comportamento em HEAD e confirmei que a nova asserção falha com o `cli.mjs` de `5417c97`.
 
 ### Escopo pelo diff
 
-`git diff --stat 3985c43..4eea13b` (4 commits: `8005951`, `368204e`, `f2acc1f`, `4eea13b`):
+Verified at 7868a78. `git diff --stat 5417c97..7868a78` tem um commit (`7868a78`) e 4 arquivos, +51/−30:
 
-- Novos: `src/ai-study/jev.mjs`, `src/ai-study/comparison.mjs`, `tests/ai-study/s3-jev.test.mjs`, `tests/ai-study/support/live-services*.mjs` (5 arquivos de pré-carga).
-- Alterados: `src/ai-study/collect.mjs` (+48), `cli.mjs` (live ligado aos adaptadores), `corpus.mjs` (exporta `sha256`/`isObject`), `fixture.mjs` (`type: 'choice'`), `manifest.mjs` (resumo live), `Makefile` (só o texto do `help`), `tests/ai-study/helpers.mjs` (+13: pré-cargas e `readServices`), `tests/ai-study/s1-commands.test.mjs` (só o corpo do C3), `tests/ai-study/s2-translation.test.mjs` (só a resposta do Jev controlado em `controlled()`), `.specs/STATE.md`, `checks.md`.
-- Intocado: `tests/ai-study/s1-corpus.test.mjs` (`git diff --stat 3985c43..4eea13b -- tests/ai-study/s1-corpus.test.mjs` vazio).
+- `src/ai-study/cli.mjs`: `INTERRUPT_SIGNALS` (`:58`); `onSignal` remove os listeners dos dois sinais antes de `abort()` (`:63-66`); registro com `process.on` (`:67`). Só o bloco de entrada (`import.meta.url === ...`); `main` não mudou.
+- `tests/ai-study/s4-limits.test.mjs`: só o corpo do C55 (`:868-883` entre chamadas, agora SIGINT e SIGTERM com `calls` completo; `:918-940` segundo sinal nas quatro combinações). O teste continua em `:841`; nenhuma outra linha do arquivo mudou (`rg -n "^\s*test\('" ` dá as mesmas linhas da Round 4).
+- `checks.md`: texto e Status do C55 (`:193`, `:195`) e o parágrafo de fronteira (`:299`).
+- `plan.md`: linha "Comandos Make | Códigos de saída" (`:240`).
+
+Raio de alcance: `cli.mjs` é importado pelos testes (`selectTransports`), mas o bloco alterado só roda quando o arquivo é o entrypoint; ele serve a todo teste que passa pelo `make`, e a suíte completa passou. Nenhum helper, fixture ou Makefile mudou.
 
 Classificação:
 
-- Verified at 4eea13b: C21–C28, C52, C53 (novos); C1–C5, C9–C12 (`s1-commands.test.mjs` tocado; C1/C2 sem deslocamento, C4–C12 deslocados +3); C13–C20 (`s2-translation.test.mjs` tocado; todas as linhas +12, nenhuma linha `assert` alterada - `git diff ... | grep '^[-+]' | grep -c assert` = 0); provas de todos os 30.
-- Carried from 166a2b9: citações de C6–C8 (`s1-corpus.test.mjs` intocado); os julgamentos "C10: diff do setup" e "C19: mudança de expectativa em 5451bc0" do Round 1 (os testes não mudaram além do deslocamento).
+- **Verified at 7868a78:** as provas dos 43 checks, re-executadas em full; o julgamento do C55 (não PASS na Round 4; código, texto e teste mudaram); o parágrafo de fronteira e a emenda do `plan.md`.
+- **Carried from 864b31b:** os julgamentos de C30, C34, C36, C39 e C40 (re-julgados na Round 4; texto e teste intocados por `7868a78`), a divisão C36/C39/C40 → C56–C58 e o C59.
+- **Carried from 4470b14:** os julgamentos de C1–C29, C31–C33, C35, C37, C38, C52 e C53 (com o que a Round 3 trazia de `4eea13b`). Linhas citadas conferidas com `rg -n`: iguais.
 
 ## Binding sources
 
-Passo 1 roda somente sob o profile `ui`; sob `light` não foi executado. O plano marca o [corpus](corpus.md) como fonte dos textos e gabaritos; ele foi lido para C22/C27 (o gabarito é lido do corpus estruturado pelo teste, `s3-jev.test.mjs:44-45`), mas não houve comparação formal de passo 1.
+Carried from 864b31b. O passo 1 só roda no profile `ui`, então não rodou sob `light`. O fix não toca o [corpus](corpus.md) nem a interface pública (`git diff 5417c97..7868a78 -- .specs/features/jev-translation-feasibility/corpus.md Makefile` vazio; em `src`, só o tratamento de sinais do entrypoint).
 
 ## Checks
 
-Verified at 4eea13b (provas). Uma invocação para todo o alvo:
-`make check-proof TEST_FLAGS=' --test-name-pattern=^C1: ... --test-name-pattern=^C28: --test-name-pattern=^C52: --test-name-pattern=^C53:'` - exit 0; TAP `# tests 30 # pass 30 # fail 0 # cancelled 0 # skipped 0 # todo 0`; individualmente `ok 1 - C1:` … `ok 5 - C5:`, `ok 6 - C9:`, `ok 7 - C10:`, `ok 8 - C11:`, `ok 9 - C12:`, `ok 10 - C6:`, `ok 11 - C7:`, `ok 12 - C8:`, `ok 13 - C13:` … `ok 28 - C28:`, `ok 29 - C52:`, `ok 30 - C53:`. Cada nome aparece uma vez; as únicas linhas com `skip`/`todo` no TAP são os totalizadores `# skipped 0` / `# todo 0`.
+Verified at 7868a78. Uma invocação para o alvo inteiro:
+`make check-proof TEST_FLAGS='--test-name-pattern=^(C[1-9]|C1[0-9]|C2[0-9]|C3[0-9]|C40|C52|C53|C55):'`. Exit 0; TAP `# tests 43 # pass 43 # fail 0 # cancelled 0 # skipped 0 # todo 0`. Cada nome aparece uma vez: `ok 1 - C1:` … `ok 5 - C5:`, `ok 6 - C9:`, `ok 7 - C10:`, `ok 8 - C11:`, `ok 9 - C12:`, `ok 10 - C6:`, `ok 11 - C7:`, `ok 12 - C8:`, `ok 13 - C13:` … `ok 28 - C28:`, `ok 29 - C52:`, `ok 30 - C53:`, `ok 31 - C31:`, `ok 32 - C32:`, `ok 33 - C33:`, `ok 34 - C35:`, `ok 35 - C40:`, `ok 36 - C29:`, `ok 37 - C30:`, `ok 38 - C34:`, `ok 39 - C36:`, `ok 40 - C37:`, `ok 41 - C38:`, `ok 42 - C39:`, `ok 43 - C55:`. Nenhuma linha `# SKIP`/`# TODO` (`grep -c` → 0).
 
-Existência: `rg -n "test\('(C[0-9]+|S3):" tests/` encontra exatamente 30 nomes C mais um teste `S3:` sem check - `s1-commands.test.mjs:51,90,118,146,165,233,261,340,367` (C1–C5, C9–C12), `s1-corpus.test.mjs:62,81,113` (C6–C8), `s2-translation.test.mjs:151,214,242,304,340,386,443,517` (C13–C20), `s3-jev.test.mjs:115,154,199,243,281,364,407,470,538,565` (C21–C28, C52, C53), `s3-jev.test.mjs:597` (`S3:` falha de `comparison.json`). Nenhum teste C29–C51 ou C54. Os testes C21–C28, C52 e C53 estão todos no diff da S3 (arquivo novo).
+Existência: `rg -n "^\s*test\('[A-Z0-9]+:" tests/` encontra exatamente os 43 nomes C, mais `S3:` (`s3-jev.test.mjs:600`):
+
+- `s1-commands.test.mjs:52,91,119,147,166,234,262,341,368` (C1–C5, C9–C12)
+- `s1-corpus.test.mjs:68,87,119` (C6–C8)
+- `s2-translation.test.mjs:155,218,247,309,346,392,449,523` (C13–C20)
+- `s3-jev.test.mjs:118,157,202,246,284,367,410,473,541,568` (C21–C28, C52, C53)
+- `s4-limits.test.mjs:132,218,253,325,392,477,557,586,638,704,745,789,841` (C31, C32, C33, C35, C40, C29, C30, C34, C36, C37, C38, C39, C55) - iguais à Round 4.
+
+`make checks-validate`: `validate_checks: 0 error(s), 0 warning(s) ... [profile: light]`. `make plan-validate`: `validate_plan: 0 error(s), 0 warning(s)`.
 
 | Check | Claim | Proof run | Evidence | Result |
 | --- | --- | --- | --- | --- |
-| C1 | `make ai-study-dry-run` válido imprime modo, hashes corpus/gabarito, modelos, limites 20/24, destinos sem credenciais | `ok 1 - C1:` (exit 0) | verified at 4eea13b (linhas inalteradas): `tests/ai-study/s1-commands.test.mjs:56` - `assert.equal(fixture.status, 0, ...)`; `:59-60` - `assert.equal(f['hash do corpus'], corpus.corpusHash)` / `gabaritoHash`; `:62-63` `'20'`/`'24'`; `:78-79` modelos; `:82` - `assert.equal(l['destino local'], 'http://127.0.0.1:1234/v1')`; `:73` - `assertNoSecret(live)` | PASS |
-| C2 | dry-run nos dois modos e coleta fixture: zero rede e zero modelos, com transportes que falham se usados | `ok 2 - C2:` | verified at 4eea13b: `s1-commands.test.mjs:99-100` - `assert.equal(guard.loaded, 3, ...)` + `assert.deepEqual(guard.attempts, [])`; `:115` - `assert.equal(liveFactoryCalls, 0)` | PASS |
-| C3 | preparação (dry-run fixture e live) e coleta fixture invocam zero Codex/Claude/Grok/agy/Cloak | `ok 3 - C3:` | verified at 4eea13b: `s1-commands.test.mjs:126` - `assert.equal(run.status, 0, run.output)` para os dois dry-runs e a coleta fixture; `:134` - `assert.equal(last.shimCalls, '', ...)` (log de shims cumulativo das quatro execuções do sandbox); `:135` - `assert.deepEqual(last.guard.attempts, [], 'nenhum processo nem rede')` (log da guarda cumulativo); `:141` - `assert.doesNotMatch(source, ...)` com o padrão `child_process` ou `worker_threads`, sobre todos os `src/ai-study/*.mjs`, agora incluindo `jev.mjs` e `comparison.mjs`. Parada live: `:130-132` (make 2, Node 1, `template oficial não confirmado`). Ver "Ponto 2" | PASS |
-| C4 | só `fixture`/`live`; `fixture` por omissão; outro modo → 2 | `ok 4 - C4:` | verified at 4eea13b (+3): `s1-commands.test.mjs:151` - `assert.match(omitted.stdout, /^modo: fixture$/m, target)`; `:156` - `assertUsageFailure(run, /MODE/, ...)` → `:38` `assert.equal(run.status, 2, ...)` + `:40` código do Node 2; `:162` live aceito | PASS |
-| C5 | config inválida na fronteira → 2 antes de coletar; diagnóstico nomeia a config sem segredo; tabela completa | `ok 5 - C5:` | verified at 4eea13b (+3): `s1-commands.test.mjs:205-207` - `assertUsageFailure(run, pattern, label)` + `assertNoSecret(run)` + `assert.deepEqual(listRuns(sandbox), [], ...)` sobre a tabela `:168-200`; `:210-217` variantes CLI direta | PASS |
-| C6 | corpus exato R01–R12, T01–T06 em ordem; ausente/extra/repetido rejeitado antes de coletar | `ok 10 - C6:` | carried from 166a2b9: `tests/ai-study/s1-corpus.test.mjs:64-65` - `assert.deepEqual(info.corpus.relational_cases.map((r) => r.id), R_IDS)` / `T_IDS`; `:27-28` - `assert.equal(run.status, 2)` + `assert.equal(run.nodeStatus, 2)` para `:69-76` | PASS |
-| C7 | cada R tem os 6 julgamentos, rótulo válido, justificativa não vazia; violações → 2 | `ok 11 - C7:` | carried from 166a2b9: `s1-corpus.test.mjs:84` - `assert.deepEqual(r.expectations.map((e) => e.judgment).sort(), [...JUDGMENT_IDS].sort(), r.id)`; `:86-87`; `:27-28` para `:93-108` | PASS |
-| C8 | resultados vinculados ao mesmo hash de corpus e gabarito; alteração durante a execução impede comparação | `ok 12 - C8:` | carried from 166a2b9: `s1-corpus.test.mjs:133-134` - `assert.equal(result.corpus_hash, base.corpusHash)` / `gabarito_hash`; `:167` - `assert.equal(changed.manifest.reason, 'corpus_changed')` | PASS |
-| C9 | `make ai-study-run` sem modo → 0, artefatos `fixture` em `artifacts/ai-study/<run-id>/`, `schema_version: 1` | `ok 6 - C9:` | verified at 4eea13b (+3): `s1-commands.test.mjs:236` - `assert.equal(run.status, 0, run.output)`; `:239` - `assert.match(run.stdout, new RegExp(\`artifacts/ai-study/${runId}\`))`; `:243` - `assert.equal(evidence.manifest.schema_version, 1)`; `:245-246` `mode`/`provenance` `'fixture'`; `:253-256` por resultado | PASS |
-| C10 | fronteira make: transporte ou resposta live em fixture → 2, preservando evidências; coletor: fixture em live também rejeitado | `ok 7 - C10:` | verified at 4eea13b (+3): `s1-commands.test.mjs:265` - `assertUsageFailure(run, /proveniência "live" incompatível com MODE=fixture/, ...)`, `:268-270` `rejected`/`provenance_mismatch`/`['R01-translate-pt-en']`; `:276` resposta live via make, `:278-281`; coletor live `:320` - `error instanceof UsageError && error.exitCode === 2 && /proveniência "fixture"/`; `:324-325` - `reason === 'provenance_mismatch'` + `results.map(provenance) == ['live']`; `:327` transporte simulado não chamado; `:328` - prefixo intacto byte a byte. Parte make-live: C53 | PASS |
-| C11 | aceita RUN_ID 1 e 64, timeout inteiro positivo, saída 1 e 2048; limites 20/24 | `ok 8 - C11:` | verified at 4eea13b (+3): `s1-commands.test.mjs:352-356` - `assert.equal(dry.status, 0)` + `assert.equal(manifest[key], value, key)` + `'20'`/`'24'`; `:360-362` - exit 0 e `assert.deepEqual(evidence.manifest.limits, { local_calls: 20, jev_calls: 24 })` | PASS |
-| C12 | defaults publicados; RUN_ID gerado; relatório exige RUN_ID; live exige URL/modelo e chave/modelo; token opcional; sem seleção parcial/retry/paralelismo | `ok 9 - C12:` | verified at 4eea13b (+3): `s1-commands.test.mjs:372-376` - corpus, `'gerado na coleta'`, `'120'`, `'30'`, `'2048'`; `:381` - `assert.match(generated, /^[A-Za-z0-9_-]{1,64}$/)`; `:392` relatório sem RUN_ID lança `UsageError` `/RUN_ID/`; `:396-403` 4 obrigatórios live; `:406` - `assert.equal(noToken.local.apiToken, null, ...)`; `:410` - `assertUsageFailure(flagged, new RegExp(name), ...)`; `:415` flags CLI | PASS |
-| C13 | toda tradução preparada registra original, direção, modelo solicitado e revisão do template, vinculados ao caso e à execução | `ok 13 - C13:` | verified at 4eea13b (+12): `tests/ai-study/s2-translation.test.mjs:169-173` - `assert.equal(t.run_id, 'c13')` … `assert.equal(t.template_revision, revision)`; `:200` - `assert.deepEqual(posts[index].body, { model: MODEL, prompt: renderPrompt(...), max_tokens: 2048, temperature: 0, stream: false })`; `:207` - `assert.equal(result.request.prompt, posts[index].body.prompt, ...)` | PASS |
-| C14 | template oficial não confirmado → coleta `incomplete` com `template_unverified`, sem enviar tradução | `ok 14 - C14:` | verified at 4eea13b (+12): `s2-translation.test.mjs:220` - `assertIncomplete(outcome, 'template_unverified')`; `:222` - `assert.deepEqual(calls, [], 'nenhuma chamada local ou Jev')`; `:223` sem resultados; `:239` - `assert.deepEqual(lm.calls, [])` (adaptador, zero HTTP) | PASS |
-| C15 | 2048 admitido; 2049 bloqueado com `input_limit`, sem envio nem truncamento; contagem inclui o template | `ok 15 - C15:` | verified at 4eea13b (+12): `s2-translation.test.mjs:255` - `assert.equal(counted[index].request.prompt, expected)`; `:258` prompt maior que o original (template incluído); `:264` - `assertIncomplete(first, 'input_limit')`; `:265` - `assert.deepEqual(only(blocked.calls, 'translate'), [])`; `:294` bloqueio no meio preserva prefixo | PASS |
-| C16 | contagem indisponível ou de tokenizer não correspondente → `token_count_unavailable`, sem envio | `ok 16 - C16:` | verified at 4eea13b (+12): `s2-translation.test.mjs:317` - `assertIncomplete(outcome, 'token_count_unavailable')` sobre as 6 variantes; `:321` justificativa; `:333` adaptador real `token_count_unavailable` | PASS |
-| C17 | saída persistida literalmente como derivação identificada, preservando original e vínculo; braço inglês usa a derivação | `ok 17 - C17:` | verified at 4eea13b (+12): `s2-translation.test.mjs:354` - `assert.equal(t.derived_text, literal(t.case_id), 'saída literal, sem trim')`; `:366` braço PT usa o original; `:368` - `assert.equal(enResult.derived_from, \`${c.id}-translate-pt-en\`)`; `:380-381` adaptador: `derived_text` e `response.output` literais; `:383` braço EN recebe esse texto | PASS |
-| C18 | vazia, só espaços ou término por limite → `invalid_translation`, sem Jev do braço inglês | `ok 18 - C18:` | verified at 4eea13b (+12): `s2-translation.test.mjs:406` - `assert.equal(byCase[caseId].status, 'invalid_translation', caseId)`; `:414` - `assert.ok(!evaluated.includes(\`${caseId}-en\`), ...)` | PASS |
-| C19 | registro contém duração em ms e modelo/tokens/memória do runtime; cada informação não fornecida recebe indicação e justificativa; sem usar download como VRAM | `ok 19 - C19:` | verified at 4eea13b (+12): `s2-translation.test.mjs:460` - `assert.ok(Number.isInteger(duration) && duration >= 25, ...)`; `:463` modelo fornecido; `:467-468` tokens/memória `available === false`; `:472-473` - `/download/` e `/VRAM/`; `:484` - `assertIncomplete(missing, 'model_mismatch')` (modelo não fornecido); `:491` duração do bloqueio; `:500` adaptador | PASS |
-| C20 | registra identidade solicitada e retornada do Q6_K; indisponível/incompatível não seleciona outro modelo, não instala runtime, não baixa pesos | `ok 20 - C20:` | verified at 4eea13b (+12): `s2-translation.test.mjs:531` - `assert.deepEqual(identity, { requested_model: MODEL, returned_model: MODEL, quantization: 'Q6_K', model_state: 'loaded' })`; `:537-543` cada pedido HTTP; `:556-557` - `assertIncomplete(outcome, reason)` + `assert.deepEqual(lm.calls.map(...), [\`GET ${modelPath}\`], ...)`; `:560`, `:572` sem resultados; `:601` troca de modelo no 3º POST | PASS |
-| C21 | adaptador Jev envia exatamente os seis julgamentos como perguntas `Choice` independentes na mesma chamada, com critérios `yes`/`no`/`insufficient` | `ok 21 - C21:` | verified at 4eea13b: `tests/ai-study/s3-jev.test.mjs:122` - `assert.equal(jevCalls.length, 24, 'uma chamada por braço: 12 casos × 2 braços')`; `:126-130` método, URL oficial, `authorization`, `content-type`, cabeçalhos exatos; `:131` - `assert.deepEqual(Object.keys(call.body), ['state', 'model', 'questions'], 'corpo completo')`; `:133` - `assert.deepEqual(Object.keys(call.body.questions), [...JUDGMENT_IDS], ...)`; `:137-138` - `question.type === 'choice'` + `assert.deepEqual(Object.keys(question.criteria), ['yes', 'no', 'insufficient'], id)`; `:143-146` nenhuma instrução cita outro julgamento; `:149-150` - pedido persistido `deepEqual` ao corpo e `JSON.stringify(...) === call.rawBody` | PASS |
-| C22 | payloads completos para tradução e Jev sem gabaritos, justificativas de referência ou revisões humanas; sentinelas ausentes | `ok 22 - C22:` | verified at 4eea13b: `s3-jev.test.mjs:159-171` corpus com rótulos rotacionados e sentinelas em justificativas/títulos/invariantes; `:174-177` revisão humana sentinela no diretório de evidências; `:183-184` 18 POST locais e 24 Jev; `:186` gabaritos diferentes; `:189` - `assert.ok(!payload.includes(SENTINEL), ...)` sobre método+URL+corpo bruto de todas as chamadas; `:191` - `assert.deepEqual(sent(alt), sent(base))` (byte a byte iguais com gabaritos diferentes); `:194-195` chaves exatas do pedido persistido | PASS |
-| C23 | par com instruções em inglês, rubricas, IDs, critérios e modelo Jev iguais; só original vs tradução varia; IDs/etapas fora do texto traduzido | `ok 23 - C23:` | verified at 4eea13b: `s3-jev.test.mjs:209-210` - `assert.deepEqual(body.questions, reference.questions, ...)` + modelo em todas as chamadas; `:215-220` por caso, perguntas, IDs, modelo, hashes de instruções/critérios e modelo retornado iguais entre PT e EN; `:222-224` - `pt.state === caseText(c)`, `en.state === translated`, diferentes; `:226-227` IDs de caso/item/julgamento fora dos dois estados; `:232-233` nenhum ID `[RT]\d{2}` nem julgamento no prompt de tradução; `:237-239` instruções em inglês, sem perguntas do corpus nem acentuação | PASS |
-| C24 | R01 PT antes de EN, R02 EN antes de PT, alternância até R12, caso e braço preservados | `ok 24 - C24:` | verified at 4eea13b: `s3-jev.test.mjs:37` ordem esperada; `:248-250` `R01,pt` / `R02,en` / `R12,pt`; `:260` 12 traduções distintas (o estado identifica o braço); `:261` - `assert.deepEqual(sentOrder, expectedOrder)` (ordem HTTP real); `:263` - `assert.deepEqual(persisted, expectedOrder)`; `:265-267` caso/braço/ID em cada resultado | PASS |
-| C25 | validação só aceita seis IDs únicos `choice`, escolha no domínio, três probabilidades finitas em [0,1] com soma a ≤0,000001 de 1 e confiança finita em [0,1]; violação → `invalid_response` sem inferir escolha | `ok 25 - C25:` | verified at 4eea13b: aceitos `s3-jev.test.mjs:292` - `assert.deepEqual(validateEvaluation(results), [], label)` sobre `:283-290`; rejeitados `:326-327` - `assert.ok(problems.length > 0, label)` + `assert.match(problems.join('\n'), pattern, label)` sobre `:295-322`; coletor com adaptador real `:343-346` - `IncompleteError`, código 1, `incomplete`/`invalid_response`; `:349-350` - `status === 'invalid_response'` e `results === null` (nenhuma escolha inferida); `:352` braço anterior preservado; `:356-358` par fora do denominador. Todas as linhas da tabela em "Tabelas de decisão" | PASS |
-| C26 | avaliação persistida identifica execução, caso, braço, escolha, distribuição, confiança, modelo retornado, uso e duração; uso ausente identificado, não zero | `ok 26 - C26:` | verified at 4eea13b: `s3-jev.test.mjs:380-385` `run_id`, `case_id`, `requested_model`, `returned_model` (retornado ≠ solicitado), `valid`; `:389-391` escolha, `deepEqual` das probabilidades, confiança 0.42; `:393` - `assert.ok(Number.isInteger(e.duration_ms) && e.duration_ms >= 25, ...)` (atraso 30 ms); `:395` braços `['pt', 'en']`; `:396` - `assert.deepEqual(first.evaluation.usage, { available: true, value: usage })`; `:398-401` uso ausente `available === false`, sem `value`, `/não é custo zero/`, sem `:0` | PASS |
-| C27 | escolha válida = gabarito → acerto; ≠ → erro; sem escolha válida → ausência; `insufficient` é escolha | `ok 27 - C27:` | verified at 4eea13b: `s3-jev.test.mjs:418` - `assert.equal(compareChoice(choice, expected), outcome, ...)` sobre `:409-416`; `:420-421` resposta inválida e braço não executado → todos `absent`; coleta `:437` - PT `{ hit: 12, miss: 0, absent: 0 }`; `:438-442` - EN sempre `insufficient` → `{ hit: insufficientExpected, miss: 12 - insufficientExpected, absent: 0 }`; `:446-449` R08 EN por julgamento | PASS |
-| C28 | par sem braço válido ou com divergência de corpus/gabarito, instruções, critérios ou versão Jev → incompleto, fora do denominador; individual visível | `ok 28 - C28:` | verified at 4eea13b: `s3-jev.test.mjs:493-494` - `assert.deepEqual(pair.reasons, reasons, label)` + status; `:496` - `assert.equal(comparison.counts.paired.denominator, reasons.length === 0 ? 1 : 0, ...)`; `:500` resultado visível; `:503` válido contado no individual (6), sobre a tabela `:475-487`; `:489-490` os hashes divergentes de fato diferem; coleta `:525` R01 `['incomplete', ['en_missing'], ...]`; `:527` R02 `jev_model_mismatch`; `:528` denominador 10; `:532` resultados individuais visíveis; `:534` R01 EN ausente | PASS |
-| C52 | `make ai-study-run MODE=live` com LM Studio e Jev controlados invoca zero Codex/Claude/Grok/agy/Cloak | `ok 29 - C52:` | verified at 4eea13b: `s3-jev.test.mjs:540-544` `runMake('ai-study-run', MODE=live, ...)` com pré-carga `liveServices`; `:545` - `assert.equal(run.status, 0, run.output)`; `:550` - 42 resultados (18 traduções e 24 avaliações, ou seja, o caminho live inteiro executou); `:554` - `assert.equal(run.shimCalls, '', 'nenhuma CLI excluída executada')`; `:555` - `assert.deepEqual(run.guard.attempts, [], 'nenhum processo nem socket')`; `:559` só destinos configurados. Ver "Ponto 1" | PASS |
-| C53 | na fronteira `make ai-study-run MODE=live` com serviços controlados, transporte ou resposta fixture → 2, preservando evidências anteriores | `ok 30 - C53:` | verified at 4eea13b: `s3-jev.test.mjs:577-578` - `assert.equal(run.status, 2, ...)` + `assert.equal(run.nodeStatus, 2, ...)` para transporte e resposta; `:579` - `/proveniência "fixture" incompatível com MODE=live em R01-evaluate-pt/`; `:581-582` `rejected`/`provenance_mismatch`; `:584` - prefixo `[['R01-translate-pt-en', 'live']]`; `:587` Jev chamado 0 vez (transporte) / 1 vez (resposta); `:592-593` - execução anterior intacta byte a byte (`rawResults` e manifesto). Ver "Ponto 1" | PASS |
+| C1 | dry-run válido: modo, hashes, modelos, limites 20/24, destinos sem credenciais | `ok 1 - C1:` (exit 0) | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `tests/ai-study/s1-commands.test.mjs:57` - `assert.equal(fixture.status, 0, fixture.output)`; `:60` - `assert.equal(f['hash do corpus'], corpus.corpusHash)`; `:74` - `assertNoSecret(live)` | PASS |
+| C2 | dry-run nos dois modos e coleta fixture: zero rede e zero modelos | `ok 2 - C2:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s1-commands.test.mjs:100` - `assert.equal(guard.loaded, 3, ...)`; `:116` - `assert.equal(liveFactoryCalls, 0)` | PASS |
+| C3 | preparação e coleta fixture: zero Codex/Claude/Grok/agy/Cloak | `ok 3 - C3:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s1-commands.test.mjs:127` - `assert.equal(run.status, 0, run.output)`; `:135` - `assert.equal(last.shimCalls, '', ...)`; `:136` - `assert.deepEqual(last.guard.attempts, [], ...)`; `:142` - `assert.doesNotMatch(source, <regex>, file)`, regex que alterna `child_process` e `worker_threads` (agora cobre também `calls.mjs` e `run-reader.mjs`) | PASS |
+| C4 | só `fixture`/`live`; `fixture` por omissão; outro modo → 2 | `ok 4 - C4:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s1-commands.test.mjs:152` - `assert.match(omitted.stdout, /^modo: fixture$/m, target)`; `:157` - `assertUsageFailure(run, /MODE/, ...)` (`:38`, status 2 e código do Node 2) | PASS |
+| C5 | config inválida → 2 antes de coletar, sem segredo; tabela completa | `ok 5 - C5:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s1-commands.test.mjs:206-208` - `assertUsageFailure(run, pattern, label)` + `assertNoSecret(run)` + `assert.deepEqual(listRuns(sandbox), [], ...)` | PASS |
+| C6 | corpus exato R01–R12/T01–T06; ausente/extra/repetido rejeitado antes de coletar | `ok 10 - C6:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `tests/ai-study/s1-corpus.test.mjs:70` - `assert.deepEqual(info.corpus.relational_cases.map((r) => r.id), R_IDS)`; `:31-32` - `assert.equal(run.status, 2, ...)` + `assert.equal(run.nodeStatus, 2, ...)`, agora em dry-run **e** `ai-study-run`; `:36` - `assert.ok(!existsSync(join(sandbox.evidenceDir, name)), ...)` | PASS |
+| C7 | seis julgamentos, rótulo válido, justificativa; violações → 2 | `ok 11 - C7:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s1-corpus.test.mjs:90` - `assert.deepEqual(r.expectations.map((e) => e.judgment).sort(), [...JUDGMENT_IDS].sort(), r.id)`; `:31-36` nas duas fronteiras | PASS |
+| C8 | resultados vinculados aos mesmos hashes; alteração impede comparação | `ok 12 - C8:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s1-corpus.test.mjs:139` - `assert.equal(result.corpus_hash, base.corpusHash)`; `:174` - `assert.equal(changed.manifest.reason, 'corpus_changed')` | PASS |
+| C9 | `make ai-study-run` sem modo → 0, artefatos fixture, `schema_version: 1` | `ok 6 - C9:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s1-commands.test.mjs:237` - `assert.equal(run.status, 0, run.output)`; `:244` - `assert.equal(evidence.manifest.schema_version, 1)`; `:250` - 42 resultados | PASS |
+| C10 | fixture: live → 2 preservando evidências; coletor live: fixture rejeitado | `ok 7 - C10:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s1-commands.test.mjs:266` - `assertUsageFailure(run, /proveniência "live" incompatível com MODE=fixture/, ...)`; `:321` - `error instanceof UsageError && error.exitCode === 2 && /proveniência "fixture"/`; `:329` - `assert.deepEqual(readRun(...).rawResults, snapshot, 'prefixo intacto byte a byte')` | PASS |
+| C11 | aceita RUN_ID 1/64, timeout inteiro positivo, saída 1/2048; 20/24 | `ok 8 - C11:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s1-commands.test.mjs:355` - `assert.equal(manifest[key], value, key)`; `:363` - `assert.deepEqual(evidence.manifest.limits, { local_calls: 20, jev_calls: 24 })` | PASS |
+| C12 | defaults publicados; relatório exige RUN_ID; live exige config; token opcional; sem flags | `ok 9 - C12:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s1-commands.test.mjs:374` - `assert.equal(manifest['run_id'], 'gerado na coleta')`; `:382` - `/^[A-Za-z0-9_-]{1,64}$/`; `:393` - `resolveConfig('report', {})` lança `UsageError` `/RUN_ID/`; `:407` - `assert.equal(noToken.local.apiToken, null, ...)`; `:411` - `assertUsageFailure(flagged, new RegExp(name), ...)` | PASS |
+| C13 | tradução registra original, direção, modelo, revisão do template, vínculo | `ok 13 - C13:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `tests/ai-study/s2-translation.test.mjs:173` - `assert.equal(t.run_id, 'c13')`; `:177` - `assert.equal(t.template_revision, revision)` | PASS |
+| C14 | template não confirmado → `template_unverified`, sem envio | `ok 14 - C14:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s2-translation.test.mjs:224` - `assertIncomplete(outcome, 'template_unverified')`; `:226` - `assert.deepEqual(calls, [], 'nenhuma chamada local ou Jev')`; `:244` - `assert.deepEqual(lm.calls, [])` | PASS |
+| C15 | 2048 admitido; 2049 → `input_limit`; contagem inclui template | `ok 15 - C15:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s2-translation.test.mjs:260` - `assert.equal(counted[index].request.prompt, expected)`; `:269` - `assertIncomplete(first, 'input_limit')` | PASS |
+| C16 | contagem indisponível/tokenizer divergente → `token_count_unavailable` | `ok 16 - C16:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s2-translation.test.mjs:322` - `assertIncomplete(outcome, 'token_count_unavailable')` | PASS |
+| C17 | saída literal como derivação; braço EN usa a derivação | `ok 17 - C17:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s2-translation.test.mjs:360` - `assert.equal(t.derived_text, literal(t.case_id), 'saída literal, sem trim')`; `:374` - `assert.equal(enResult.derived_from, \`${c.id}-translate-pt-en\`)` | PASS |
+| C18 | vazia/espaços/limite → `invalid_translation`, sem Jev EN | `ok 18 - C18:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s2-translation.test.mjs:412` - `assert.equal(byCase[caseId].status, 'invalid_translation', caseId)`; `:420` - `assert.ok(!evaluated.includes(\`${caseId}-en\`), ...)` | PASS |
+| C19 | duração ms, metadados do runtime, justificativa; sem download como VRAM | `ok 19 - C19:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s2-translation.test.mjs:466` - `assert.ok(Number.isInteger(duration) && duration >= 25, ...)`; `:478` - `/download/` na justificativa; `:490` - `assertIncomplete(missing, 'model_mismatch')` | PASS |
+| C20 | identidade solicitada/retornada Q6_K; sem trocar/instalar/baixar | `ok 20 - C20:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s2-translation.test.mjs:537` - `assert.deepEqual(identity, { requested_model: MODEL, returned_model: MODEL, quantization: 'Q6_K', model_state: 'loaded' })`; `:562` - `assertIncomplete(outcome, reason)` | PASS |
+| C21 | seis julgamentos `Choice` na mesma chamada, critérios yes/no/insufficient | `ok 21 - C21:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `tests/ai-study/s3-jev.test.mjs:125` - `assert.equal(jevCalls.length, 24, ...)`; `:134` - `assert.deepEqual(Object.keys(call.body), ['state', 'model', 'questions'], ...)`; `:141` - `assert.deepEqual(Object.keys(question.criteria), ['yes', 'no', 'insufficient'], id)` | PASS |
+| C22 | payloads sem gabarito, justificativa ou revisão humana | `ok 22 - C22:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s3-jev.test.mjs:192` - `assert.ok(!payload.includes(SENTINEL), ...)`; `:194` - `assert.deepEqual(sent(alt), sent(base))` | PASS |
+| C23 | par com instruções, rubricas, IDs, critérios e modelo iguais; só o texto varia | `ok 23 - C23:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s3-jev.test.mjs:212` - `assert.deepEqual(body.questions, reference.questions, ...)`; demais linhas de 4eea13b +3 | PASS |
+| C24 | alternância PT/EN e EN/PT até R12, caso e braço preservados | `ok 24 - C24:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s3-jev.test.mjs:264` - `assert.deepEqual(sentOrder, expectedOrder)`; `:266` - `assert.deepEqual(persisted, expectedOrder)` | PASS |
+| C25 | validação Jev de AC 21; violação → `invalid_response` sem inferir | `ok 25 - C25:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s3-jev.test.mjs:295` - `assert.deepEqual(validateEvaluation(results), [], label)`; `:329` - `assert.ok(problems.length > 0, label)`; `:352` - `invalid.evaluation.status === 'invalid_response'`. Tabelas carried from 4eea13b (+3) | PASS |
+| C26 | avaliação persistida com identificação, distribuição, uso, duração; uso ausente não vira zero | `ok 26 - C26:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s3-jev.test.mjs:396` - `assert.ok(Number.isInteger(e.duration_ms) && e.duration_ms >= 25, ...)`; `:399` - `assert.deepEqual(first.evaluation.usage, { available: true, value: usage })` | PASS |
+| C27 | acerto/erro/ausência; `insufficient` é escolha | `ok 27 - C27:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s3-jev.test.mjs:421` - `assert.equal(compareChoice(choice, expected), outcome, ...)`; `:440` - PT `{ hit: 12, miss: 0, absent: 0 }` | PASS |
+| C28 | par incompleto fora do denominador; individual visível | `ok 28 - C28:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s3-jev.test.mjs:496` - `assert.deepEqual(pair.reasons, reasons, label)`; `:499` - `assert.equal(comparison.counts.paired.denominator, reasons.length === 0 ? 1 : 0, ...)`; `:531` - denominador 10 | PASS |
+| C29 | duas coletas simultâneas: só uma; a segunda é rejeitada antes de chamar modelos ou alterar a primeira | `ok 36 - C29:` | carried from 4470b14 (texto e teste não tocados por 864b31b nem por 7868a78; linhas iguais): `tests/ai-study/s4-limits.test.mjs:499-501` - `assert.equal(second.status, 2, ...)` + `assert.equal(second.nodeStatus, 2, ...)` + `/outra coleta \(processo ${firstPid}\) está em andamento/` (processos `make` reais concorrentes, a primeira parada na barreira com a trava, `:489`); `:503` - `assert.equal(started().length, 1, 'nenhuma segunda coleta chegou a uma chamada')`; `:504` - `readServices(sandbox).every((entry) => entry.pid === firstPid)`; `:505-506` - nenhuma execução nova + `assert.deepEqual(snapshotFiles(...c29-primeira), firstBefore, ...)`; mesmo processo `:532-536` - `UsageError` e `assert.equal(used, 0)` | PASS |
+| C30 | RUN_ID existente → código 2 da CLI Node (linha `Error 2`), bytes de todos os arquivos anteriores mantidos, inclusive de incompleta | `ok 37 - C30:` | carried from 864b31b (texto mudou na Round 4, teste não; nem texto nem teste tocados por 7868a78; linhas iguais): `tests/ai-study/s4-limits.test.mjs:563` - anterior `status === 'incomplete'`; `:572-573` - `assert.equal(again.status, 2, ...)` + `assert.equal(again.nodeStatus, 2, ...)`. `nodeStatus` vem da linha `] Error (\d+)` (`tests/ai-study/helpers.mjs:153`), que é exatamente onde o novo texto diz que o código é lido. `:577` - `assert.deepEqual(snapshotFiles(sandbox.evidenceDir), before, ...)`; `:578` - nenhuma chamada | PASS |
+| C31 | máx. 20 locais / 24 Jev contando falhas; 21ª/25ª bloqueada; zero retries | `ok 31 - C31:` | carried from 4470b14 (texto e teste não tocados por 864b31b nem por 7868a78; linhas iguais): `s4-limits.test.mjs:140` - `e.reason === 'call_limit' && !e.requestSent`; `:142` - `assert.equal(executed, 44, ...)`; `:161` - `assert.equal(retryingLocal.svc.count('local'), 20, 'exatamente 20 pedidos locais saíram')`; `:174` - `assert.equal(retryingJev.svc.count('jev'), 24, ...)`; `:189` - `assert.equal(svc.count(service), nth, \`${label}: nenhum pedido repetido\`)` + `:192` - falha contada em `manifest.calls`; `:151` - a verificação do candidato conta (19 = 1 GET + 18). Ver observação 3 (precisão de "verificações de template") | PASS |
+| C32 | no máximo uma chamada em andamento | `ok 32 - C32:` | carried from 4470b14 (texto e teste não tocados por 864b31b nem por 7868a78; linhas iguais): `s4-limits.test.mjs:227` - `e.reason === 'concurrent_call' && e.requestSent === false`; `:230` - `assert.equal(started, 0, ...)`; `:241` - `assert.equal(svc.maxInFlight(), 1)`; `:243` - início/fim alternam em todos os 43 pedidos; `:245-250` - GET candidato, tradução e braços alternados em série | PASS |
+| C33 | timeout local/Jev encerra no limite, `incomplete`, restantes não executados, resultado remoto desconhecido sem alegar cancelamento | `ok 33 - C33:` | carried from 4470b14 (texto e teste não tocados por 864b31b nem por 7868a78; linhas iguais): `s4-limits.test.mjs:273` - `assert.ok(waited >= 990 && waited < 1900, ...)` (servidor local que ignora o abort); `:277-278` - `status === 'incomplete'`, `reason === 'timeout'`; `:279-287` - `failure` com `remote_outcome: 'unknown'`, `request_sent: true`; `:289` - `assert.doesNotMatch(manifest.failure.message, /cancelad[ao]\b/)`; `:292` - `not_executed_items` = restantes | PASS |
+| C34 | falha de transporte/HTTP/resposta inválida após dois resultados → código 1 da CLI Node (linha `Error 1`, o make sai com 2), prefixo preservado, restantes não executados, sem trocar provedor/idioma | `ok 38 - C34:` | carried from 864b31b (texto mudou na Round 4, teste não; nem texto nem teste tocados por 7868a78; linhas iguais): `s4-limits.test.mjs:605-606` - `assert.equal(run.status, 2, \`${label}: o make falha\`)` + `assert.equal(run.nodeStatus, 1, \`... "Error 1" ...\`)`. As duas metades do novo texto ("o próprio make sai com 2" e "código 1 ... `Error 1`") são asserções. `:616` - `assert.deepEqual(manifest.not_executed_items, remainingAfter(last), ...)`; `:620` + `:625` - prefixo íntegro; `:632-634` - mesmas origens e mesmo modelo | PASS |
+| C35 | interrupção antes/depois do rename de manifesto/resultado: destino anterior ou novo íntegro; temporário/JSON parcial não aceito | `ok 34 - C35:` | carried from 4470b14 (texto e teste não tocados por 864b31b nem por 7868a78; linhas iguais): `s4-limits.test.mjs:314` - `assert.equal(result.signal, 'SIGKILL', ...)`; `:329`/`:333` - manifesto anterior/novo íntegro; `:337-338`/`:340` - resultado ausente+temporário / novo íntegro; `:346` - `assert.doesNotThrow(() => JSON.parse(content), file)`; `:352` - temporário em `ignored` com `reason === 'temporary'`; `:366` + `:370` - `loadRun` recusa resultado e manifesto parciais | PASS |
+| C36 | segredos (chave, token, URL credenciada, cabeçalho), inclusive ecoados, fora de stdout/stderr do dry-run e da coleta e de manifesto, resultados e comparação, inclusive em erros HTTP, de parsing e de transporte; chave/token < 8 → código 2 (`Error 2`), sem chamadas e sem execução | `ok 39 - C36:` | carried from 864b31b (texto mudou na Round 4, teste não; nem texto nem teste tocados por 7868a78; linhas iguais): `s4-limits.test.mjs:659` - `assert.deepEqual(runs.map((r) => r.nodeStatus), [0, 0, 1, 1, 1, 1, 1], ...)`, sobre o dry-run (`runs[0]`) e seis coletas (HTTP, parsing e transporte, `:651-657`); `:663` - `assert.equal(done.results[0].response.runtime_details.stats.echo, 'Bearer [omitido]')`, prova de que o eco chegou; `:695` - `comparison.json` e `manifest.json` entre os arquivos varridos; `:698` - `assert.ok(!text.includes(secret), \`${name} em ${where}\`)` sobre stdout e stderr das 7 execuções e todos os arquivos de evidência; `:700` - nenhum `authorization: Bearer` não omitido; `:685` - `assert.equal(short.nodeStatus, 2, ...)` (dry-run e coleta); `:688` - `assert.ok(!existsSync(join(sandbox.evidenceDir, \`c36-curto-${name}\`)), ...)`; `:691` - `assert.equal(readServices(sandbox).length, requestsBefore, 'nenhuma chamada com segredo curto')` | PASS |
+| C37 | nova tentativa usa nova execução, sem importar resultados/caches anteriores; mesmo ID segue C30 | `ok 40 - C37:` | carried from 4470b14 (texto e teste não tocados por 864b31b nem por 7868a78; linhas iguais): `s4-limits.test.mjs:725-726` - 18 traduções e 24 avaliações refeitas; `:730-731` - sentinela ausente dos resultados e dos pedidos; `:737` - `assert.deepEqual(evidenceReads.filter(...), [])` (rastreio de `fs`); `:741-742` - mesmo ID → 2, bytes intactos | PASS |
+| C38 | corpus sintético, zero leituras de chats/Cloak/credenciais; tráfego só ao servidor configurado e ao Jev oficial | `ok 41 - C38:` | carried from 4470b14 (texto e teste não tocados por 864b31b nem por 7868a78; linhas iguais): `s4-limits.test.mjs:775` - `assert.deepEqual(outside, [], 'nenhuma leitura fora da bancada')`; `:777` - nenhum caminho com `cloak`, `.claude`, `.codex`, `.ssh`, `.aws` ou `/gh/`; `:783` - origens `['http://lmstudio.interno:4321', 'https://api.typesafe.ai']`; `:785` - Jev só em `https://api.typesafe.ai/v1/systemone` | PASS |
+| C39 | evidências fora do Git; sobrevivem byte a byte a nova coleta e à leitura por `loadRun`, sem limpeza, inclusive arquivos alheios à bancada | `ok 42 - C39:` | carried from 864b31b (texto mudou na Round 4, teste não; nem texto nem teste tocados por 7868a78; linhas iguais): `s4-limits.test.mjs:799` - `assert.equal(git('check-ignore', '-q', path).status, 0, ...)` no repositório real; `:801` - `assert.equal(git('ls-files', '--', 'artifacts').stdout, '', ...)`; `:808-809` - arquivos alheios (`notas.md` e um `.tmp` parcial) gravados antes do snapshot; `:815` - `assert.equal(after[file], content, \`${file} preservado\`)` depois de nova coleta e de `loadRun` sobre as três execuções (`:811-812`); `:816` - nenhuma execução removida | PASS |
+| C40 | relações `schema_version: 1`; `loadRun` recusa vínculo a outra execução ou revisão e arquivo com outra versão de schema | `ok 35 - C40:` | carried from 864b31b (texto mudou na Round 4, teste não; nem texto nem teste tocados por 7868a78; linhas iguais): relações `s4-limits.test.mjs:406` - `assert.equal(manifest.schema_version, 1)`; `:420` - idem por resultado; `:430` - `assert.deepEqual([r.evaluation.run_id, r.evaluation.case_id, r.evaluation.arm], ['c40', r.item.case_id, r.item.arm])`; `:431` - braço EN → tradução do caso; recusas `:455` - `assert.throws(() => loadRun(...), (e) => e instanceof UsageError && pattern.test(e.message), runId)` sobre 12 variantes (`:441-452`: outra execução ×3, revisão ×2, schema ×3, vínculos ×3, item fora do plano); `:458` - revisão diferente da esperada | PASS |
+| C52 | live com serviços controlados: zero Codex/Claude/Grok/agy/Cloak | `ok 29 - C52:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s3-jev.test.mjs:548` - `assert.equal(run.status, 0, run.output)`; `:553` - 42 resultados; `:557` - `assert.equal(run.shimCalls, '', ...)`; `:558` - `assert.deepEqual(run.guard.attempts, [], ...)` | PASS |
+| C53 | fronteira live: transporte/resposta fixture → 2, preservando evidências | `ok 30 - C53:` | carried from 4470b14 (teste não tocado por 864b31b nem por 7868a78; linhas iguais): `s3-jev.test.mjs:580-582` - `run.status === 2`, `run.nodeStatus === 2`, `/proveniência "fixture" incompatível com MODE=live em R01-evaluate-pt/`; `:595` - `assert.deepEqual(after.rawResults, before.rawResults)` | PASS |
+| C55 | 1º SIGINT/SIGTERM → `incomplete`/`interrupted`, sem alegar cancelamento, trava liberada; durante chamada `unknown`; fora de chamada, sem que a seguinte saia; sinal só no Node → `Error 1`; Ctrl+C no grupo → make morre pelo sinal, manifesto autoritativo; segundo sinal, do mesmo tipo ou do outro, segue o padrão, sem limpeza | `ok 43 - C55:` (exit 0) | verified at 7868a78 (código, texto e teste mudaram). Código: `src/ai-study/cli.mjs:63-67` - `onSignal` faz `for (const name of INTERRUPT_SIGNALS) process.off(name, onSignal)` antes de `interrupt.abort()`, registrado com `process.on` nos dois nomes. Durante chamada, SIGINT e SIGTERM: `tests/ai-study/s4-limits.test.mjs:856` - `assert.equal(result.nodeStatus, 1, ...)`; `:857` → `assertInterrupted` (`:835-837`: `incomplete`, `interrupted`, trava ausente); `:858-861` - `['R01-evaluate-en', true, 'unknown']`; `:864` - `assert.doesNotMatch(manifest.failure.message, /cancelad[ao]\b/, signal)`. Entre chamadas, **SIGINT e SIGTERM** (`:869`): `:876` - `nodeStatus` 1; `:879` - `assert.equal(betweenManifest.failure, null, ...)`; `:880` - `completed_items` `['R01-translate-pt-en']`; `:882` - `assert.deepEqual(betweenManifest.calls, { local: { used: 1, limit: 20 }, jev: { used: 0, limit: 24 } }, signal)`. Antes do envio: `:893-896` - `['R01-translate-pt-en', false, 'not_sent']`; `:898` - `calls.local.used === 0`. Grupo do make: `:912` - `[status, signal, nodeStatus]` = `[null, 'SIGINT', null]`; `:914` - `] Interrupt`; `:915-916` - manifesto `interrupted`/`unknown`. **Segundo sinal, quatro pares** (`:922`): `:927` - vivo depois do 1º; `:933` - `assert.ok(result, \`${first} → ${second}: o segundo sinal não foi engolido\`)` (corrida contra 3 s, antes de liberar a barreira); `:934` - `assert.equal(result.nodeStatus, exitCode[second], ...)` com `{ SIGINT: 130, SIGTERM: 143 }` (`:921`), isto é, morto pelo **segundo** sinal; `:935` - manifesto `running` (sem limpeza); `:937` - trava com o pid do processo. Reproduzido por mim em HEAD e contraprova com o `cli.mjs` antigo: ver "C55 - julgamento" | PASS |
 
-### Tabelas de decisão (todas as linhas)
+### C55 - julgamento
 
-Verified at 4eea13b. Exigência de `checks.md`: "C25, C27 e C28 devem cobrir cada linha das suas tabelas de decisão, além do caminho de integração."
+Verified at 7868a78. **Veredito: PASS.** O FAIL da Round 4 está fechado e as duas observações menores do C55 também.
 
-**C25 - aceitos** (`s3-jev.test.mjs:292`, cada linha deve resultar em `[]`):
+**Código.** Com `process.once` por nome, o primeiro sinal só removia o próprio listener e o do outro tipo engolia o segundo sinal. Agora o primeiro sinal, de qualquer tipo, remove os dois listeners (`cli.mjs:64`) antes de abortar (`:65`). Sem listener, o segundo SIGINT ou SIGTERM recebe a ação padrão do Node, que encerra o processo pelo sinal sem rodar `finally` nem gravar manifesto. É o que o claim pede.
 
-| Linha | Entrada | Local |
-| --- | --- | --- |
-| válido | seis `yes` 0.8/0.1/0.1, confiança 0.6 | `s3-jev.test.mjs:283` |
-| probabilidade 0 e 1 | `{ yes: 1, no: 0, insufficient: 0 }` | `s3-jev.test.mjs:284` |
-| soma a menos de 0,000001 | distância 5e-7 | `s3-jev.test.mjs:285` |
-| soma a exatamente 0,000001 acima | `0.250001` | `s3-jev.test.mjs:286` |
-| soma a exatamente 0,000001 abaixo | `0.249999` | `s3-jev.test.mjs:287` |
-| confiança 0 | `0` | `s3-jev.test.mjs:288` |
-| confiança 1 | `1` | `s3-jev.test.mjs:289` |
-| escolha `insufficient` | `insufficient` | `s3-jev.test.mjs:290` |
+**Reprodução própria em HEAD.** Script no scratchpad, sandbox do `makeSandbox`, coleta fixture presa na barreira antes da primeira chamada, primeiro sinal, 300 ms, segundo sinal e 1 s de espera antes de liberar a barreira:
 
-**C25 - rejeitados** (`s3-jev.test.mjs:326-327`, problema não vazio e mensagem específica):
+| 1º → 2º | Vivo após o 1º | Vivo 1 s após o 2º | `nodeStatus` (linha `Error N`) | Manifesto | Trava |
+| --- | --- | --- | --- | --- | --- |
+| SIGINT → SIGINT | sim | não | 130 | `running` | presente |
+| SIGINT → SIGTERM | sim | não | 143 | `running` | presente |
+| SIGTERM → SIGINT | sim | não | 130 | `running` | presente |
+| SIGTERM → SIGTERM | sim | não | 143 | `running` | presente |
 
-| Linha | Membro do Coverage | Local |
-| --- | --- | --- |
-| lista ausente | resposta sem resultados | `s3-jev.test.mjs:295` |
-| resultado não objeto | resultado inválido | `s3-jev.test.mjs:296` |
-| resultado em texto | sem inferir de prosa | `s3-jev.test.mjs:297` |
-| ID ausente | ID ausente | `s3-jev.test.mjs:298` |
-| ID extra | ID extra | `s3-jev.test.mjs:299` |
-| ID repetido | ID repetido | `s3-jev.test.mjs:300` |
-| tipo `score` | tipo não choice | `s3-jev.test.mjs:301` |
-| tipo ausente | tipo não choice | `s3-jev.test.mjs:302` |
-| escolha `maybe` | escolha fora do domínio | `s3-jev.test.mjs:303` |
-| escolha `Yes` | escolha fora do domínio | `s3-jev.test.mjs:304` |
-| escolha em prosa | sem inferir de prosa | `s3-jev.test.mjs:305` |
-| escolha ausente com prosa em `text` | sem inferir de prosa | `s3-jev.test.mjs:306` |
-| probabilidades ausentes | probabilidade ausente | `s3-jev.test.mjs:307` |
-| uma probabilidade ausente | probabilidade ausente | `s3-jev.test.mjs:308` |
-| probabilidade extra | (além do claim) | `s3-jev.test.mjs:309` |
-| probabilidade NaN | não finita / borda NaN | `s3-jev.test.mjs:310` |
-| probabilidade infinita | não finita / borda infinito | `s3-jev.test.mjs:311` |
-| probabilidade em texto | não numérica | `s3-jev.test.mjs:312` |
-| probabilidade abaixo de 0 | fora de [0,1] / borda abaixo de 0 | `s3-jev.test.mjs:313` |
-| probabilidade acima de 1 | fora de [0,1] / borda acima de 1 | `s3-jev.test.mjs:314` |
-| soma acima da tolerância | distância 1,1e-6 > 0,000001 | `s3-jev.test.mjs:315` |
-| soma abaixo da tolerância | distância 1,1e-6 > 0,000001 | `s3-jev.test.mjs:316` |
-| confiança ausente | confiança inválida | `s3-jev.test.mjs:317` |
-| confiança abaixo de 0 | borda abaixo de 0 | `s3-jev.test.mjs:318` |
-| confiança acima de 1 | borda acima de 1 | `s3-jev.test.mjs:319` |
-| confiança NaN | borda NaN | `s3-jev.test.mjs:320` |
-| confiança infinita | borda infinito | `s3-jev.test.mjs:321` |
-| confiança em texto | não numérica | `s3-jev.test.mjs:322` |
+Em todos os pares o processo morre pelo segundo sinal (128 + 2 ou 128 + 15), sem limpeza. Com o `cli.mjs` de `5417c97` copiado no mesmo sandbox, SIGINT → SIGTERM e SIGTERM → SIGINT ficam vivos 1 s depois do 2º sinal e só terminam quando a barreira é liberada, com `nodeStatus 1` e `incomplete`/`interrupted`. Isso confirma o contraexemplo da Round 4.
 
-**C25 - pelo adaptador e coletor** (`s3-jev.test.mjs:343-360`, cada um como 2ª resposta, R01 EN): ID ausente (`:333`), prosa sem `choice` (`:334`), corpo sem `answers` (`:335`), corpo não JSON (`:336`), soma fora (`:337`).
+**A nova asserção mata o defeito.** Num `git worktree add --detach` no scratchpad, com o `cli.mjs` de `5417c97` e o teste de HEAD, `make check-proof TEST_FLAGS='--test-name-pattern=^C55:'` sai com 2: `not ok 1 - C55: ...`, `error: 'SIGINT → SIGTERM: o segundo sinal não foi engolido'` (`:933`). A worktree foi removida, e a porcelain da árvore real ficou igual antes e depois. Isso não conta como injeção de falhas, que não roda no profile `light`. É só a contraprova pedida para o fix.
 
-**C27** (`s3-jev.test.mjs:418`):
+**Observações menores da Round 4:**
 
-| Linha | Escolha × gabarito | Resultado | Local |
-| --- | --- | --- | --- |
-| 1 | `yes` × `yes` | hit | `s3-jev.test.mjs:409` |
-| 2 | `no` × `no` | hit | `s3-jev.test.mjs:410` |
-| 3 | `insufficient` × `insufficient` | hit | `s3-jev.test.mjs:411` |
-| 4 | `no` × `yes` | miss | `s3-jev.test.mjs:412` |
-| 5 | `yes` × `insufficient` | miss | `s3-jev.test.mjs:413` |
-| 6 | `insufficient` × `no` | miss | `s3-jev.test.mjs:414` |
-| 7 | `null` × `yes` | absent | `s3-jev.test.mjs:415` |
-| 8 | `undefined` × `insufficient` | absent | `s3-jev.test.mjs:416` |
-| 9 | resposta `invalid_response` | todos absent | `s3-jev.test.mjs:420` |
-| 10 | braço não executado | todos absent | `s3-jev.test.mjs:421` |
-| coleta | PT = gabarito; EN sempre `insufficient` | contagens por julgamento e braço | `s3-jev.test.mjs:437-449` |
+- SIGTERM fora de uma chamada agora tem prova direta: entre chamadas (`:869-883`) e como primeiro sinal nos pares `SIGTERM → *` (`:925-927`). Resolvida.
+- No caso entre chamadas, `calls` é assertado por inteiro, com `jev.used === 0` (`:882`). "Sem que a chamada seguinte saia" passa a ter prova direta. Resolvida.
 
-**C28** (`s3-jev.test.mjs:493-503`):
+**Texto do claim e Status.** `checks.md:193` acrescenta "do mesmo tipo ou do outro". Isso só torna explícito o que a frase do plano ("um segundo sinal segue o comportamento padrão", `plan.md:176`) já exigia. O texto não fica mais fraco. O Status (`:195`) descreve exatamente os casos do teste.
 
-| Linha | Motivos esperados | Local |
-| --- | --- | --- |
-| par completo | `[]`, denominador 1 | `s3-jev.test.mjs:475` |
-| braço PT ausente | `pt_missing` | `s3-jev.test.mjs:476` |
-| braço EN ausente | `en_missing` | `s3-jev.test.mjs:477` |
-| dois braços ausentes | `pt_missing`, `en_missing` | `s3-jev.test.mjs:478` |
-| braço EN inválido | `en_invalid` | `s3-jev.test.mjs:479` |
-| braço PT inválido | `pt_invalid` | `s3-jev.test.mjs:480` |
-| corpus divergente | `reference_mismatch` | `s3-jev.test.mjs:481` |
-| gabarito divergente | `reference_mismatch` | `s3-jev.test.mjs:482` |
-| instruções divergentes | `instructions_mismatch` | `s3-jev.test.mjs:483` |
-| critérios divergentes | `criteria_mismatch` | `s3-jev.test.mjs:484` |
-| versão Jev divergente | `jev_model_mismatch` | `s3-jev.test.mjs:485` |
-| versão Jev PT não identificada | `jev_model_unknown` | `s3-jev.test.mjs:486` |
-| versão Jev EN não identificada | `jev_model_unknown` | `s3-jev.test.mjs:487` |
-| coleta: R01 sem tradução válida, R02 com versão EN diferente | `en_missing`, `jev_model_mismatch`, denominador 10 | `s3-jev.test.mjs:525-534` |
-
-Os seis membros de "Par incompleto (6)" em `checks.md` (braço ausente, braço inválido, corpus/gabarito, instruções, critérios, versão Jev) têm linha. Os de "Resposta Jev inválida (10)", "Bordas de probabilidade/confiança (6)", "Tolerância da soma (3 edges)" e "Comparação individual (3)" também. Isto é leitura das linhas contra o Coverage, não o recompute do profile `standard`.
-
-### Ponto 1 - pré-carga `live-services-hooks.mjs` em C52 e C53
-
-Verified at 4eea13b. **Veredito: a substituição não invalida as provas de C52 e C53. Aceitável, com duas condições para quando as Decisões 1 e 2 do STATE.md forem implementadas.**
-
-O que a pré-carga substitui (`tests/ai-study/support/live-services-hooks.mjs:17-31`):
-
-- `TRANSLATION_TEMPLATE` passa a ter `official: true`. O resto do objeto continua o real (`{ ...REAL, official: true, ... }`), então o prompt renderizado e a revisão do template são os de produção.
-- `countTokens` do adaptador LM Studio passa a devolver `{ count: 100, tokenizer: config.local.model }`. As demais funções (`inspect`, `translate`) continuam as reais, falando com o `fetch` controlado de `live-services-fetch.mjs`.
-- Só no C53, `createJevTransport` é embrulhado para declarar `fixture` no transporte ou na resposta. Essa troca é o próprio cenário do claim, e a bancada não tem outra forma de injetar proveniência fixture no live. É o mesmo mecanismo aceito no Round 1 para C10.
-
-Por que a prova continua válida:
-
-1. **O que foi trocado não faz I/O nem cria processo na versão real.** O `countTokens` real é uma constante (`src/ai-study/lmstudio.mjs:37-39`, `return { count: null, ... }`), e `official` é um dado (`src/ai-study/template.mjs:14`). Trocar esses dois pontos não esconde nenhum caminho que pudesse invocar uma CLI. Além disso, o C3 faz uma varredura estática de todos os `src/ai-study/*.mjs`, sem pré-carga (`s1-commands.test.mjs:141`). Ela cobre os arquivos reais `template.mjs` e `lmstudio.mjs` contra `child_process`/`worker_threads` e contra os nomes das CLIs.
-2. **Nenhum dos dois pontos trocados é o objeto dos claims.** Template e contagem são as duas barreiras que a S2 põe antes da primeira chamada (AC 12 e AC 14, provadas em C14 e C16 com o código real). Sem a troca, o live para antes de qualquer chamada: o C3 mostra isso pela fronteira `make` (`s1-commands.test.mjs:130-132`). Nesse caso C52 não exercitaria nada e C53 não chegaria ao Jev. O que C52 afirma (zero processos excluídos durante a coleta live) e o que C53 afirma (rejeição por proveniência na fronteira live) é exercitado por código de produto não substituído: `cli.mjs` → `selectTransports` → `runCollection` → adaptadores reais → `rejectMixedProvenance` (`src/ai-study/collect.mjs:132`, aplicado em `:191` e `:224`).
-3. **A guarda continua ativa no processo do `make`.** `NODE_OPTIONS` carrega `guard.mjs` antes das pré-cargas (`tests/ai-study/helpers.mjs:67`). A pré-carga só substitui `globalThis.fetch`. Criação de processo, `net`, `tls`, `http`, `https`, `dgram` e `dns` seguem bloqueados e registrados. O C52 afirma `guard.attempts` vazio (`s3-jev.test.mjs:555`) depois de 42 itens executados (`:550`).
-4. **Está declarado.** Linhas Status de C52/C53 em `checks.md` e `.specs/STATE.md` (Handoff, S3).
-
-Condições (não bloqueiam este round):
-
-- (a) Quando a Decisão 2 trouxer um `countTokens` real (via `@lmstudio/sdk`), a pré-carga deixará de ser inofensiva: ela substituiria código que faz I/O, e C52 deixaria de exercitá-lo. Nesse momento C52 precisa ser re-provado sem substituir `countTokens`, controlando só o transporte. A guarda também não intercepta `globalThis.WebSocket` (`rg -n "WebSocket|undici" tests/ai-study/support/guard.mjs` vazio), que é como o SDK costuma falar com o LM Studio.
-- (b) Quando a Decisão 1 adotar o template oficial (`official: true` no produto), a troca de `TRANSLATION_TEMPLATE` deve sair da pré-carga.
-
-Não fiz uma sonda de mutação em cópia para confirmar o mascaramento: a execução foi negada nesta sessão, e o profile `light` não exige injeção de falhas. O julgamento acima vem da leitura do código.
-
-### Ponto 2 - C3 alterado na S3
-
-Verified at 4eea13b. **Veredito: a afirmação de C3 continua provada e não foi enfraquecida.**
-
-O diff (`git diff 3985c43..4eea13b -- tests/ai-study/s1-commands.test.mjs`) só toca o corpo do C3:
-
-- **Removido:** `assertUsageFailure(last, /coleta live ainda não está disponível/, 'run live')`, `assert.deepEqual(listRuns(sandbox), ['c3-fixture'])` e o filtro `guard.attempts.filter((a) => a.kind === 'process')`.
-- **Acrescentado:** `RUN_ID: 'c3-live'` na 4ª execução. Também as asserções `last.status === 2`, `last.nodeStatus === 1`, stderr `/template oficial não confirmado/` e `listRuns == ['c3-fixture', 'c3-live']` (`:130-133`), e a asserção `guard.attempts` inteiro `[]` (`:135`).
-
-O claim de C3 cobre a preparação (dry-run fixture e live) e a coleta fixture. A coleta live foi movida para C52 por decisão do usuário (30/09/2026). As asserções que provam o claim continuam iguais:
-
-- `run.status === 0` dos três primeiros comandos (`:126`).
-- Log de shims vazio (`:134`). O log é por sandbox e cumulativo (`helpers.mjs:43`, `:79`), então cobre as quatro execuções.
-- Varredura estática (`:141-142`).
-
-A asserção da guarda ficou mais forte: antes só processos, agora qualquer tentativa, inclusive de rede. As linhas removidas tratavam da recusa do live por adaptador ausente, um comportamento que a S3 eliminou de propósito. Elas não faziam parte do claim. A parada em `template_unverified` com zero processos e zero rede é afirmada no lugar. A alteração foi aceita pelo usuário (`.specs/STATE.md`, Escolhas da S3, item 4).
-
-### Ponto 3 - `checks.md` editado na S3
-
-Verified at 4eea13b. **Veredito: nenhum claim, proof, linha de Coverage ou Swept foi alterado.**
-
-O diff (`git diff 3985c43..4eea13b -- .specs/features/jev-translation-feasibility/checks.md`) tem exatamente:
-
-- uma linha alterada: o parágrafo `Status:` do topo, que acrescenta "S3 implementada ... C29–C51 e C54 pendentes";
-- dez linhas `Status:` acrescentadas, uma para cada C21–C28, C52 e C53;
-- uma linha acrescentada após o Status do C25: "Leitura aceita pelo usuário em 01/10/2026 (review do PR #4): ≤0,000001, com folga de 1e-12 só para arredondamento de ponto flutuante."
-
-Nenhuma linha removida além do parágrafo de status substituído. O texto do claim do C25 continua "≤0,000001". A nota é uma leitura de precisão aceita pelo usuário (STATE.md, Escolhas da S3, item 2) e corresponde ao código (`src/ai-study/jev.mjs:64-65`, `:98`). Ver observação 2.
+Ressalva não bloqueante: a espera de 300 ms entre os sinais (`:926`) é heurística. Se o primeiro sinal não chegasse a ser tratado nesse intervalo, os dois sinais encontrariam o listener instalado, e o teste falharia em vez de passar indevidamente. O risco é de flakiness, não de falso verde.
 
 ### Fronteira e nível
 
-Verified at 4eea13b.
+Verified at 7868a78 para os arquivos tocados. O parágrafo de `checks.md:299` passa a dizer "quando o recipe falha, o próprio make sai com 2" e abre exceção explícita para o make encerrado por um sinal do grupo (Ctrl+C), que termina sem `Error N`, com o manifesto como término autoritativo (C55). A emenda de `plan.md:240` diz o mesmo. Isso fecha a observação 1 da Round 4.
 
-- **Claims de fronteira de comando** (lista de `checks.md`: C1, C4–C7, C9–C10, C30, C34, C41, C52–C54). C52 e C53 atravessam `make ai-study-run MODE=live` (`helpers.mjs:83-88`, `spawnSync('make', ...)`). O C53 também confere o código do Node pela linha `Error 2` (`s3-jev.test.mjs:578`). Atendido. C1, C4–C7, C9 e C10: carried from 166a2b9; as provas não mudaram além do deslocamento.
-- **Adaptadores: pedido completo e resultado persistido.** O C21 afirma o pedido HTTP completo do Jev: método, URL, cabeçalhos exatos, chaves do corpo, cada pergunta. Afirma também o pedido persistido igual ao corpo bruto enviado (`:149-150`). O C22 compara os payloads brutos de todas as chamadas, tradução e Jev (`:188-191`). O C25 percorre o adaptador real com cinco respostas HTTP inválidas e afirma o registro persistido (`:343-360`). O C26 afirma o registro persistido. Atendido.
-- C21–C27 usam `runCollection` com os adaptadores reais e `fetch` controlado. Template confirmado e `countTokens` controlado entram por parâmetro (`s3-jev.test.mjs:38`, `:86-91`). Nenhum desses checks está na lista de fronteira de comando.
-- As linhas "instruções/critérios divergentes" do C28 só são provadas em `pairCase`/`buildComparison` (`:483-484`). Na coleta, a rubrica é constante e esses casos não ocorrem. Isso é aceitável porque C28 não é claim de fronteira e o caminho de integração do C28 é exercitado em `:508-535`.
+**Não enfraquece outra obrigação.** A exceção cobre só o make morto por sinal (`status === null`), caso em que `nodeStatusFromMake` devolve `null` (`tests/ai-study/helpers.mjs:152`). Nenhuma asserção que espera 1 ou 2 passa com `null`. C34 continua assertando o make com 2 e o Node com 1 (`s4-limits.test.mjs:605-606`). C29, C30 e C36 continuam assertando `nodeStatus` 2 pela linha `Error 2`. Os códigos 130/143 do segundo sinal não contradizem o parágrafo: nesse caso o make **não** foi morto. Ele reporta `Error 130`/`Error 143`, que é o código do processo filho lido pela mesma linha, e o claim do C55 promete "comportamento padrão", não código 1 ou 2. A emenda do plano corrige um fato antes descrito largo demais, não muda uma decisão. Aceitei-a como coerente. A autorização do usuário não pode ser conferida por outra fonte além do commit. C1–C35, C37, C38, C52 e C53: carried from 4470b14.
 
 ## Swept existing re-read
 
-Verified at 4eea13b. `checks.md` não tem linhas `Swept` marcadas como existentes. As restrições existentes citadas antes continuam presentes:
-
-- `rejectMixedProvenance` em `src/ai-study/collect.mjs:132`, aplicado à identidade (`:160`, `:164`), ao transporte (`:191`) e à resposta (`:224`);
-- a parada `template_unverified` em `collect.mjs:158`;
-- `.gitignore:1` com `artifacts/`, inalterado.
+Carried from 864b31b. `checks.md` não tem linhas `Swept` marcadas como existentes, e o fix não tocou a seção Swept (`git diff 5417c97..7868a78 -- checks.md` só altera as linhas 193, 195 e 299).
 
 ## Coverage
 
-Profile `light`: o recompute de Coverage não foi executado. Os membros das linhas de S3 foram lidos contra as asserções em "Tabelas de decisão". Isso é leitura, não recompute.
+Profile `light`: o recompute de Coverage não roda.
 
 ## Test policy rows
 
-`checks.md` não tem seção `Test policy`; o profile `light` não emite veredito sobre ela.
+`checks.md` não tem seção `Test policy`, e o profile `light` não emite veredito sobre ela.
 
 ## Faults injected
 
-Profile `light`: a injeção de falhas não é exigida e não foi feita. Uma sonda em cópias `git archive HEAD` no scratchpad foi proposta para testar o Ponto 1 e negada pela permissão da sessão, então não rodou. A árvore real não foi alterada.
+Profile `light`: a injeção de falhas não roda. A contraprova do C55 com o `cli.mjs` antigo (acima) só confirma que o fix e a asserção nova estão ligados.
 
 ## Out of scope (not built)
 
-C29, C30, C31, C32, C33, C34, C35, C36, C37, C38, C39, C40 (S4); C41, C42, C43, C44, C45, C46, C47, C48, C49, C50, C51, C54 (S5). São slices não construídas. Não há testes delas na árvore. C51 depende de serviços reais e não pode ser substituído por fixture. Esses checks não foram verificados e **não** contam como aprovados.
+C41–C51 e C54 (S5), C56, C57 e C58 (S5), e C59 (S4, pendente da contagem de tokens). `rg -n "C5[6-9]|C4[1-9]|C5[01]|C54" tests --glob '*.test.mjs'` não encontra testes deles, e eles **não** contam como aprovados.
 
 ## Observations (non-blocking)
 
-Verified at 4eea13b, salvo indicação.
+Verified at 7868a78, salvo indicação.
 
-1. **Pré-carga de C52/C53.** Vale enquanto `countTokens` for constante e o template versionado não for o oficial. Ver Ponto 1, condições (a) e (b). A guarda não cobre `globalThis.WebSocket` (`tests/ai-study/support/guard.mjs`).
-2. **Precisão do C25.** O código aceita distância até 0,000001 + 1e-12 (`src/ai-study/jev.mjs:98`), não estritamente ≤0,000001. A leitura foi aceita pelo usuário e registrada em `checks.md`. Não há linha de teste entre 1e-6 e 1e-6 + 1e-12, e ela não seria representável de forma útil.
-3. **Resposta Jev inválida encerra a coleta.** Ela termina `incomplete` com código 1 (`collect.mjs:280`), o que antecipa AC 29. A decisão é do usuário (STATE.md, item 4), e C34 (S4) continua sendo a prova.
-4. **Falha ao gravar `comparison.json`.** Ela troca o motivo original por `internal_error` (`collect.mjs`, `finish`). A pendência está registrada para a S4 no STATE.md. O teste `S3:` (`s3-jev.test.mjs:597`) não tem check associado.
-5. **Rubrica em inglês sem revisão humana.** `JEV_RUBRIC` (`src/ai-study/jev.mjs:10-41`) ainda não foi revisada, e os critérios `yes`/`no` são texto novo. A revisão é condição de entrada da S5/C51 (STATE.md).
-6. **Identidade do Jev.** Se `POST /v1/systemone` não devolver `model`, todo par fica `jev_model_unknown` (`src/ai-study/comparison.mjs:42`) e o denominador pareado será 0. A confirmação na documentação é condição de entrada da S5 (STATE.md).
-7. (Carried from 166a2b9) A coleta live real continua bloqueada: o template tem `official: false` e a contagem é indisponível (`src/ai-study/template.mjs:14`, `src/ai-study/lmstudio.mjs:37-39`). O `GET` de identidade e as verificações de template ainda não contam no limite de 20 chamadas, que é obrigação de C31. O texto de uma resposta rejeitada por `model_mismatch` não é guardado. Também continuam válidas as observações 5 e 6 do Round 1: C6/C7 só na fronteira dry-run, e `check-proof` quebra com parênteses em `TEST_FLAGS`, por isso usei `--test-name-pattern` repetido.
+1. **Resolvidas desde a Round 4:** o C55 cruzado (FAIL), a falta de prova do SIGTERM fora de chamada, `calls.jev` entre chamadas e o parágrafo de fronteira largo demais.
+2. **C55, espera fixa de 300 ms entre os sinais** (`s4-limits.test.mjs:926`): risco de flakiness, sem risco de falso verde (ver "C55 - julgamento").
+3. (Carried from 4470b14.) A observação sobre "verificações de template" em C31 continua aberta. A observação sobre a pré-carga de C52/C53, `globalThis.WebSocket` e as condições de entrada da S5 também continua.
+
+## Round 4 history (S4, 864b31b)
+
+Carried from 864b31b. A Round 4 (scoped) foi feita por sub-agente independente, profile `light`, range `243d02d..864b31b`, e deu veredito FAIL, com 42 de 43 checks PASS. O C55 falhou porque `cli.mjs` registrava `process.once` por tipo de sinal e um segundo sinal do outro tipo era engolido. A Round 4 reproduziu o defeito. Ela também julgou legítima a divisão de C36/C39/C40 em C56–C58 (cada cláusula removida reaparece com o mesmo sujeito em C56, C57 ou C58; a autorização do usuário só aparece em `STATE.md` e no Status) e julgou que o C59 cobre a emenda da AC 27 sem contradizer o C31. Observações menores: SIGTERM fora de chamada sem prova, `calls.jev` não assertado entre chamadas e o parágrafo "make sai com 2 em qualquer falha". O relatório completo está em `git show 5417c97:.specs/features/jev-translation-feasibility/verification.md`. Lição registrada: L-004.
+
+## Round 3 history (S4, 4470b14)
+
+Carried from 4470b14. A Round 3 foi feita por sub-agente independente, profile `light`, range `14ab14a..4470b14`, e deu veredito FAIL, com 40 de 43 checks PASS. C36, C39 e C40 ficaram PARTIAL porque exigiam o relatório da S5. O relatório completo está em `git show 243d02d:.specs/features/jev-translation-feasibility/verification.md`. Lições registradas: L-001, L-002 e L-003.
+
+## Round 2 history (S3, C21–C28, C52, C53)
+
+Carried from 4eea13b. A Round 2 foi feita por sessão nova independente, profile `light`, range `3985c43..4eea13b`, e deu veredito PASS para C1–C28, C52 e C53. O relatório completo está em `git show 4470b14:.specs/features/jev-translation-feasibility/verification.md`.
 
 ## Round 1 history (S1 + S2, C1–C20)
 
-Carried from 166a2b9. O Round 1 (verificador independente, profile `light`, range `dba3999..166a2b9`, veredito PASS) provou C1–C20 com citações em `166a2b9`. O relatório completo está em `git show 4eea13b:.specs/features/jev-translation-feasibility/verification.md`. Os julgamentos que este round carrega sem refazer, porque os testes só se deslocaram:
-
-- **C10, diff do setup:** a S2 só acrescentou setup (template confirmado, `inspect`/`countTokens`, modelo do candidato). Nenhuma asserção mudou. As asserções estão em `s1-commands.test.mjs:320-328` em 4eea13b.
-- **C19, mudança de expectativa em 5451bc0:** "modelo não fornecido" passou a ser afirmado em `manifest.blocked.runtime` porque a resposta sem `model` bloqueia com `model_mismatch` (C20). As asserções são as mesmas três, mais a duração, em `s2-translation.test.mjs:484-491`. A prova não foi enfraquecida. Na época, sondas em cópia mataram dois mutantes.
-- **Adaptador LM Studio:** o pedido HTTP completo é afirmado em C13 e C20 (`s2-translation.test.mjs:200`, `:537-543`). Em C17–C19 o pedido é conferido de forma implícita pela rota controlada.
+Carried from 166a2b9. A Round 1 foi feita por verificador independente, profile `light`, range `dba3999..166a2b9`, e deu veredito PASS.
 
 ## Gate
 
-Verified at 4eea13b. `make check-proof` (suíte completa, sem filtro): exit 0; 32 passed, 0 failed, 0 cancelled, 0 skipped, 0 todo (C1–C28, C52, C53, o teste de fidelidade do corpus e o teste `S3:` de `comparison.json`).
+Verified at 7868a78. `make check-proof` com a suíte completa, sem filtro: exit 0; 45 passed, 0 failed, 0 cancelled, 0 skipped, 0 todo. São os 43 checks, mais o teste de fidelidade do corpus e o teste `S3:`. `make checks-validate`: 0 erros e 0 avisos. `make plan-validate`: 0 erros e 0 avisos. `git status --porcelain`: vazio antes; vazio depois das provas e dos experimentos; depois do relatório, só ` M .specs/features/jev-translation-feasibility/verification.md`.
+
+Passo 7: não se aplica, porque não houve falha fundamentada nesta rodada. A ressalva dos 300 ms é risco de flakiness, não gap de prova.
