@@ -53,7 +53,19 @@ function controlled(overrides = {}) {
       jev: {
         provenance: 'live',
         evaluate: async (request) =>
-          call('jev', 'evaluate', request, () => ({ provenance: 'live', model: 'jev-test-model', results: [], usage: null })),
+          // Desde a S3 a resposta Jev é validada: seis resultados choice válidos para a coleta seguir.
+          call('jev', 'evaluate', request, () => ({
+            provenance: 'live',
+            model: 'jev-test-model',
+            results: request.judgments.map((judgment) => ({
+              judgment,
+              type: 'choice',
+              choice: 'yes',
+              probabilities: { yes: 0.8, no: 0.1, insufficient: 0.1 },
+              confidence: 0.7,
+            })),
+            usage: null,
+          })),
       },
     },
   };

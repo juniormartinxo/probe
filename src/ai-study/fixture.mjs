@@ -21,6 +21,7 @@ export function createFixtureTransports() {
           model: 'fixture',
           results: judgments.map((judgment) => ({
             judgment,
+            type: 'choice',
             choice: 'insufficient',
             probabilities: { yes: 0.25, no: 0.25, insufficient: 0.5 },
             confidence: 0.5,

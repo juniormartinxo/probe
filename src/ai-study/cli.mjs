@@ -6,21 +6,21 @@ import { displayPath, evidenceDirFor, redact, resolveConfig } from './config.mjs
 import { loadCorpus } from './corpus.mjs';
 import { IncompleteError, UsageError } from './errors.mjs';
 import { createFixtureTransports } from './fixture.mjs';
+import { createJevTransport } from './jev.mjs';
+import { createLmStudioTransport } from './lmstudio.mjs';
 import { formatDryRun, formatRunSummary } from './manifest.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const COMMANDS = ['dry-run', 'run'];
 
-function unavailableLive() {
-  throw new UsageError(
-    'MODE=live: a coleta live ainda não está disponível nesta entrega (adaptador Jev pendente); ' +
-      'use make ai-study-dry-run MODE=live para inspecionar a preparação',
-  );
+// Live usa somente o servidor local configurado e o endpoint oficial do Jev.
+function createLiveTransports(config) {
+  return { local: createLmStudioTransport(config), jev: createJevTransport(config) };
 }
 
 // Fixture nunca constrói transportes live, e não há opção para injetar respostas.
-export function selectTransports(config, { createLiveTransports = unavailableLive } = {}) {
-  return config.mode === 'live' ? createLiveTransports(config) : createFixtureTransports();
+export function selectTransports(config, { createLiveTransports: createLive = createLiveTransports } = {}) {
+  return config.mode === 'live' ? createLive(config) : createFixtureTransports();
 }
 
 export async function main(argv, env, io) {

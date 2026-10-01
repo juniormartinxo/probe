@@ -15,7 +15,7 @@ help:
 	@printf '%s\n' \
 	  'Comandos disponíveis:' \
 	  '  make ai-study-dry-run [MODE=fixture|live]  Imprime o manifesto da coleta, sem executar nada.' \
-	  '  make ai-study-run [MODE=fixture] [RUN_ID=id]  Coleta fixture com respostas simuladas.' \
+	  '  make ai-study-run [MODE=fixture|live] [RUN_ID=id]  Coleta fixture (simulada) ou live (LM Studio e Jev).' \
 	  '  make plan-validate [FEATURE=nome]  Valida um plano tlc-spec-lean.' \
 	  '  make checks-validate [FEATURE=nome]  Valida a estrutura dos checks.' \
 	  '  make check-proof TEST_FLAGS="--test-name-pattern=^C1:"  Executa uma prova quando implementada.' \
