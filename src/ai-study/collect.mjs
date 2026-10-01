@@ -5,6 +5,8 @@ import { fileHash, JUDGMENT_IDS } from './corpus.mjs';
 import { IncompleteError, UsageError } from './errors.mjs';
 import { createRunDir, SCHEMA_VERSION, writeJsonAtomic } from './evidence.mjs';
 import { publicConfig } from './manifest.mjs';
+import { renderPrompt, templateRevision, TRANSLATION_TEMPLATE } from './template.mjs';
+import { checkIdentity, checkInputTokens, invalidTranslationReason, runtimeInfo } from './translation.mjs';
 
 // Ordem da coleta: cada caso R traduz PT→EN e avalia os braços alternando a ordem; depois T01–T06 EN→PT.
 export function planItems(corpus) {
@@ -35,7 +37,14 @@ function generateRunId(now) {
   return `${now.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}-${randomBytes(3).toString('hex')}`;
 }
 
-export async function runCollection({ config, corpusInfo, transports, evidenceDir, now = () => new Date() }) {
+export async function runCollection({
+  config,
+  corpusInfo,
+  transports,
+  evidenceDir,
+  translationTemplate = TRANSLATION_TEMPLATE,
+  now = () => new Date(),
+}) {
   const runId = config.runId ?? generateRunId(now());
   const runDir = join(evidenceDir, runId);
   const items = planItems(corpusInfo.corpus);
@@ -43,6 +52,13 @@ export async function runCollection({ config, corpusInfo, transports, evidenceDi
     [...corpusInfo.corpus.relational_cases, ...corpusInfo.corpus.translation_cases].map((c) => [c.id, c]),
   );
   const translations = new Map();
+  const invalidTranslations = new Set();
+  const template = {
+    id: translationTemplate.id,
+    revision: templateRevision(translationTemplate),
+    official: translationTemplate.official,
+    justification: translationTemplate.justification,
+  };
 
   createRunDir(evidenceDir, runDir, runId);
   const manifest = {
@@ -65,6 +81,15 @@ export async function runCollection({ config, corpusInfo, transports, evidenceDi
     planned_items: items.map((i) => i.id),
     completed_items: [],
     not_executed_items: items.map((i) => i.id),
+    skipped_items: [],
+    blocked: null,
+    translation: {
+      requested_model: config.local.model,
+      returned_model: null,
+      quantization: null,
+      model_state: null,
+      template,
+    },
   };
   const manifestPath = join(runDir, 'manifest.json');
   const save = () => {
@@ -91,29 +116,90 @@ export async function runCollection({ config, corpusInfo, transports, evidenceDi
         'respostas simuladas e reais não se misturam numa execução',
     );
   };
+  const stop = (reason, message, blocked = null) => {
+    manifest.blocked = blocked;
+    finish('incomplete', reason);
+    throw new IncompleteError(`${message}; coleta incompleta, prefixo preservado`);
+  };
+  const call = async (label, operation) => {
+    try {
+      return await operation();
+    } catch (error) {
+      finish('incomplete', 'transport_error');
+      throw new IncompleteError(`falha em ${label}: ${error.message}; coleta incompleta, prefixo preservado`);
+    }
+  };
+  // Live: template oficial e identidade do candidato confirmados antes de qualquer tradução do corpus.
+  // Fixture não tem runtime nem tokenizer do candidato: não há o que confirmar ou contar.
+  const prepareTranslation = async () => {
+    if (config.mode !== 'live') return null;
+    if (!translationTemplate.official) {
+      stop('template_unverified', `template oficial não confirmado (${template.justification}); nenhuma tradução enviada`);
+    }
+    rejectMixedProvenance(transports.local.provenance, { id: 'model-check' });
+    const inspection = await call('model-check', () => transports.local.inspect({ model: config.local.model }));
+    rejectMixedProvenance(inspection?.provenance, { id: 'model-check' });
+    const model = inspection.model ?? null;
+    Object.assign(manifest.translation, {
+      returned_model: model?.id ?? null,
+      quantization: model?.quantization ?? null,
+      model_state: model?.state ?? null,
+    });
+    const problem = checkIdentity(model, config.local.model);
+    if (problem) stop(problem.reason, `candidato não confirmado: ${problem.justification}; nenhum outro modelo foi selecionado`);
+    save();
+    return model.id;
+  };
   save();
 
   try {
+    const candidateModel = await prepareTranslation();
     for (const [index, item] of items.entries()) {
       ensureCorpusUnchanged();
+      if (item.kind === 'evaluation' && item.arm === 'en' && invalidTranslations.has(item.case_id)) {
+        manifest.skipped_items.push({ item: item.id, reason: 'invalid_translation' });
+        save();
+        continue;
+      }
       const payload = buildPayload(item, cases.get(item.case_id), translations);
       const transport = item.kind === 'translation' ? transports.local : transports.jev;
       // A proveniência vem do transporte construído para o modo; a resposta só pode confirmá-la.
       rejectMixedProvenance(transport.provenance, item);
-      let response;
-      try {
-        response =
-          item.kind === 'translation'
-            ? await transport.translate({ item, ...payload })
-            : await transport.evaluate({ item, ...payload });
-      } catch (error) {
-        finish('incomplete', 'transport_error');
-        throw new IncompleteError(`falha em ${item.id}: ${error.message}; coleta incompleta, prefixo preservado`);
+      let prepared = null;
+      if (item.kind === 'translation') {
+        prepared = {
+          id: item.id,
+          run_id: runId,
+          case_id: item.case_id,
+          direction: item.direction,
+          original: payload.text,
+          requested_model: config.local.model,
+          template_id: template.id,
+          template_revision: template.revision,
+        };
+        payload.prompt = renderPrompt(translationTemplate, item.direction, payload.text);
+        let inputTokens = null;
+        if (candidateModel) {
+          const count = await call(item.id, () =>
+            transport.countTokens({ item, model: config.local.model, prompt: payload.prompt }),
+          );
+          const blocked = checkInputTokens(count, candidateModel);
+          if (blocked) {
+            const { id, run_id: _, ...traceable } = prepared;
+            stop(blocked.reason, `${id} não enviado: ${blocked.justification}`, { item: id, ...traceable, ...blocked });
+          }
+          inputTokens = { count: count.count, tokenizer: count.tokenizer };
+        }
+        prepared.input_tokens = inputTokens;
       }
+      const started = performance.now();
+      const response = await call(item.id, () =>
+        item.kind === 'translation' ? transport.translate({ item, ...payload }) : transport.evaluate({ item, ...payload }),
+      );
+      const durationMs = Math.round(performance.now() - started);
       rejectMixedProvenance(response?.provenance, item);
       ensureCorpusUnchanged();
-      if (item.kind === 'translation') translations.set(item.case_id, response.output);
-      writeJsonAtomic(join(runDir, 'results', `${String(index + 1).padStart(3, '0')}-${item.id}.json`), {
+      const record = {
         schema_version: SCHEMA_VERSION,
         run_id: runId,
         mode: config.mode,
@@ -124,7 +210,24 @@ export async function runCollection({ config, corpusInfo, transports, evidenceDi
         item,
         request: payload,
         response,
-      });
+      };
+      if (item.kind === 'translation') {
+        // Derivação literal ao lado do original; o original nunca é substituído.
+        const invalidReason = invalidTranslationReason(response);
+        record.translation = {
+          ...prepared,
+          derived_text: response.output,
+          status: invalidReason ? 'invalid_translation' : 'valid',
+          invalid_reason: invalidReason,
+          duration_ms: durationMs,
+          runtime: runtimeInfo(response),
+        };
+        if (invalidReason) invalidTranslations.add(item.case_id);
+        else translations.set(item.case_id, response.output);
+      } else if (item.arm === 'en') {
+        record.derived_from = `${item.case_id}-translate-pt-en`;
+      }
+      writeJsonAtomic(join(runDir, 'results', `${String(index + 1).padStart(3, '0')}-${item.id}.json`), record);
       manifest.completed_items.push(item.id);
       save();
     }
@@ -134,6 +237,12 @@ export async function runCollection({ config, corpusInfo, transports, evidenceDi
     throw error;
   }
 
+  if (invalidTranslations.size > 0) {
+    finish('incomplete', 'invalid_translation');
+    throw new IncompleteError(
+      `tradução inválida em ${[...invalidTranslations].join(', ')}; braços ingleses correspondentes não avaliados`,
+    );
+  }
   finish('completed', null);
   return { runId, runDir, manifest };
 }

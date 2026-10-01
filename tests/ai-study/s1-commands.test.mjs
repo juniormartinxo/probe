@@ -9,6 +9,7 @@ import { LIMITS, redact, resolveConfig } from '../../src/ai-study/config.mjs';
 import { loadCorpus } from '../../src/ai-study/corpus.mjs';
 import { UsageError } from '../../src/ai-study/errors.mjs';
 import { createFixtureTransports } from '../../src/ai-study/fixture.mjs';
+import { TRANSLATION_TEMPLATE } from '../../src/ai-study/template.mjs';
 import {
   defaultCorpusPath,
   excludedClis,
@@ -278,10 +279,14 @@ test('C10: resposta com proveniência diferente do modo é rejeitada com código
 
   // Coletor em modo live: transporte simulado ou resposta que se declara simulada são rejeitados.
   const fixture = createFixtureTransports();
+  // Desde a S2 o coletor live confirma template e candidato e conta tokens antes de traduzir.
   const liveLocal = {
     provenance: 'live',
+    inspect: async () => ({ provenance: 'live', model: { id: validLive.LOCAL_MODEL, quantization: 'Q6_K' } }),
+    countTokens: async () => ({ count: 100, tokenizer: validLive.LOCAL_MODEL }),
     translate: async (r) => ({ ...(await fixture.local.translate(r)), provenance: 'live' }),
   };
+  const translationTemplate = { ...TRANSLATION_TEMPLATE, official: true };
   const liveConfig = (runId) =>
     resolveConfig('run', { MODE: 'live', RUN_ID: runId, ...validLive, TYPESAFE_API_KEY: SECRET }, { repoRoot });
   const corpusInfo = loadCorpus(defaultCorpusPath);
@@ -302,7 +307,13 @@ test('C10: resposta com proveniência diferente do modo é rejeitada com código
   ];
   for (const [runId, jev] of scenarios) {
     await assert.rejects(
-      runCollection({ config: liveConfig(runId), corpusInfo, transports: { local: liveLocal, jev }, evidenceDir: sandbox.evidenceDir }),
+      runCollection({
+        config: liveConfig(runId),
+        corpusInfo,
+        transports: { local: liveLocal, jev },
+        evidenceDir: sandbox.evidenceDir,
+        translationTemplate,
+      }),
       (error) => error instanceof UsageError && error.exitCode === 2 && /proveniência "fixture"/.test(error.message),
       runId,
     );

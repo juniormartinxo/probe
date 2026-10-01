@@ -13,7 +13,7 @@ const COMMANDS = ['dry-run', 'run'];
 
 function unavailableLive() {
   throw new UsageError(
-    'MODE=live: a coleta live ainda não está disponível nesta entrega (adaptadores LM Studio e Jev pendentes); ' +
+    'MODE=live: a coleta live ainda não está disponível nesta entrega (adaptador Jev pendente); ' +
       'use make ai-study-dry-run MODE=live para inspecionar a preparação',
   );
 }

@@ -5,7 +5,7 @@ Plan: `.specs/features/jev-translation-feasibility/plan.md`
 
 54 checks em 5 slices · 1 one-way door · 3 pré-requisitos operacionais para coleta real, mantidos no plano.
 
-Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas; C13–C54 pendentes.** Em 30/09/2026 o usuário aprovou mover as partes live de C3 e C10, que dependem dos adaptadores, para C52–C54 em S3 e S5. Validar este documento não executa nem comprova os checks.
+Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas. S2 implementada em 01/10/2026: C13–C20 com provas executadas por transportes controlados. C21–C54 pendentes.** Em 30/09/2026 o usuário aprovou mover as partes live de C3 e C10, que dependem dos adaptadores, para C52–C54 em S3 e S5. Validar este documento não executa nem comprova os checks.
 
 Comando disponível: `make check-proof`, usando o runner nativo do Node 24 observado no WSL. Os seletores abaixo reservam nomes `C<n>: descrição` nos futuros arquivos `tests/ai-study/*.test.mjs`. O comando usa `--test-isolation=none` e exige no TAP pelo menos um check nomeado executado, sem skip/TODO, além da saída zero do Node. As provas devem isolar seu estado explicitamente; testes de concorrência ainda precisam criar os processos ou chamadas que sua obrigação exige. Arquivo ausente, teste ausente, skip ou zero testes executados não encerram um check. A existência e a execução do teste selecionado deverão ser verificadas na fase de implementação e pelo verificador independente. Não foram adicionados testes vazios para produzir sucesso artificial.
 
@@ -67,27 +67,35 @@ Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C13** - Toda tradução preparada registra o original, direção PT→EN ou EN→PT, modelo solicitado e revisão do template, vinculados ao caso e à execução (AC 11, Relations).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C13:'`
+Status: prova executada em 01/10/2026 (S2, `tests/ai-study/s2-translation.test.mjs`, transportes controlados).
 
 **C14** - Template oficial não confirmado encerra a coleta `incomplete` com `template_unverified`, sem enviar a tradução do corpus (AC 12).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C14:'`
+Status: prova executada em 01/10/2026 (S2, `tests/ai-study/s2-translation.test.mjs`, transportes controlados).
 
 **C15** - Entrada formatada de 2048 tokens é admitida e entrada de 2049 é bloqueada com `input_limit` sem envio nem truncamento; a contagem inclui o template (AC 13).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C15:'`
+Status: prova executada em 01/10/2026 (S2, `tests/ai-study/s2-translation.test.mjs`, transportes controlados).
 
 **C16** - Contagem indisponível ou produzida por tokenizer não correspondente bloqueia o envio com `token_count_unavailable` (AC 14).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C16:'`
+Status: prova executada em 01/10/2026 (S2, `tests/ai-study/s2-translation.test.mjs`, transportes controlados).
 
 **C17** - Saída de tradução é persistida literalmente como derivação identificada, preservando original e vínculo; o envio ao braço inglês usa essa derivação sem substituir o original (AC 15, Relations).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C17:'`
+Status: prova executada em 01/10/2026 (S2, `tests/ai-study/s2-translation.test.mjs`, transportes controlados).
 
 **C18** - Tradução vazia, só espaços ou encerrada pelo limite de saída resulta em `invalid_translation`, sem chamada Jev do braço inglês correspondente (AC 16).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C18:'`
+Status: prova executada em 01/10/2026 (S2, `tests/ai-study/s2-translation.test.mjs`, transportes controlados).
 
 **C19** - Registro da tradução contém duração em milissegundos e modelo/tokens/memória retornados pelo runtime; cada informação não fornecida recebe indicação e justificativa, sem usar tamanho de download como VRAM (AC 17).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C19:'`
+Status: prova executada em 01/10/2026 (S2, `tests/ai-study/s2-translation.test.mjs`, transportes controlados).
 
 **C20** - O adaptador registra identidade solicitada e retornada do candidato Q6_K; indisponibilidade ou incompatibilidade não seleciona outro modelo, não instala runtime e não baixa pesos (S2, Impact, Out of scope).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C20:'`
+Status: prova executada em 01/10/2026 (S2, `tests/ai-study/s2-translation.test.mjs`, transportes controlados).
 
 ### S3 - Comparação pareada no Jev
 
