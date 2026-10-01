@@ -6,24 +6,20 @@ As decisões de produto aprovadas estão no [desenho consolidado do MVP](../docs
 
 **Feature**: `jev-translation-feasibility`.
 
-**Authorized scope**: somente planejamento. O usuário esclareceu expressamente que este assistente não deve implementar. Aprovações de plano, checks ou gabaritos não autorizam escrever código, testes da aplicação, instalar dependências ou executar ensaios. Qualquer mudança desse escopo depende de instrução explícita posterior do usuário.
+**Authorized scope**: implementação da S1 (PRB-2) autorizada pelo usuário em 30/09/2026 ao invocar a implementação do card. S2–S5, coleta real e instalação de dependências continuam dependendo de autorização explícita.
 
-**Where**: desenho e plano aprovados; checks e corpus de referência escritos. A bancada e seus testes ainda não foram implementados; nenhum modelo foi chamado.
+**Where**: S1 implementada em `src/ai-study/` com corpus estruturado `src/ai-study/corpus/revision-1.json` (textos e gabaritos da revisão 1, conferidos contra corpus.md por teste). Comandos `make ai-study-dry-run` e `make ai-study-run` (fixture por omissão). C1–C12 com provas em `tests/ai-study/s1-*.test.mjs`, executadas por `make check-proof`; as partes live de C3 e C10 foram movidas para C52–C54 (S3/S5) por decisão do usuário em 30/09/2026. Nenhum modelo foi chamado.
 
-**In progress**: [checks](features/jev-translation-feasibility/checks.md) — 51 obrigações derivadas dos 37 critérios; [corpus](features/jev-translation-feasibility/corpus.md) — 12 casos relacionais e 6 traduções EN→PT, com gabaritos aprovados pelo usuário em 22/09/2026.
+**Next step**: verificador independente da S1, conforme a tlc-spec-lean; depois S2 (PRB-3). `MODE=live` em `ai-study-run` encerra com código 2 até existirem os adaptadores de S2/S3.
 
-**Next step**: continuar o planejamento e preparar o encaminhamento para futura implementação. Permanece aberta a escolha entre obter o template oficial e aceitar uma adaptação identificada, sem executar modelos. Não iniciar S1 ou qualquer construção a partir de uma aprovação documental.
-
-**Blockers**: nenhum para a derivação documental. Os gabaritos estão aprovados. Servidor/modelo local, configuração Jev e confirmação do template continuam como pré-requisitos de uma futura coleta, fora do escopo atual. Não é necessário fornecer credenciais durante o planejamento.
+**Blockers**: nenhum para S1. Servidor/modelo local, configuração Jev e confirmação do template continuam como pré-requisitos da coleta real. Atenção para S4: o GNU Make sai sempre com 2 quando o recipe falha; o código 1 (incompleto) do Node só aparece na linha `Error 1` do make, então C34 precisa de uma decisão sobre como publicar esse código na fronteira `make`.
 
 **Template research**: o usuário indicou `chbae624/vllm-translategemma-12b-it`, revisão `81d99b4299ce797e9fa5141ade4384e57f5e9442`, arquivo `chat_template.jinja`, SHA-256 `ff2b09144adfdc0dc3b9366a4ec2d36852c28020d4ae42e327b42138a9497b20`. O conteúdo inspecionado usa marcadores textuais `<<<source>>>`, `<<<target>>>` e `<<<text>>>`, além de uma opção de prompt customizado. É uma adaptação, não foi demonstrada equivalência ao arquivo oficial. O critério do plano não foi alterado.
 
-**Scope correction**: arquivos iniciais de implementação criados por interpretação incorreta da aprovação foram removidos nesta rodada. Nenhum código dessa tentativa foi commitado, nenhuma dependência foi instalada e nenhum modelo foi chamado.
-
 **Verification profile**: `light`, padrão do harness; nenhuma elevação foi escolhida. A implementação posterior exige verificador independente conforme a tlc-spec-lean.
 
-**Checks tooling**: `make plan-validate` e `make checks-validate` validam estrutura. `make check-proof TEST_FLAGS='--test-name-pattern=^C1:'` selecionará a prova futura; arquivos de testes ausentes são erro. Nenhum check de comportamento está fechado. Node 24.14.0 foi confirmado no WSL; runner nativo adotado como escolha reversível, sem adicionar Vitest ou dependências.
+**Checks tooling**: `make plan-validate` e `make checks-validate` validam estrutura. `make check-proof TEST_FLAGS='--test-name-pattern=^C1:'` selecionará a prova futura; arquivos de testes ausentes são erro. C1–C12 têm prova executada; C13–C54 continuam pendentes. Node 24.14.0 foi confirmado no WSL; runner nativo adotado como escolha reversível, sem adicionar Vitest ou dependências.
 
-**Uncommitted**: conferir `git status`; `.agents/`, `.claude/`, `.cursor/` e `.windsurf/` já eram arquivos locais não rastreados e não devem entrar por engano nos commits dos documentos.
+**Uncommitted**: conferir `git status`. Evidências ficam em `artifacts/`, ignorado pelo Git.
 
-**Branch**: `main`.
+**Branch**: `prb-2`.

@@ -1,0 +1,641 @@
+{
+  "schema_version": 1,
+  "revision": 1,
+  "source": ".specs/features/jev-translation-feasibility/corpus.md",
+  "judgments": [
+    {
+      "id": "b_depends_on_a",
+      "question": "É necessário consultar A para interpretar ou avaliar a resposta B?",
+      "scope": "Dependência de significado ou validade da resposta, não mera ordem cronológica ou assunto semelhante."
+    },
+    {
+      "id": "a_depends_on_b",
+      "question": "É necessário consultar B para interpretar ou avaliar a resposta A?",
+      "scope": "Mesma regra, na direção inversa. Uma restrição independente não passa a depender de uma opção só porque pode inviabilizá-la."
+    },
+    {
+      "id": "complements",
+      "question": "As perguntas fornecem informações distintas que, juntas, esclarecem uma mesma condição ou sua aplicação?",
+      "scope": "Repetição da mesma informação não é complemento. Dois eixos independentes do projeto não bastam."
+    },
+    {
+      "id": "change_a_affects_b",
+      "question": "A mudança proposta em A exige reavaliar B?",
+      "scope": "Considerar a mudança descrita, sem inventar outra. Reavaliar pode confirmar a resposta anterior; não exige que ela necessariamente mude."
+    },
+    {
+      "id": "same_block",
+      "question": "É útil responder A e B juntas no bloco atual?",
+      "scope": "Considerar o contexto de trabalho fornecido. Uma referência a uma etapa já confirmada pode exigir reavaliação sem fundir as etapas."
+    },
+    {
+      "id": "answers_conflict",
+      "question": "As respostas atuais são incompatíveis com as condições explícitas?",
+      "scope": "Avaliar antes da mudança proposta. Preferência não é obrigação; periodicidades distintas não são somadas sem regra explícita."
+    }
+  ],
+  "relational_cases": [
+    {
+      "id": "R01",
+      "title": "Valor e periodicidade",
+      "context": "estamos esclarecendo o orçamento de uma contratação no mesmo bloco da etapa R. Ainda não existe outra definição de periodicidade.",
+      "a": {
+        "question": "Qual é o orçamento disponível?",
+        "answer": "R$ 10.000."
+      },
+      "b": {
+        "question": "O orçamento informado em A é mensal ou apenas para implantação?",
+        "answer": "É mensal; a implantação terá outro orçamento."
+      },
+      "proposed_change_a": "substituir a resposta por “R$ 10.000 no total, exclusivamente para implantação”.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "yes",
+          "justification": "B qualifica explicitamente o orçamento registrado em A."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "yes",
+          "justification": "O valor de A só ganha periodicidade e escopo com B."
+        },
+        {
+          "judgment": "complements",
+          "expected": "yes",
+          "justification": "Valor e periodicidade completam a mesma restrição."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "yes",
+          "justification": "O novo escopo de A exige revisar a interpretação mensal de B."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "yes",
+          "justification": "Separar as respostas deixa o valor sem uma unidade temporal definida."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "no",
+          "justification": "B esclarece a resposta original, que não fixava periodicidade."
+        }
+      ]
+    },
+    {
+      "id": "R02",
+      "title": "Dois prazos distintos",
+      "context": "há dois registros independentes: data-limite para registrar uma decisão e data contratual para entregar um relatório. Não existe regra que calcule um prazo a partir do outro. As perguntas pertencem a blocos distintos de planejamento.",
+      "a": {
+        "question": "Até quando a decisão deve ser registrada?",
+        "answer": "Até 10 de outubro de 2026."
+      },
+      "b": {
+        "question": "Até quando o relatório deve ser entregue?",
+        "answer": "Até 30 de outubro de 2026."
+      },
+      "proposed_change_a": "antecipar o registro da decisão para 8 de outubro de 2026, mantendo as condições contratuais da entrega.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "no",
+          "justification": "A data contratual de entrega é independente da data de registro."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "no",
+          "justification": "A data de registro pode ser interpretada sem a entrega."
+        },
+        {
+          "judgment": "complements",
+          "expected": "no",
+          "justification": "São obrigações distintas, não duas partes da mesma condição."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "no",
+          "justification": "A mudança mantém explicitamente o prazo contratual de B."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "no",
+          "justification": "Não há dependência que justifique juntar os blocos distintos informados."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "no",
+          "justification": "Datas diferentes referem-se a eventos diferentes."
+        }
+      ]
+    },
+    {
+      "id": "R03",
+      "title": "Integração posterior ao limite",
+      "context": "o prazo máximo é obrigatório e não aceita exceção. A integração é indispensável para a entrega; não há substituto disponível. Ambos os prazos são contados a partir de hoje em dias corridos.",
+      "a": {
+        "question": "Qual é o prazo máximo para entregar?",
+        "answer": "14 dias corridos."
+      },
+      "b": {
+        "question": "A opção escolhida consegue entregar dentro do prazo de A?",
+        "answer": "Sim, ela atende ao prazo, embora dependa de uma integração que só estará disponível em 30 dias corridos."
+      },
+      "proposed_change_a": "ampliar o prazo máximo para 45 dias corridos.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "yes",
+          "justification": "A avaliação de atendimento ao prazo exige o limite de A."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "no",
+          "justification": "A restrição de 14 dias foi fixada independentemente da opção."
+        },
+        {
+          "judgment": "complements",
+          "expected": "yes",
+          "justification": "B confronta a capacidade da opção com a condição definida em A."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "yes",
+          "justification": "O novo limite altera a avaliação de viabilidade temporal de B."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "yes",
+          "justification": "Resolver o conflito requer confrontar prazo e dependência obrigatória."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "yes",
+          "justification": "A disponibilidade em 30 dias impede cumprir o limite obrigatório de 14."
+        }
+      ]
+    },
+    {
+      "id": "R04",
+      "title": "Preferência com exceção permitida",
+      "context": "estamos definindo, no mesmo bloco, o que é aceitável na operação inicial.",
+      "a": {
+        "question": "Automatizar é obrigatório desde o primeiro dia?",
+        "answer": "Não. Preferimos automação, mas permitimos operação manual nos primeiros 30 dias."
+      },
+      "b": {
+        "question": "Uma opção manual nos primeiros 15 dias é aceitável segundo a regra de A?",
+        "answer": "Sim, desde que seja automatizada depois desses 15 dias."
+      },
+      "proposed_change_a": "exigir automação desde o primeiro dia, sem período manual permitido.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "yes",
+          "justification": "A aceitação em B usa a permissão de A."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "no",
+          "justification": "A política pode ser entendida sem essa opção concreta."
+        },
+        {
+          "judgment": "complements",
+          "expected": "yes",
+          "justification": "B aplica a regra geral à duração de uma opção."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "yes",
+          "justification": "Remover a permissão exige rever a aceitação da opção manual."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "yes",
+          "justification": "Regra e exceção concreta esclarecem juntas o que é permitido."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "no",
+          "justification": "Quinze dias manuais estão dentro dos trinta dias permitidos."
+        }
+      ]
+    },
+    {
+      "id": "R05",
+      "title": "Proibição de envio de dados",
+      "context": "nenhuma exceção ou anonimização é permitida pela regra de dados. A opção exige enviar dados brutos ao fornecedor para funcionar. Estamos verificando essa restrição no bloco atual.",
+      "a": {
+        "question": "Podemos enviar os dados ao fornecedor?",
+        "answer": "Não, os dados não podem sair do nosso ambiente."
+      },
+      "b": {
+        "question": "Podemos aprovar a opção que exige esse envio, respeitando A?",
+        "answer": "Sim, aprovamos a opção com o envio obrigatório ao fornecedor."
+      },
+      "proposed_change_a": "permitir explicitamente o envio desses dados ao fornecedor.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "yes",
+          "justification": "A aprovação em B deve respeitar a política em A."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "no",
+          "justification": "A proibição tem significado próprio e não depende da opção."
+        },
+        {
+          "judgment": "complements",
+          "expected": "yes",
+          "justification": "Regra e necessidade da opção esclarecem sua compatibilidade."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "yes",
+          "justification": "A permissão nova modifica a avaliação de B."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "yes",
+          "justification": "Proibição e aprovação incompatível devem ser confrontadas juntas."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "yes",
+          "justification": "B aprova exatamente o envio proibido em A."
+        }
+      ]
+    },
+    {
+      "id": "R06",
+      "title": "Implantação e operação",
+      "context": "implantação e operação usam verbas independentes. Não existe teto agregado. O valor de implantação não gera nem determina mensalidades. As perguntas estão em blocos separados dessas verbas.",
+      "a": {
+        "question": "Qual é a despesa única prevista de implantação?",
+        "answer": "R$ 8.000, pagos uma única vez."
+      },
+      "b": {
+        "question": "Qual é o limite mensal da operação?",
+        "answer": "R$ 2.000 por mês, sem incluir a implantação."
+      },
+      "proposed_change_a": "alterar a implantação para R$ 9.000, mantendo a verba de operação.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "no",
+          "justification": "O limite mensal não depende da despesa única."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "no",
+          "justification": "A despesa única não depende do teto mensal separado."
+        },
+        {
+          "judgment": "complements",
+          "expected": "no",
+          "justification": "São condições de verbas independentes, sem restrição agregada."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "no",
+          "justification": "O contexto mantém a operação independente da implantação."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "no",
+          "justification": "Não há necessidade contextual de unir os blocos de verbas distintas."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "no",
+          "justification": "R$ 8.000 uma vez não viola um teto mensal que exclui implantação."
+        }
+      ]
+    },
+    {
+      "id": "R07",
+      "title": "Disponibilidade e cor",
+      "context": "a janela de manutenção e a cor de um indicador são decisões independentes. A cor não muda comportamento, alertas ou operação. Cada pergunta está no seu bloco de trabalho.",
+      "a": {
+        "question": "Quando pode ocorrer a indisponibilidade de manutenção?",
+        "answer": "Aos domingos, das 2h às 3h."
+      },
+      "b": {
+        "question": "Qual será a cor do indicador estático na tela de configurações?",
+        "answer": "Azul."
+      },
+      "proposed_change_a": "mudar a janela para domingos, das 3h às 4h.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "no",
+          "justification": "A cor não depende da janela."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "no",
+          "justification": "A janela não depende da cor."
+        },
+        {
+          "judgment": "complements",
+          "expected": "no",
+          "justification": "Não esclarecem uma mesma condição."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "no",
+          "justification": "Alterar o horário não afeta a escolha visual independente."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "no",
+          "justification": "O contexto não fornece motivo para unir as duas decisões."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "no",
+          "justification": "Horário e cor podem coexistir como registrados."
+        }
+      ]
+    },
+    {
+      "id": "R08",
+      "title": "Referência sem antecedente",
+      "context": "a pergunta B foi importada sem a conversa anterior. Não sabemos se “esse prazo” refere-se à entrega de A ou a outro prazo discutido fora deste registro.",
+      "a": {
+        "question": "Qual é o prazo para a entrega principal?",
+        "answer": "14 dias corridos, incluindo homologação."
+      },
+      "b": {
+        "question": "Esse prazo inclui homologação?",
+        "answer": "Não, a homologação fica fora desse prazo."
+      },
+      "proposed_change_a": "alterar a entrega principal para 21 dias corridos, ainda incluindo homologação.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "insufficient",
+          "justification": "Falta identificar o antecedente da referência em B."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "no",
+          "justification": "A já define evento, unidade e inclusão de homologação sem B."
+        },
+        {
+          "judgment": "complements",
+          "expected": "insufficient",
+          "justification": "A relação depende de os prazos serem o mesmo."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "insufficient",
+          "justification": "Sem o antecedente, não sabemos se a mudança alcança B."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "insufficient",
+          "justification": "Primeiro é necessário esclarecer a que prazo B se refere."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "insufficient",
+          "justification": "Se forem o mesmo prazo há conflito; se forem distintos pode não haver."
+        }
+      ]
+    },
+    {
+      "id": "R09",
+      "title": "Compromisso e capacidade",
+      "context": "estamos negociando no mesmo bloco uma meta de atendimento e a capacidade da opção. A meta de A é um compromisso provisório, condicionado à confirmação de B. B só pode ser aceita se suportar a meta de A.",
+      "a": {
+        "question": "Que atendimento podemos prometer com a opção de B?",
+        "answer": "Propomos 120 solicitações por minuto, desde que B suporte esse volume."
+      },
+      "b": {
+        "question": "A capacidade da opção suporta a meta de A?",
+        "answer": "Sim. A opção suporta até 150 solicitações por minuto."
+      },
+      "proposed_change_a": "aumentar a meta para 180 solicitações por minuto.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "yes",
+          "justification": "A suficiência da capacidade de B depende da meta proposta em A."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "yes",
+          "justification": "O compromisso provisório em A depende da capacidade confirmada em B."
+        },
+        {
+          "judgment": "complements",
+          "expected": "yes",
+          "justification": "Meta e capacidade completam a avaliação do compromisso."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "yes",
+          "justification": "A nova meta ultrapassa a capacidade declarada e exige reavaliação."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "yes",
+          "justification": "Negociar as duas respostas juntas resolve a dependência mútua."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "no",
+          "justification": "A capacidade atual de 150 suporta a meta atual de 120."
+        }
+      ]
+    },
+    {
+      "id": "R10",
+      "title": "Revisão de uma etapa anterior",
+      "context": "A é uma restrição já confirmada na etapa R. Estamos na etapa O avaliando alternativas. Uma revisão do limite deve voltar ao registro de R; não é uma nova pergunta de orçamento no bloco de opções. Não há outros custos.",
+      "a": {
+        "question": "Qual é o teto total de contratação?",
+        "answer": "R$ 8.000."
+      },
+      "b": {
+        "question": "A opção de R$ 6.000 atende ao teto registrado em A?",
+        "answer": "Sim, atende."
+      },
+      "proposed_change_a": "reduzir o teto total para R$ 5.000.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "yes",
+          "justification": "B declara conformidade com o teto de A."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "no",
+          "justification": "O teto é uma restrição confirmada, independente da opção."
+        },
+        {
+          "judgment": "complements",
+          "expected": "yes",
+          "justification": "Custo e teto permitem avaliar a mesma condição de viabilidade."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "yes",
+          "justification": "A opção de R$ 6.000 precisa ser reavaliada diante do teto de R$ 5.000."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "no",
+          "justification": "O contexto exige manter o registro de R e a avaliação de O nas suas etapas."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "no",
+          "justification": "Antes da mudança, R$ 6.000 cabe no teto de R$ 8.000."
+        }
+      ]
+    },
+    {
+      "id": "R11",
+      "title": "Mesma restrição repetida",
+      "context": "ambas as perguntas tratam do mesmo serviço, evento de manutenção e limite obrigatório. Não são duas restrições distintas. Estamos revisando as perguntas do bloco de disponibilidade.",
+      "a": {
+        "question": "Qual é o tempo máximo de indisponibilidade por manutenção?",
+        "answer": "15 minutos."
+      },
+      "b": {
+        "question": "Por quantos segundos esse serviço pode ficar indisponível em cada manutenção?",
+        "answer": "900 segundos."
+      },
+      "proposed_change_a": "reduzir o tempo máximo para 10 minutos.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "no",
+          "justification": "B fornece um limite completo; a conversão de unidades não exige consultar A."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "no",
+          "justification": "A fornece um limite completo sem consultar B."
+        },
+        {
+          "judgment": "complements",
+          "expected": "no",
+          "justification": "Repetem a mesma informação, em unidades diferentes."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "yes",
+          "justification": "Alterar um registro da mesma restrição exige rever o outro."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "yes",
+          "justification": "Exibir a repetição no mesmo bloco permite conciliá-la sem tratá-la como nova condição."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "no",
+          "justification": "Quinze minutos equivalem a novecentos segundos."
+        }
+      ]
+    },
+    {
+      "id": "R12",
+      "title": "Plano B e reversibilidade",
+      "context": "A foi confirmada na etapa O. Agora estamos na etapa E registrando o plano B da mesma opção. A opção não será rediscutida neste bloco; uma alteração de reversibilidade deve ser registrada em O e propagada a E.",
+      "a": {
+        "question": "A opção permite retorno ao sistema anterior?",
+        "answer": "Sim, o retorno é possível em até um dia, preservando os dados."
+      },
+      "b": {
+        "question": "Qual será o plano B se ocorrerem três falhas consecutivas?",
+        "answer": "Retornar ao sistema anterior em até um dia, preservando os dados, usando a reversibilidade confirmada em A."
+      },
+      "proposed_change_a": "registrar que a migração é irreversível e não permite retorno ao sistema anterior.",
+      "expectations": [
+        {
+          "judgment": "b_depends_on_a",
+          "expected": "yes",
+          "justification": "O plano B usa a capacidade de retorno registrada em A."
+        },
+        {
+          "judgment": "a_depends_on_b",
+          "expected": "no",
+          "justification": "A reversibilidade é propriedade da opção, independente do gatilho de B."
+        },
+        {
+          "judgment": "complements",
+          "expected": "yes",
+          "justification": "Capacidade de retorno e gatilho esclarecem como o fallback poderá ser usado."
+        },
+        {
+          "judgment": "change_a_affects_b",
+          "expected": "yes",
+          "justification": "Tornar a opção irreversível exige rever o fallback."
+        },
+        {
+          "judgment": "same_block",
+          "expected": "no",
+          "justification": "A referência entre O e E exige vínculo e reavaliação, sem fundir os blocos."
+        },
+        {
+          "judgment": "answers_conflict",
+          "expected": "no",
+          "justification": "O retorno de B é permitido pela capacidade atual de A."
+        }
+      ]
+    }
+  ],
+  "translation_cases": [
+    {
+      "id": "T01",
+      "title": "Negação",
+      "source_language": "en",
+      "target_language": "pt",
+      "original": "Do not send customer records to the vendor, even for troubleshooting. Sending aggregated metrics is allowed only if they contain no customer records.",
+      "invariants": "proibição de enviar registros; exceção de troubleshooting expressamente negada; métricas agregadas permitidas somente se não contiverem registros de clientes. Não transformar a segunda frase em permissão geral de envio."
+    },
+    {
+      "id": "T02",
+      "title": "Obrigação e preferência",
+      "source_language": "en",
+      "target_language": "pt",
+      "original": "The audit log must be retained for 90 days. We prefer an automated export, but a manual export is acceptable during the first two weeks.",
+      "invariants": "retenção de 90 dias obrigatória; exportação automática preferencial; manual permitida nas primeiras duas semanas. Não tornar a preferência uma obrigação ou estender a exceção indefinidamente."
+    },
+    {
+      "id": "T03",
+      "title": "Moeda e periodicidade",
+      "source_language": "en",
+      "target_language": "pt",
+      "original": "The one-time setup budget is BRL 12,500. The operating limit is BRL 1,800 per month and excludes setup. These are separate budgets.",
+      "invariants": "reais, 12.500 de implantação única, 1.800 por mês de operação, implantação excluída do limite mensal, verbas separadas. Localizar separadores numéricos é permitido; alterar valores ou moeda não."
+    },
+    {
+      "id": "T04",
+      "title": "Prazo condicionado",
+      "source_language": "en",
+      "target_language": "pt",
+      "original": "Deliver within ten business days after legal approval, provided the supplier grants access within two business days of that approval. Otherwise, agree on a new delivery date.",
+      "invariants": "dez dias úteis contados após aprovação jurídica; condição de acesso em até dois dias úteis da mesma aprovação; renegociar data se a condição falhar. Não iniciar a contagem hoje nem trocar dias úteis por corridos."
+    },
+    {
+      "id": "T05",
+      "title": "Identificador técnico",
+      "source_language": "en",
+      "target_language": "pt",
+      "original": "Set `RETRY_LIMIT=0` for `billing-worker`. A response with status `409` must be recorded as a conflict; do not rename the field `decision_id`.",
+      "invariants": "preservar literalmente `RETRY_LIMIT=0`, `billing-worker`, `409` e `decision_id`; manter a classificação como conflito e a proibição de renomear. Traduzir a prosa ao redor é permitido."
+    },
+    {
+      "id": "T06",
+      "title": "Ambiguidade preservada",
+      "source_language": "en",
+      "target_language": "pt",
+      "original": "Jordan told Casey that their proposal could be reviewed after the release. It is unclear whose proposal was meant or which release they referred to.",
+      "invariants": "preservar Jordan e Casey; manter sem resolução a autoria da proposta e a identificação da release; possibilidade de revisão, não promessa. “Lançamento” pode traduzir “release” sem identificar qual. Não escolher um dono por inferência."
+    }
+  ]
+}

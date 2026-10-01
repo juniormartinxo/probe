@@ -35,7 +35,7 @@ No modo live, o texto português de cada caso é traduzido antes de avaliar os d
 
 Uma falha encerra a coleta, preserva o prefixo concluído e enumera os itens não executados. Um braço português já concluído sem seu par inglês fica visível, mas fora da comparação pareada. Não há troca automática de modelo, provedor ou idioma.
 
-Alocação no fluxo: preparação e fixture recebem AC 1–10; tradução, AC 11–17; Jev, AC 18–24; evidências e falhas, AC 25–31; relatório, AC 32–37.
+Alocação no fluxo: preparação e fixture recebem AC 1–10; tradução, AC 11–17; Jev, AC 18–24; evidências e falhas, AC 25–31; relatório, AC 32–37. As provas de AC 3 e AC 10 que exigem coleta live ou relatório ficam com S3 e S5 (C52–C54 em [checks](checks.md)), conforme decisão do usuário em 30/09/2026; os critérios não mudam.
 
 ## Impact
 
