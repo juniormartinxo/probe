@@ -13,7 +13,7 @@ import { createFixtureTransports } from './fixture.mjs';
 import { createJevTransport } from './jev.mjs';
 import { createLmStudioTransport } from './lmstudio.mjs';
 import { formatDryRun, formatRunSummary } from './manifest.mjs';
-import { buildReport, formatReportSummary } from './report.mjs';
+import { buildReport, formatReportSummary, translationsOf } from './report.mjs';
 import { loadReview } from './review.mjs';
 import { loadRun } from './run-reader.mjs';
 
@@ -64,8 +64,7 @@ export async function main(argv, env, io, { signal } = {}) {
 // métrica usa o gabarito gravado na execução, nunca uma revisão posterior do corpus.
 function writeReport(runId, env, io) {
   const loaded = loadRun(evidenceDirFor(repoRoot), runId);
-  const translations = loaded.results.filter((r) => r.item.kind === 'translation').map((r) => r.translation);
-  const review = loadReview(loaded.runDir, runId, translations);
+  const review = loadReview(loaded.runDir, runId, translationsOf(loaded).map((r) => r.translation));
   const { markdown, summary } = buildReport(loaded, review);
   // Evidências já omitem segredos; a revisão humana ou um arquivo editado podem não omitir.
   const secrets = SECRET_NAMES.map((name) => env[name]);

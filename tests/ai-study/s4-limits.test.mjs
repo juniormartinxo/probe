@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import test from 'node:test';
 
@@ -371,7 +371,6 @@ test('C35: interrupção antes e depois da troca de manifesto ou resultado deixa
   assert.throws(() => loadRun(sandbox.evidenceDir, 'c35-parcial'), /manifest\.json: JSON inválido ou parcial/);
 });
 
-// Cópia de uma execução sob outro RUN_ID, com todos os vínculos reescritos; `mutate` estraga um deles.
 test('C40: manifesto e registros schema_version 1 mantêm as relações da execução; o leitor recusa vínculo a outra execução, revisão ou versão de schema', async () => {
   const sandbox = makeSandbox();
   const fixtureRun = async (runId) => {

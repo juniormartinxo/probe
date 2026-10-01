@@ -202,8 +202,15 @@ test('C42: o Markdown apresenta as seis seções na ordem aprovada, em portuguê
   variant(sandbox, 'c42-base', 'c42', ({ edit }) =>
     edit('results/001-R01-translate-pt-en.json', (r) => ({ ...r, translation: { ...r.translation, derived_text: 'Text with ``` fence | pipe\n**not bold**' } })),
   );
+  // Texto livre do revisor com quebra de linha e título: fica numa linha e não abre seção.
+  const [r01] = reviewAll(readRun(sandbox, 'c42'));
+  writeReview(sandbox, 'c42', {
+    translations: [{ ...r01, justification: 'Preservado.\n## Seção falsa' }],
+    recommendation: { decision: 'expand_study', reviewer: 'Revisora', justification: 'Ampliar.\n\n## Outra seção falsa' },
+  });
   const { markdown } = report(sandbox, 'c42');
   assert.deepEqual(markdown.match(/^## .*$/gm), SECTIONS.map((s) => `## ${s}`));
+  assert.ok(markdown.includes('  - Justificativa: Preservado. ## Seção falsa'));
   assert.deepEqual(SECTIONS, ['Configuração e proveniência', 'Completude', 'Originais e traduções', 'Revisão semântica', 'Comparação Jev', 'Limitações']);
   for (const label of ['Estado técnico', 'Conclusão', 'Recomendação humana']) assert.match(header(markdown), new RegExp(`^- ${label}: `, 'm'));
 
@@ -437,12 +444,16 @@ test('C49: todo relatório fixture identifica os resultados como simulados, sem 
   assert.ok(!live.markdown.includes('Resultados simulados'), 'live sem marca de simulação');
 });
 
-test('verificadores de C50 e C51: evidência live controlada passa; fixture, template não oficial, quantização e coleta parcial não passam', async () => {
+test('verificadores de C50 e C51: evidência live com o template oficial adotado passa; fixture, template não adotado, quantização e coleta parcial não passam', async () => {
   const sandbox = makeSandbox();
   await liveCollection(sandbox, 'v-live');
   const live = loadRun(sandbox.evidenceDir, 'v-live');
-  assert.deepEqual(proveLiveTranslation(live), { proven: true, problems: [] });
-  assert.deepEqual(proveLiveRelational(live).cases, corpus.relational_cases.map((c) => c.id));
+  // Template confirmado só no teste: com o versionado da bancada, ainda não oficial, nada fecha C50/C51.
+  const adopted = { officialTemplate: confirmedTemplate };
+  assert.deepEqual(proveLiveTranslation(live, adopted), { proven: true, problems: [] });
+  assert.deepEqual(proveLiveRelational(live, adopted).cases, corpus.relational_cases.map((c) => c.id));
+  assert.deepEqual(proveLiveTranslation(live).problems, ['template gravado não é o template oficial adotado na bancada']);
+  assert.deepEqual(proveLiveRelational(live), { proven: false, cases: [], problems: ['template gravado não é o template oficial adotado na bancada'] });
 
   fixtureRun(sandbox, 'v-fixture');
   const fixture = loadRun(sandbox.evidenceDir, 'v-fixture');
@@ -459,7 +470,7 @@ test('verificadores de C50 e C51: evidência live controlada passa; fixture, tem
     ['v-q4', /quantização Q4_K_M, não Q6_K/],
     ['v-tokens', /T01: sem contagem pelo tokenizer correspondente/],
   ]) {
-    const proof = proveLiveTranslation(loadRun(sandbox.evidenceDir, runId));
+    const proof = proveLiveTranslation(loadRun(sandbox.evidenceDir, runId), adopted);
     assert.equal(proof.proven, false, runId);
     assert.match(proof.problems.join('\n'), pattern, runId);
   }
@@ -467,11 +478,11 @@ test('verificadores de C50 e C51: evidência live controlada passa; fixture, tem
   // Coleta que parou no braço inglês de R01: nenhuma tradução T e nenhum par válido.
   await liveCollection(sandbox, 'v-parcial', { fetch: services({ fail: 'R01-evaluate-en' }) });
   const partial = loadRun(sandbox.evidenceDir, 'v-parcial');
-  assert.match(proveLiveTranslation(partial).problems.join('\n'), /T01: tradução EN→PT ausente/);
-  assert.deepEqual(proveLiveRelational(partial), { proven: false, cases: [], problems: ['R01: braço en ausente'] });
+  assert.match(proveLiveTranslation(partial, adopted).problems.join('\n'), /T01: tradução EN→PT ausente/);
+  assert.deepEqual(proveLiveRelational(partial, adopted), { proven: false, cases: [], problems: ['R01: braço en ausente'] });
   // Discordância com o gabarito não afeta a prova de integração.
   await liveCollection(sandbox, 'v-discorda', { fetch: services({ choose: (_i, _j, expected) => otherChoice(expected) }) });
-  assert.equal(proveLiveRelational(loadRun(sandbox.evidenceDir, 'v-discorda')).proven, true);
+  assert.equal(proveLiveRelational(loadRun(sandbox.evidenceDir, 'v-discorda'), adopted).proven, true);
 });
 
 // C50 e C51 só se provam com evidência live real, identificada por RUN_ID no repositório; sem ela o

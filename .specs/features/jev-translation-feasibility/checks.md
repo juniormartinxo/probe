@@ -238,11 +238,11 @@ Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, 
 
 **C50** - Evidência live de T01–T06 identifica servidor/modelo Q6_K, template confirmado, contagem correspondente, seis traduções EN→PT e durações reais; ausência desses registros deixa a integração local sem prova, nunca suprida por fixture (S2 Independent test).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C50:' RUN_ID="$RUN_ID"`
-Status: pendente. Verificador `proveLiveTranslation` (`src/ai-study/report.mjs`) construído e exercitado com evidência live controlada, fixture e vínculos estragados; o teste `C50:` lê `artifacts/ai-study/$RUN_ID` e, sem `RUN_ID`, fica TODO (não prova). Falta a coleta live real, bloqueada pelas Decisões 1 e 2 de 01/10/2026 (STATE.md) e pela autorização da coleta.
+Status: pendente. Verificador `proveLiveTranslation` (`src/ai-study/report.mjs`) construído e exercitado com evidência live controlada, fixture e vínculos estragados; exige o template versionado adotado como oficial, então evidência com template confirmado só em teste não fecha o check; o teste `C50:` lê `artifacts/ai-study/$RUN_ID` e, sem `RUN_ID`, fica TODO (não prova). Falta a coleta live real, bloqueada pelas Decisões 1 e 2 de 01/10/2026 (STATE.md) e pela autorização da coleta.
 
 **C51** - Evidência live de ao menos um caso R contém tradução PT→EN e duas respostas Jev da mesma versão, cada uma com seis resultados válidos; concordância ou discordância com o gabarito fica contabilizada separadamente do sucesso de integração (S3 Independent test).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C51:' RUN_ID="$RUN_ID"`
-Status: pendente. Verificador `proveLiveRelational` (`src/ai-study/report.mjs`) construído e exercitado com evidência live controlada, fixture e vínculos estragados; o teste `C51:` lê `artifacts/ai-study/$RUN_ID` e, sem `RUN_ID`, fica TODO (não prova). Falta a coleta live real, bloqueada pelas Decisões 1 e 2 de 01/10/2026 (STATE.md) e pela autorização da coleta.
+Status: pendente. Verificador `proveLiveRelational` (`src/ai-study/report.mjs`) construído e exercitado com evidência live controlada, fixture e vínculos estragados; exige o template versionado adotado como oficial, então evidência com template confirmado só em teste não fecha o check; o teste `C51:` lê `artifacts/ai-study/$RUN_ID` e, sem `RUN_ID`, fica TODO (não prova). Falta a coleta live real, bloqueada pelas Decisões 1 e 2 de 01/10/2026 (STATE.md) e pela autorização da coleta.
 
 **C54** - `make ai-study-report RUN_ID=...` invoca zero processos Codex, Claude, Grok, agy ou Cloak (AC 3; parte do relatório movida de C3).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C54:'`

@@ -2,6 +2,7 @@ import { ARMS } from './comparison.mjs';
 import { JUDGMENT_IDS, RELATIONAL_IDS, TRANSLATION_IDS } from './corpus.mjs';
 import { MAX_INPUT_TOKENS, CANDIDATE_QUANTIZATION } from './translation.mjs';
 import { outputHash, REVIEW_FILE } from './review.mjs';
+import { templateRevision, TRANSLATION_TEMPLATE } from './template.mjs';
 
 // Relatório de uma execução, derivado só das evidências lidas por `loadRun` e da revisão humana.
 // Não chama modelos nem rede, não altera evidências e não promove configurações do produto: a
@@ -25,21 +26,41 @@ const STATUS_LABELS = Object.freeze({
   running: 'sem término registrado (processo encerrado durante a coleta)',
 });
 
-const translationsOf = (loaded) => loaded.results.filter((r) => r.item.kind === 'translation');
+const SIMULATED_NOTICE = 'não são validação real do candidato, medição de VRAM nem ganho de tradução';
+
+export const translationsOf = (loaded) => loaded.results.filter((r) => r.item.kind === 'translation');
 const evaluationsOf = (loaded) => loaded.results.filter((r) => r.item.kind === 'evaluation');
 const byItem = (loaded) => new Map(loaded.results.map((r) => [r.item.id, r]));
+
+const isSimulated = (manifest) => manifest.mode !== 'live' || manifest.provenance !== 'live';
+
+// Texto livre (revisor, justificativa, mensagens) numa linha: quebras não abrem títulos nem seções no Markdown.
+const inline = (text) => String(text ?? '').replace(/\s*\n\s*/g, ' ');
+
+// Live real exige o template versionado do repositório, adotado como oficial (Decisão 1). Uma coleta
+// com serviços e template confirmados só num teste grava a mesma revisão, mas o template versionado não
+// é oficial: a evidência não fecha C50/C51 enquanto o oficial não for adotado na bancada.
+function templateProblem(manifest, official) {
+  const recorded = manifest.translation?.template;
+  if (!recorded?.official) return 'template oficial não confirmado';
+  if (!official.official || recorded.revision !== templateRevision(official)) {
+    return 'template gravado não é o template oficial adotado na bancada';
+  }
+  return null;
+}
 
 // Estado de revisão de cada tradução concluída: sem entrada na revisão humana, `pending`.
 export function reviewStates(loaded, review) {
   return translationsOf(loaded).map((r) => {
     const entry = review.translations.get(r.item.id);
+    const reviewed = entry && entry.status !== 'pending';
     return {
       item: r.item.id,
       case_id: r.item.case_id,
       output_sha256: outputHash(r.translation.derived_text),
       status: entry?.status ?? 'pending',
-      reviewer: entry?.status === 'pending' ? null : (entry?.reviewer ?? null),
-      justification: entry?.status === 'pending' ? null : (entry?.justification ?? null),
+      reviewer: reviewed ? entry.reviewer : null,
+      justification: reviewed ? entry.justification : null,
     };
   });
 }
@@ -49,7 +70,7 @@ export function reviewStates(loaded, review) {
 export function assessConclusion(loaded, reviews) {
   const { manifest } = loaded;
   const reasons = [];
-  if (manifest.mode !== 'live') reasons.push({ code: 'simulated', detail: 'resultados simulados (fixture) não decidem sobre o candidato' });
+  if (isSimulated(manifest)) reasons.push({ code: 'simulated', detail: 'resultados simulados (fixture) não decidem sobre o candidato' });
   if (manifest.status !== 'completed') {
     reasons.push({ code: 'collection_incomplete', detail: `estado técnico ${manifest.status}${manifest.reason ? ` (${manifest.reason})` : ''}` });
   }
@@ -66,16 +87,17 @@ export function assessConclusion(loaded, reviews) {
 }
 
 // C50: integração local real com T01–T06. Fixture nunca supre esses registros.
-export function proveLiveTranslation(loaded) {
+export function proveLiveTranslation(loaded, { officialTemplate = TRANSLATION_TEMPLATE } = {}) {
   const { manifest } = loaded;
   const problems = [];
-  if (manifest.mode !== 'live' || manifest.provenance !== 'live') {
+  if (isSimulated(manifest)) {
     problems.push('evidência fixture: simulação não comprova a integração local');
     return { proven: false, problems };
   }
   const t = manifest.translation ?? {};
   const model = t.returned_model;
-  if (!t.template?.official) problems.push('template oficial não confirmado');
+  const template = templateProblem(manifest, officialTemplate);
+  if (template) problems.push(template);
   if (!manifest.config?.local?.base_url) problems.push('servidor local não identificado');
   if (!model || model !== t.requested_model) problems.push('modelo retornado ausente ou diferente do solicitado');
   if (String(t.quantization ?? '').toUpperCase() !== CANDIDATE_QUANTIZATION) problems.push(`quantização ${t.quantization ?? 'não informada'}, não ${CANDIDATE_QUANTIZATION}`);
@@ -102,11 +124,13 @@ export function proveLiveTranslation(loaded) {
 
 // C51: ao menos um caso R com tradução PT→EN e dois braços Jev válidos da mesma versão. Prova integração,
 // não concordância com o gabarito, que é contada à parte.
-export function proveLiveRelational(loaded) {
+export function proveLiveRelational(loaded, { officialTemplate = TRANSLATION_TEMPLATE } = {}) {
   const { manifest } = loaded;
-  if (manifest.mode !== 'live' || manifest.provenance !== 'live') {
+  if (isSimulated(manifest)) {
     return { proven: false, cases: [], problems: ['evidência fixture: simulação não comprova a avaliação Jev real'] };
   }
+  const template = templateProblem(manifest, officialTemplate);
+  if (template) return { proven: false, cases: [], problems: [template] };
   const records = byItem(loaded);
   const problems = [];
   const cases = [];
@@ -116,7 +140,8 @@ export function proveLiveRelational(loaded) {
     if (!translation && arms.every((a) => !a)) continue;
     const caseProblems = [];
     if (!translation || translation.provenance !== 'live' || translation.translation.status !== 'valid') caseProblems.push('sem tradução PT→EN live válida');
-    for (const [arm, r] of ARMS.map((a, i) => [a, arms[i]])) {
+    for (const [i, arm] of ARMS.entries()) {
+      const r = arms[i];
       if (!r) caseProblems.push(`braço ${arm} ausente`);
       else if (r.provenance !== 'live' || r.evaluation.status !== 'valid' || r.evaluation.results?.length !== JUDGMENT_IDS.length) {
         caseProblems.push(`braço ${arm} sem seis resultados válidos live`);
@@ -169,7 +194,7 @@ function configurationSection(loaded) {
   const jev = manifest.config?.jev ?? {};
   return [
     `- Execução: ${code(manifest.run_id)}`,
-    `- Modo e proveniência: ${code(manifest.mode)} / ${code(manifest.provenance)}${manifest.mode === 'fixture' ? ' (simulado)' : ''}`,
+    `- Modo e proveniência: ${code(manifest.mode)} / ${code(manifest.provenance)}${isSimulated(manifest) ? ' (simulado)' : ''}`,
     `- Início e término: ${manifest.started_at ?? 'não registrado'} — ${manifest.finished_at ?? 'não registrado'}`,
     `- Corpus: ${code(manifest.corpus?.path)}, revisão ${manifest.corpus?.revision}`,
     `- Hash do corpus: ${code(manifest.corpus?.corpus_hash)}`,
@@ -195,14 +220,14 @@ function completenessSection(loaded, assessment, liveProofs) {
   if (manifest.failure) {
     const f = manifest.failure;
     lines.push(
-      `- Falha que encerrou a coleta: item ${code(f.item)}, serviço ${code(f.service)}, motivo ${code(f.reason)}, pedido enviado ${JSON.stringify(f.request_sent)}, resultado remoto ${code(f.remote_outcome)}: ${f.message}`,
+      `- Falha que encerrou a coleta: item ${code(f.item)}, serviço ${code(f.service)}, motivo ${code(f.reason)}, pedido enviado ${JSON.stringify(f.request_sent)}, resultado remoto ${code(f.remote_outcome)}: ${inline(f.message)}`,
     );
   }
-  if (manifest.blocked) lines.push(`- Bloqueio: ${code(manifest.blocked.item ?? '-')} ${code(manifest.blocked.reason ?? '-')}: ${manifest.blocked.justification ?? ''}`);
-  if (manifest.comparison_error) lines.push(`- Erro ao gravar a comparação: ${manifest.comparison_error}`);
+  if (manifest.blocked) lines.push(`- Bloqueio: ${code(manifest.blocked.item ?? '-')} ${code(manifest.blocked.reason ?? '-')}: ${inline(manifest.blocked.justification)}`);
+  if (manifest.comparison_error) lines.push(`- Erro ao gravar a comparação: ${inline(manifest.comparison_error)}`);
   if (loaded.ignored.length > 0) lines.push(`- Arquivos ignorados (não são evidência): ${loaded.ignored.map((i) => `${code(i.file)} (${i.reason})`).join(', ')}`);
   const proof = (label, p) =>
-    `- ${label}: ${p.proven ? `comprovada${p.cases ? ` (casos ${list(p.cases)})` : ''}` : `sem prova — ${p.problems.join('; ')}`}`;
+    `- ${label}: ${p.proven ? `comprovada${p.cases ? ` (casos ${list(p.cases)})` : ''}` : `sem prova — ${inline(p.problems.join('; '))}`}`;
   lines.push(proof('Integração local real T01–T06 (EN→PT)', liveProofs.translation));
   lines.push(proof('Integração real tradução PT→EN e Jev pareado', liveProofs.relational));
   lines.push(`- Conclusão: ${code(assessment.conclusion)}`);
@@ -248,7 +273,7 @@ function reviewSection(loaded, reviews, review) {
   ];
   for (const r of reviews) {
     lines.push(`- ${code(r.item)} — ${code(r.status)} — saída ${code(r.output_sha256 ?? 'sem saída')}`);
-    if (r.status !== 'pending') lines.push(`  - Revisor: ${r.reviewer}`, `  - Justificativa: ${r.justification}`);
+    if (r.status !== 'pending') lines.push(`  - Revisor: ${inline(r.reviewer)}`, `  - Justificativa: ${inline(r.justification)}`);
   }
   return lines.join('\n');
 }
@@ -297,7 +322,7 @@ function jevSection(loaded) {
   for (const r of evaluations) {
     const e = r.evaluation;
     lines.push(
-      `- ${code(r.item.id)}: ${code(e.status)}, modelo retornado ${e.returned_model ? code(e.returned_model) : 'não identificado'}, duração ${e.duration_ms} ms, ${usageLine(e.usage)}${e.problems?.length ? `; problemas: ${e.problems.join('; ')}` : ''}`,
+      `- ${code(r.item.id)}: ${code(e.status)}, modelo retornado ${e.returned_model ? code(e.returned_model) : 'não identificado'}, duração ${e.duration_ms} ms, ${usageLine(e.usage)}${e.problems?.length ? `; problemas: ${inline(e.problems.join('; '))}` : ''}`,
     );
   }
   return lines.join('\n');
@@ -305,10 +330,8 @@ function jevSection(loaded) {
 
 function limitationsSection(loaded) {
   const lines = [];
-  if (loaded.manifest.mode === 'fixture') {
-    lines.push(
-      '- Resultados simulados (fixture): não são validação real do candidato, medição de VRAM nem ganho de tradução. Traduções, escolhas e durações vêm de respostas controladas.',
-    );
+  if (isSimulated(loaded.manifest)) {
+    lines.push(`- Resultados simulados (fixture): ${SIMULATED_NOTICE}. Traduções, escolhas e durações vêm de respostas controladas.`);
   }
   lines.push(
     `- Amostra de ${RELATIONAL_IDS.length} casos relacionais: não estabelece acurácia geral nem calibração de confiança. Distribuições e confianças são descritivas, não limiares de produção.`,
@@ -321,7 +344,7 @@ function limitationsSection(loaded) {
 
 function recommendationLine(recommendation) {
   return recommendation
-    ? `${code(recommendation.decision)}, registrada por ${recommendation.reviewer}: ${recommendation.justification}`
+    ? `${code(recommendation.decision)}, registrada por ${inline(recommendation.reviewer)}: ${inline(recommendation.justification)}`
     : `não registrada (preencher ${code('recommendation')} em ${code(REVIEW_FILE)})`;
 }
 
@@ -332,8 +355,8 @@ export function buildReport(loaded, review) {
   const assessment = assessConclusion(loaded, reviews);
   const liveProofs = { translation: proveLiveTranslation(loaded), relational: proveLiveRelational(loaded) };
   const header = [`# Relatório do estudo de tradução e Jev — execução ${manifest.run_id}`, ''];
-  if (manifest.mode === 'fixture') {
-    header.push('> **Resultados simulados (fixture).** Não são validação real do candidato, medição de VRAM nem ganho de tradução.', '');
+  if (isSimulated(manifest)) {
+    header.push(`> **Resultados simulados (fixture).** ${SIMULATED_NOTICE[0].toUpperCase()}${SIMULATED_NOTICE.slice(1)}.`, '');
   }
   header.push(
     `- Estado técnico: ${code(manifest.status)}${manifest.reason ? ` (${code(manifest.reason)})` : ''}`,
@@ -353,7 +376,7 @@ export function buildReport(loaded, review) {
     markdown,
     summary: {
       run_id: manifest.run_id,
-      mode: manifest.mode,
+      simulated: isSimulated(manifest),
       status: manifest.status,
       reason: manifest.reason,
       conclusion: assessment.conclusion,
@@ -367,7 +390,7 @@ export function buildReport(loaded, review) {
 
 export function formatReportSummary(summary, reportPath) {
   const lines = [
-    summary.mode === 'fixture'
+    summary.simulated
       ? 'Relatório gerado de evidências simuladas (fixture): não comprova tradução real, avaliação Jev, VRAM ou ganho de tradução.'
       : 'Relatório gerado: o estado técnico não indica qualidade das traduções nem concordância com o gabarito.',
     `run_id: ${summary.run_id}`,
