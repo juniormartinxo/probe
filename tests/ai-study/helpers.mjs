@@ -210,3 +210,22 @@ export function writeCorpusVariant(sandbox, name, mutate) {
   writeFileSync(path, JSON.stringify(corpus, null, 2));
   return path;
 }
+
+// Cópia de uma execução sob outro RUN_ID, com os vínculos reescritos; `mutate` estraga um vínculo depois.
+export function variant(sandbox, sourceId, runId, mutate = () => {}) {
+  const dir = join(sandbox.evidenceDir, runId);
+  cpSync(join(sandbox.evidenceDir, sourceId), dir, { recursive: true });
+  const rewrite = (path, change = (x) => x) => {
+    const value = readJson(path);
+    value.run_id = runId;
+    if (value.config) value.config.run_id = runId;
+    if (value.translation) value.translation.run_id = runId;
+    if (value.evaluation) value.evaluation.run_id = runId;
+    writeFileSync(path, JSON.stringify(change(value), null, 2));
+  };
+  rewrite(join(dir, 'manifest.json'));
+  if (existsSync(join(dir, 'comparison.json'))) rewrite(join(dir, 'comparison.json'));
+  for (const f of readdirSync(join(dir, 'results'))) rewrite(join(dir, 'results', f));
+  mutate({ dir, edit: (file, change) => writeFileSync(join(dir, file), JSON.stringify(change(readJson(join(dir, file))), null, 2)) });
+  return runId;
+}

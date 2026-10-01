@@ -9,13 +9,15 @@ AI_STUDY_CLI ?= src/ai-study/cli.mjs
 # Nomes definidos na linha de comando do make; a bancada recusa os não publicados.
 AI_STUDY_COMMAND_LINE = $(strip $(foreach v,$(.VARIABLES),$(if $(filter command line,$(origin $(v))),$(v))))
 
-.PHONY: help plan-validate checks-validate check-proof commit-validate ai-study-dry-run ai-study-run
+.PHONY: help plan-validate checks-validate check-proof commit-validate ai-study-dry-run ai-study-run ai-study-report
 
 help:
 	@printf '%s\n' \
 	  'Comandos disponíveis:' \
 	  '  make ai-study-dry-run [MODE=fixture|live]  Imprime o manifesto da coleta, sem executar nada.' \
 	  '  make ai-study-run [MODE=fixture|live] [RUN_ID=id]  Coleta fixture (simulada) ou live (LM Studio e Jev).' \
+	  '  make ai-study-report RUN_ID=id  Gera artifacts/ai-study-reports/<id>.md só das evidências, sem modelos ou rede.' \
+	  '    Revisão humana em artifacts/ai-study/<id>/review.json (schema_version, run_id, translations, recommendation).' \
 	  '  make plan-validate [FEATURE=nome]  Valida um plano tlc-spec-lean.' \
 	  '  make checks-validate [FEATURE=nome]  Valida a estrutura dos checks.' \
 	  '  make check-proof TEST_FLAGS="--test-name-pattern=^C1:"  Executa uma prova quando implementada.' \
@@ -57,3 +59,6 @@ ai-study-dry-run:
 
 ai-study-run:
 	@AI_STUDY_MAKE_OVERRIDES='$(AI_STUDY_COMMAND_LINE)' $(NODE) $(AI_STUDY_CLI) run
+
+ai-study-report:
+	@AI_STUDY_MAKE_OVERRIDES='$(AI_STUDY_COMMAND_LINE)' $(NODE) $(AI_STUDY_CLI) report

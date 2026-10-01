@@ -13,10 +13,14 @@ export const LOCK_NAME = '.collection.lock';
 // sincronizado depois do rename, então uma queda do sistema logo após a troca pode voltar ao arquivo anterior,
 // que continua íntegro.
 export function writeJsonAtomic(path, value) {
+  writeTextAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+export function writeTextAtomic(path, text) {
   const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
   const fd = openSync(temporary, 'wx');
   try {
-    writeSync(fd, `${JSON.stringify(value, null, 2)}\n`);
+    writeSync(fd, text);
     fsyncSync(fd);
   } finally {
     closeSync(fd);

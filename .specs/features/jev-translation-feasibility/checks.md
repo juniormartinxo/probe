@@ -5,7 +5,7 @@ Plan: `.specs/features/jev-translation-feasibility/plan.md`
 
 59 checks em 5 slices · 1 one-way door · 3 pré-requisitos operacionais para coleta real, mantidos no plano.
 
-Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas. S2 implementada em 01/10/2026: C13–C20 com provas executadas por transportes controlados. S3 implementada em 01/10/2026: C21–C28, C52 e C53 com provas executadas por transportes e serviços controlados. S4 implementada em 01/10/2026: C29–C40 e C55 com provas executadas por transportes, serviços e processos controlados; C59 (emenda à AC 27) pendente da implementação da contagem de tokens. Em 01/10/2026, por decisão do usuário após a verificação da S4, as partes de C36, C39 e C40 que dependem do relatório foram movidas para C56–C58 (S5). C41–C51, C54 e C56–C58 pendentes.** Em 30/09/2026 o usuário aprovou mover as partes live de C3 e C10, que dependem dos adaptadores, para C52–C54 em S3 e S5. Validar este documento não executa nem comprova os checks.
+Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas. S2 implementada em 01/10/2026: C13–C20 com provas executadas por transportes controlados. S3 implementada em 01/10/2026: C21–C28, C52 e C53 com provas executadas por transportes e serviços controlados. S4 implementada em 01/10/2026: C29–C40 e C55 com provas executadas por transportes, serviços e processos controlados; C59 (emenda à AC 27) pendente da implementação da contagem de tokens. Em 01/10/2026, por decisão do usuário após a verificação da S4, as partes de C36, C39 e C40 que dependem do relatório foram movidas para C56–C58 (S5). S5 implementada em 01/10/2026: C41–C49, C54 e C56–C58 com provas executadas por evidências e serviços controlados; C50 e C51 têm verificador construído, mas a prova exige `RUN_ID` de coleta live real, ainda bloqueada (STATE.md, Decisões 1 e 2): sem ele o teste fica TODO, que `make check-proof` não aceita.** Em 30/09/2026 o usuário aprovou mover as partes live de C3 e C10, que dependem dos adaptadores, para C52–C54 em S3 e S5. Validar este documento não executa nem comprova os checks.
 
 Comando disponível: `make check-proof`, usando o runner nativo do Node 24 observado no WSL. Os seletores abaixo reservam nomes `C<n>: descrição` nos futuros arquivos `tests/ai-study/*.test.mjs`. O comando usa `--test-isolation=none` e exige no TAP pelo menos um check nomeado executado, sem skip/TODO, além da saída zero do Node. As provas devem isolar seu estado explicitamente; testes de concorrência ainda precisam criar os processos ou chamadas que sua obrigação exige. Arquivo ausente, teste ausente, skip ou zero testes executados não encerram um check. A existência e a execução do teste selecionado deverão ser verificadas na fase de implementação e pelo verificador independente. Não foram adicionados testes vazios para produzir sucesso artificial.
 
@@ -202,48 +202,63 @@ Status: pendente, não construído. Depende da implementação da contagem pelo 
 
 **C41** - `make ai-study-report RUN_ID=...` gera Markdown somente das evidências da execução identificada, com zero chamadas de rede ou modelos; RUN_ID ausente ou inválido encerra com código 2 (AC 32).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C41:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, fronteira `make ai-study-report` com guarda de rede/processos e rastreio de leituras: só a execução identificada é lida, sem corpus atual; RUN_ID omitido, vazio, caminho, 65 caracteres, não ASCII e inexistente encerram com código 2).
 
 **C42** - Markdown apresenta, nesta ordem, configuração/proveniência, completude, originais/traduções, revisão semântica, comparação Jev e limitações; prosa fica em português e originais não são reescritos (AC 33).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C42:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, seis títulos `##` na ordem; originais e traduções literais em cercas mais longas que qualquer sequência de crases do texto).
 
 **C43** - Relatório mostra acertos, erros e ausências por julgamento em cada braço, mais contagens dos pares completos; um conjunto controlado com um par completo, um braço isolado e uma resposta inválida demonstra denominadores distintos (AC 34).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C43:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, coleta live controlada com R01 completo (um erro no braço EN), R02 com braço EN isolado e resposta PT inválida: 1 PT válida, 2 EN válidas, 1 par completo, de 12 casos).
 
 **C44** - Revisão semântica de cada saída aceita somente `pending`, `faithful` ou `meaning_changed`; os dois últimos exigem revisor, justificativa e vínculo à saída concreta, não apenas ao ID do caso (AC 35, Relations).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C44:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, `review.json` no diretório da execução; cada revisão `faithful`/`meaning_changed` exige revisor, justificativa e `output_sha256` da saída gravada; estado fora do domínio, revisor ou justificativa ausentes, hash ausente ou de outro caso, item que não é tradução, repetição, campo extra, outra execução e JSON inválido recusados com código 2, sem substituir o relatório anterior).
 
 **C45** - Coleta com qualquer item faltante ou qualquer tradução pendente recebe conclusão `inconclusive`, mesmo que todos os pares já avaliados concordem com o gabarito (AC 36).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C45:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, coletas live controladas com todas as escolhas iguais ao gabarito: completa e toda revisada é `evidence_complete`; uma tradução pendente, falha de transporte e interrupção por sinal são `inconclusive`).
 
 **C46** - Estado técnico e recomendação humana são campos distintos; `keep_candidate`, `reject_candidate` e `expand_study` só aparecem como recomendação registrada por humano, com zero mudanças automáticas na configuração do produto (AC 37).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C46:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, cabeçalho com estado técnico, conclusão e recomendação em linhas distintas; as três decisões só aparecem quando registradas em `review.json`; nenhum arquivo do repositório muda além do relatório derivado).
 
 **C47** - Correção de gabarito gera revisão identificada e não altera métricas de evidência anterior; nova comparação registra a revisão usada, sem substituir a referência silenciosamente (S5, AC 8).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C47:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, o relatório usa a comparação gravada na execução; trocar o corpus versionado pela revisão 2 corrigida mantém byte a byte o relatório anterior, e a nova execução registra revisão 2 e o novo hash do gabarito).
 
 **C48** - Relatório identifica amostra de 12 casos relacionais sem alegar acurácia geral/calibração; uso indisponível não é custo zero e conversão monetária só aparece com tarifa identificada (S5).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C48:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, fixture e live controlado: amostra de 12 casos sem acurácia geral nem calibração; uso indisponível marcado como não sendo custo zero; nenhuma conversão monetária sem tarifa).
 
 **C49** - Todo relatório fixture identifica os resultados como simulados e não os apresenta como validação real do candidato, medição de VRAM ou ganho de tradução (AC 9, S5).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C49:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, marca de simulação no cabeçalho, na saída e nas limitações; integrações sem prova e conclusão `inconclusive` mesmo com revisão completa; relatório live sem a marca).
 
 **C50** - Evidência live de T01–T06 identifica servidor/modelo Q6_K, template confirmado, contagem correspondente, seis traduções EN→PT e durações reais; ausência desses registros deixa a integração local sem prova, nunca suprida por fixture (S2 Independent test).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C50:' RUN_ID="$RUN_ID"`
+Status: pendente. Verificador `proveLiveTranslation` (`src/ai-study/report.mjs`) construído e exercitado com evidência live controlada, fixture e vínculos estragados; o teste `C50:` lê `artifacts/ai-study/$RUN_ID` e, sem `RUN_ID`, fica TODO (não prova). Falta a coleta live real, bloqueada pelas Decisões 1 e 2 de 01/10/2026 (STATE.md) e pela autorização da coleta.
 
 **C51** - Evidência live de ao menos um caso R contém tradução PT→EN e duas respostas Jev da mesma versão, cada uma com seis resultados válidos; concordância ou discordância com o gabarito fica contabilizada separadamente do sucesso de integração (S3 Independent test).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C51:' RUN_ID="$RUN_ID"`
+Status: pendente. Verificador `proveLiveRelational` (`src/ai-study/report.mjs`) construído e exercitado com evidência live controlada, fixture e vínculos estragados; o teste `C51:` lê `artifacts/ai-study/$RUN_ID` e, sem `RUN_ID`, fica TODO (não prova). Falta a coleta live real, bloqueada pelas Decisões 1 e 2 de 01/10/2026 (STATE.md) e pela autorização da coleta.
 
 **C54** - `make ai-study-report RUN_ID=...` invoca zero processos Codex, Claude, Grok, agy ou Cloak (AC 3; parte do relatório movida de C3).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C54:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, shims das CLIs excluídas e guarda de processos em relatórios fixture, live controlado e recusado).
 
 **C56** - `make ai-study-report RUN_ID=...` sobre evidências com segredos sentinela de tokens, chaves, URL credenciada e cabeçalhos de autenticação, inclusive de execuções com erros HTTP e de parsing, gera relatório e saída sem nenhum desses segredos (AC 31; parte do relatório movida de C36).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C56:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, evidências de coletas live com segredos ecoados, inclusive erros HTTP e de parsing; segredos plantados numa revisão humana, numa evidência editada e num `run_id` de revisão recusada; relatório, stdout e stderr sem segredos).
 
 **C57** - `make ai-study-report RUN_ID=...` preserva byte a byte, sem limpeza automática, os arquivos de evidência da execução relatada e de outras execuções (S4, Landing 1; parte do relatório movida de C39).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C57:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, relatórios gravados em `artifacts/ai-study-reports/`, fora do diretório de evidências; execuções concluída e incompleta, anotação humana, temporário e revisão preservados byte a byte depois de relatórios repetidos).
 
 **C58** - `make ai-study-report RUN_ID=...` recusa com código 2 (linha `make: *** [...] Error 2`) evidências vinculadas a outra execução ou revisão de corpus/gabarito, ou com `schema_version` diferente de 1 (Relations, Landing 1; parte do relatório movida de C40).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C58:'`
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, cópias de execução com manifesto, resultado ou comparação de outra execução, hash de corpus ou gabarito de outra revisão, `schema_version` diferente e `review.json` de outra execução ou outro schema recusadas com código 2, sem relatório).
 
 ## Coverage
 
