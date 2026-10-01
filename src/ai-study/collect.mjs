@@ -51,6 +51,7 @@ export async function runCollection({
   const cases = new Map(
     [...corpusInfo.corpus.relational_cases, ...corpusInfo.corpus.translation_cases].map((c) => [c.id, c]),
   );
+  // Derivações válidas por caso: item de origem e texto literal enviado ao braço inglês.
   const translations = new Map();
   const invalidTranslations = new Set();
   const template = {
@@ -137,13 +138,16 @@ export async function runCollection({
       stop('template_unverified', `template oficial não confirmado (${template.justification}); nenhuma tradução enviada`);
     }
     rejectMixedProvenance(transports.local.provenance, { id: 'model-check' });
-    const inspection = await call('model-check', () => transports.local.inspect({ model: config.local.model }));
+    const started = performance.now();
+    const inspection = await call('model-check', () => transports.local.inspect());
+    const durationMs = Math.round(performance.now() - started);
     rejectMixedProvenance(inspection?.provenance, { id: 'model-check' });
     const model = inspection.model ?? null;
     Object.assign(manifest.translation, {
       returned_model: model?.id ?? null,
       quantization: model?.quantization ?? null,
       model_state: model?.state ?? null,
+      model_check: { duration_ms: durationMs, model },
     });
     const problem = checkIdentity(model, config.local.model);
     if (problem) stop(problem.reason, `candidato não confirmado: ${problem.justification}; nenhum outro modelo foi selecionado`);
@@ -199,6 +203,16 @@ export async function runCollection({
       const durationMs = Math.round(performance.now() - started);
       rejectMixedProvenance(response?.provenance, item);
       ensureCorpusUnchanged();
+      // Cada resposta live identifica o modelo que a gerou; outro modelo não é aceito no lugar do candidato.
+      if (item.kind === 'translation' && candidateModel && response.model != null && response.model !== candidateModel) {
+        const { id, run_id: _, ...traceable } = prepared;
+        stop('model_mismatch', `${id}: runtime respondeu com ${response.model}, não ${candidateModel}`, {
+          item: id,
+          ...traceable,
+          reason: 'model_mismatch',
+          returned_model: response.model,
+        });
+      }
       const record = {
         schema_version: SCHEMA_VERSION,
         run_id: runId,
@@ -223,9 +237,9 @@ export async function runCollection({
           runtime: runtimeInfo(response),
         };
         if (invalidReason) invalidTranslations.add(item.case_id);
-        else translations.set(item.case_id, response.output);
+        else translations.set(item.case_id, { item: item.id, text: response.output });
       } else if (item.arm === 'en') {
-        record.derived_from = `${item.case_id}-translate-pt-en`;
+        record.derived_from = translations.get(item.case_id).item;
       }
       writeJsonAtomic(join(runDir, 'results', `${String(index + 1).padStart(3, '0')}-${item.id}.json`), record);
       manifest.completed_items.push(item.id);
@@ -252,6 +266,6 @@ function buildPayload(item, source, translations) {
   if (item.kind === 'translation') {
     return { direction: item.direction, text: item.direction === 'pt->en' ? caseText(source) : source.original };
   }
-  const text = item.arm === 'pt' ? caseText(source) : translations.get(item.case_id);
+  const text = item.arm === 'pt' ? caseText(source) : translations.get(item.case_id)?.text;
   return { arm: item.arm, text, judgments: [...JUDGMENT_IDS] };
 }

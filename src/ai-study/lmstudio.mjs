@@ -6,14 +6,12 @@ const COUNT_UNAVAILABLE =
 export function createLmStudioTransport(config, { fetch = globalThis.fetch } = {}) {
   const { baseUrl, model, apiToken, timeoutSeconds, maxOutputTokens } = config.local;
   // A origem descarta usuário e senha da URL; o token vai só no cabeçalho.
-  const request = async (path, init = {}) => {
-    const response = await fetch(new URL(`/api/v0/${path}`, baseUrl.origin), {
+  const request = (path, init = {}) =>
+    fetch(new URL(`/api/v0/${path}`, baseUrl.origin), {
       ...init,
       headers: { 'content-type': 'application/json', ...(apiToken ? { authorization: `Bearer ${apiToken}` } : {}) },
       signal: AbortSignal.timeout(timeoutSeconds * 1000),
     });
-    return response;
-  };
   const failure = (response, what) => new Error(`LM Studio respondeu HTTP ${response.status} ${what}`);
 
   return {

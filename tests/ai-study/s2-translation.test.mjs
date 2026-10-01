@@ -185,8 +185,17 @@ test('C13: toda tradução preparada registra original, direção, modelo solici
   assert.equal(posts.length, 18);
   for (const [index, result] of translationResults(adapterRun.run).entries()) {
     const t = result.translation;
-    assert.equal(posts[index].body.model, MODEL);
-    assert.equal(posts[index].body.prompt, renderPrompt(confirmedTemplate, t.direction, t.original));
+    assert.deepEqual(posts[index].body, {
+      model: MODEL,
+      prompt: renderPrompt(confirmedTemplate, t.direction, t.original),
+      max_tokens: 2048,
+      temperature: 0,
+      stream: false,
+    });
+    assert.equal(result.request.prompt, posts[index].body.prompt, 'pedido persistido igual ao enviado');
+    assert.equal(t.derived_text, 'Translated text');
+    assert.equal(t.requested_model, MODEL);
+    assert.equal(t.template_revision, revision);
   }
 });
 
@@ -346,6 +355,20 @@ test('C17: saída da tradução é persistida literalmente como derivação vinc
     const enResult = run.results.find((r) => r.item.id === `${c.id}-evaluate-en`);
     assert.equal(enResult.derived_from, `${c.id}-translate-pt-en`);
   }
+
+  // Pelo adaptador LM Studio: o texto da resposta HTTP chega literal à derivação e ao braço inglês.
+  const raw = '\n  Raw LM Studio text \u00e9 "x"  \n';
+  const lm = fakeFetch((call) => (call.method === 'POST' ? { body: completion(raw) } : lmStudioRoute(call)));
+  const adapterJev = controlled();
+  const adapter = await collect(sandbox, 'c17-adapter', {
+    transports: lmStudioWithCount(liveConfig('c17-adapter'), lm.fetch, adapterJev.transports.jev),
+  });
+  assert.equal(adapter.error, null);
+  for (const result of translationResults(adapter.run)) {
+    assert.equal(result.translation.derived_text, raw);
+    assert.equal(result.response.output, raw);
+  }
+  assert.ok(only(adapterJev.calls, 'evaluate').filter((c) => c.request.arm === 'en').every((c) => c.request.text === raw));
 });
 
 test('C18: tradução vazia, só espaços ou encerrada por limite vira invalid_translation, sem Jev do braço inglês', async () => {
@@ -397,7 +420,12 @@ test('C18: tradução vazia, só espaços ou encerrada por limite vira invalid_t
     transports: lmStudioWithCount(liveConfig('c18-adapter'), lm.fetch, controlled().transports.jev),
   });
   assertIncomplete(adapter, 'invalid_translation');
-  assert.ok(translationResults(adapter.run).every((r) => r.translation.invalid_reason === 'output_limit'));
+  for (const result of translationResults(adapter.run)) {
+    assert.equal(result.translation.status, 'invalid_translation');
+    assert.equal(result.translation.invalid_reason, 'output_limit');
+    assert.equal(result.translation.derived_text, 'Cut');
+  }
+  assert.equal(adapter.run.manifest.skipped_items.length, 12, 'nenhum braço inglês avaliado');
 });
 
 test('C19: registro da tradução contém duração em ms e modelo/tokens/memória do runtime, com justificativa do que faltar', async () => {
@@ -443,6 +471,16 @@ test('C19: registro da tradução contém duração em ms e modelo/tokens/memór
   assert.equal(runtime.memory.available, false);
   assert.match(runtime.memory.justification, /VRAM/);
   assert.ok(Number.isInteger(translationResults(adapter.run)[0].translation.duration_ms));
+  // A consulta de identidade também é chamada ao runtime: duração e metadados retornados registrados.
+  const check = adapter.run.manifest.translation.model_check;
+  assert.ok(Number.isInteger(check.duration_ms) && check.duration_ms >= 0);
+  assert.deepEqual(check.model, {
+    id: MODEL,
+    quantization: 'Q6_K',
+    compatibility_type: 'gguf',
+    state: 'loaded',
+    max_context_length: 8192,
+  });
 });
 
 test('C20: o adaptador registra identidade solicitada e retornada; indisponível ou incompatível não troca, instala nem baixa modelo', async () => {
@@ -458,16 +496,10 @@ test('C20: o adaptador registra identidade solicitada e retornada; indisponível
     env: { LOCAL_API_TOKEN: 'token-local' },
   });
   assert.equal(confirmed.error, null);
-  assert.deepEqual(
-    { ...confirmed.run.manifest.translation, template: undefined },
-    {
-      requested_model: MODEL,
-      returned_model: MODEL,
-      quantization: 'Q6_K',
-      model_state: 'loaded',
-      template: undefined,
-    },
-  );
+  const { template: _, model_check: check, ...identity } = confirmed.run.manifest.translation;
+  assert.deepEqual(identity, { requested_model: MODEL, returned_model: MODEL, quantization: 'Q6_K', model_state: 'loaded' });
+  assert.equal(check.model.id, MODEL);
+  for (const result of translationResults(confirmed.run)) assert.equal(result.translation.runtime.model.value, MODEL);
   assert.equal(ok.calls[0].method, 'GET');
   assert.equal(ok.calls[0].path, modelPath);
   for (const call of ok.calls) {
@@ -496,6 +528,21 @@ test('C20: o adaptador registra identidade solicitada e retornada; indisponível
     assert.equal(outcome.run.manifest.translation.returned_model, returned);
     assert.deepEqual(outcome.run.resultFiles, []);
   }
+  // Resposta de tradução gerada por outro modelo no meio da coleta: bloqueia, sem aceitar a troca.
+  let posts = 0;
+  const swapped = fakeFetch((call) => {
+    if (call.method !== 'POST') return lmStudioRoute(call);
+    posts += 1;
+    return { body: completion('Text', posts === 3 ? { model: 'outro-modelo' } : {}) };
+  });
+  const swap = await collect(sandbox, 'c20-swap', { transports: lmStudioWithCount(liveConfig('c20-swap'), swapped.fetch, jev()) });
+  assertIncomplete(swap, 'model_mismatch');
+  assert.equal(swapped.calls.filter((c) => c.method === 'POST').length, 3, 'nenhum envio após a troca');
+  assert.equal(swap.run.manifest.blocked.item, 'R03-translate-pt-en');
+  assert.equal(swap.run.manifest.blocked.returned_model, 'outro-modelo');
+  assert.ok(!swap.run.manifest.completed_items.includes('R03-translate-pt-en'));
+  assert.ok(swap.run.manifest.completed_items.includes('R02-translate-pt-en'));
+
   assert.equal(
     (await collect(sandbox, 'c20-quant-check', {
       transports: lmStudioWithCount(

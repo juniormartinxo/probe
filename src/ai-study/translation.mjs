@@ -2,15 +2,16 @@
 export const MAX_INPUT_TOKENS = 2048;
 export const CANDIDATE_QUANTIZATION = 'Q6_K';
 
-// A contagem só vale do tokenizer do modelo identificado; nunca se trunca a entrada.
-export function checkInputTokens(count, tokenizer) {
-  if (!count || !Number.isInteger(count.count) || count.count < 0 || count.tokenizer !== tokenizer) {
+// A contagem só vale do tokenizer do modelo identificado pelo runtime, nomeado pelo id desse modelo;
+// nunca se trunca a entrada.
+export function checkInputTokens(count, expectedTokenizer) {
+  if (!count || !Number.isInteger(count.count) || count.count < 0 || count.tokenizer !== expectedTokenizer) {
     return {
       reason: 'token_count_unavailable',
       token_count: Number.isInteger(count?.count) ? count.count : null,
       tokenizer: count?.tokenizer ?? null,
       justification:
-        count?.justification ?? `sem contagem inteira pelo tokenizer correspondente a ${JSON.stringify(tokenizer)}`,
+        count?.justification ?? `sem contagem inteira pelo tokenizer correspondente a ${JSON.stringify(expectedTokenizer)}`,
     };
   }
   if (count.count > MAX_INPUT_TOKENS) {

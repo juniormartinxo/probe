@@ -284,7 +284,7 @@ test('C10: resposta com proveniência diferente do modo é rejeitada com código
     provenance: 'live',
     inspect: async () => ({ provenance: 'live', model: { id: validLive.LOCAL_MODEL, quantization: 'Q6_K' } }),
     countTokens: async () => ({ count: 100, tokenizer: validLive.LOCAL_MODEL }),
-    translate: async (r) => ({ ...(await fixture.local.translate(r)), provenance: 'live' }),
+    translate: async (r) => ({ ...(await fixture.local.translate(r)), provenance: 'live', model: validLive.LOCAL_MODEL }),
   };
   const translationTemplate = { ...TRANSLATION_TEMPLATE, official: true };
   const liveConfig = (runId) =>
