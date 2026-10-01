@@ -669,6 +669,27 @@ test('C36: chave, token, URL credenciada e cabeçalho de autenticação não apa
   assert.ok(requests.some((r) => r.url.startsWith('http://127.0.0.1:1234/api/v0/')), 'servidor local chamado');
   assert.ok(requests.every((r) => !r.url.includes(secrets.user) && !r.url.includes(secrets.query)), 'URL enviada sem credenciais');
 
+  // Chave ou token curtos demais para serem omitidos são recusados na configuração (código 2), sem chamadas.
+  const shortSecret = 'zQ7wX9';
+  const requestsBefore = readServices(sandbox).length;
+  for (const [name, extra] of [
+    ['TYPESAFE_API_KEY', { TYPESAFE_API_KEY: shortSecret }],
+    ['LOCAL_API_TOKEN', { LOCAL_API_TOKEN: shortSecret }],
+  ]) {
+    for (const target of ['ai-study-dry-run', 'ai-study-run']) {
+      const short = runMake(sandbox, target, {
+        vars: { MODE: 'live', RUN_ID: `c36-curto-${name}`, ...validLive },
+        env: { TYPESAFE_API_KEY: secrets.key, ...extra },
+        preload: [liveServices],
+      });
+      assert.equal(short.nodeStatus, 2, `${name} ${target}: ${short.output}`);
+      assert.match(short.stderr, new RegExp(`${name} curto demais: use ao menos 8 caracteres`), `${name} ${target}`);
+      assert.ok(!short.output.includes(shortSecret), `${name} ${target}: valor fora da saída`);
+      assert.ok(!existsSync(join(sandbox.evidenceDir, `c36-curto-${name}`)), `${name} ${target}: nenhuma execução`);
+    }
+  }
+  assert.equal(readServices(sandbox).length, requestsBefore, 'nenhuma chamada com segredo curto');
+
   const outputs = runs.flatMap((r) => [['stdout', r.stdout], ['stderr', r.stderr]]);
   const files = Object.entries(snapshotFiles(sandbox.evidenceDir));
   assert.ok(files.some(([f]) => f.endsWith('comparison.json')) && files.some(([f]) => f.endsWith('manifest.json')));
@@ -795,26 +816,53 @@ test('C39: evidências ficam fora dos arquivos rastreados pelo Git e sobrevivem 
   assert.deepEqual(listRuns(sandbox).sort(), ['c39-incompleta', 'c39-primeira', 'c39-segunda']);
 });
 
-test('S4: SIGINT durante uma chamada encerra a espera e a coleta como interrupted, libera a trava e não alega cancelamento remoto', async () => {
+test('C55: o primeiro SIGINT ou SIGTERM encerra a espera e a coleta como interrupted, com código 1 e trava liberada; o segundo segue o padrão', async () => {
   const sandbox = makeSandbox();
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    const runId = `c55-${signal.toLowerCase()}`;
+    const before = readServices(sandbox).length;
+    const running = startMake(sandbox, 'ai-study-run', {
+      vars: { MODE: 'live', RUN_ID: runId, ...validLive },
+      env: { TYPESAFE_API_KEY: KEY, AI_STUDY_TEST_FAIL: 'jev:2:hang' },
+      preload: [liveServices],
+    });
+    const hanging = () => readServices(sandbox).slice(before).filter((r) => r.url === JEV_ENDPOINT)[1];
+    await until(() => hanging() !== undefined, `${signal}: a chamada Jev sem resposta`);
+    process.kill(hanging().pid, signal);
+    const result = await running.done;
+    assert.equal(result.nodeStatus, 1, `${signal}: ${result.output}`);
+    const { manifest } = readRun(sandbox, runId);
+    assert.equal(manifest.status, 'incomplete', signal);
+    assert.equal(manifest.reason, 'interrupted', signal);
+    assert.deepEqual(
+      [manifest.failure.item, manifest.failure.request_sent, manifest.failure.remote_outcome],
+      ['R01-evaluate-en', true, 'unknown'],
+      signal,
+    );
+    assert.match(manifest.failure.message, /cancelamento da inferência remota não foi confirmado/, signal);
+    assert.doesNotMatch(manifest.failure.message, /cancelad[ao]\b/, signal);
+    assert.deepEqual(manifest.not_executed_items, remainingAfter('R01-evaluate-en'), signal);
+    assert.ok(!existsSync(join(sandbox.evidenceDir, LOCK_NAME)), `${signal}: trava liberada`);
+  }
+
+  // Segundo sinal: o primeiro já foi consumido (a coleta está presa fora de uma chamada, na barreira), e o
+  // segundo encerra o processo pelo comportamento padrão, sem limpeza; a trava fica para remoção manual.
+  const barrier = join(sandbox.dir, 'barrier');
+  mkdirSync(barrier);
   const running = startMake(sandbox, 'ai-study-run', {
-    vars: { MODE: 'live', RUN_ID: 's4-sigint', ...validLive },
-    env: { TYPESAFE_API_KEY: KEY, AI_STUDY_TEST_FAIL: 'jev:2:hang' },
-    preload: [liveServices],
+    vars: { RUN_ID: 'c55-segundo' },
+    env: { AI_STUDY_TEST_BARRIER_DIR: barrier },
+    preload: [fixtureBarrier],
   });
-  const hanging = () => readServices(sandbox).filter((r) => r.url === JEV_ENDPOINT)[1];
-  await until(() => hanging() !== undefined, 'a chamada Jev sem resposta');
-  process.kill(hanging().pid, 'SIGINT');
+  const started = () => readdirSync(barrier).filter((f) => f.startsWith('started-'));
+  await until(() => started().length === 1, 'a coleta chegar à barreira');
+  const pid = Number(started()[0].slice('started-'.length));
+  process.kill(pid, 'SIGINT');
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(running.child.exitCode, null, 'o primeiro sinal não encerra o processo fora de uma chamada');
+  process.kill(pid, 'SIGINT');
   const result = await running.done;
-  assert.equal(result.nodeStatus, 1, result.output);
-  const { manifest } = readRun(sandbox, 's4-sigint');
-  assert.equal(manifest.status, 'incomplete');
-  assert.equal(manifest.reason, 'interrupted');
-  assert.deepEqual(
-    [manifest.failure.item, manifest.failure.request_sent, manifest.failure.remote_outcome],
-    ['R01-evaluate-en', true, 'unknown'],
-  );
-  assert.match(manifest.failure.message, /cancelamento da inferência remota não foi confirmado/);
-  assert.deepEqual(manifest.not_executed_items, remainingAfter('R01-evaluate-en'));
-  assert.deepEqual(listRuns(sandbox), ['s4-sigint'], 'trava liberada');
+  assert.equal(result.nodeStatus, 130, `encerrado pelo SIGINT (128 + 2), sem término da coleta: ${result.output}`);
+  assert.equal(readJson(join(sandbox.evidenceDir, 'c55-segundo', 'manifest.json')).status, 'running', 'nenhuma limpeza');
+  assert.equal(readJson(join(sandbox.evidenceDir, LOCK_NAME)).pid, pid, 'trava do processo encerrado pelo sinal');
 });

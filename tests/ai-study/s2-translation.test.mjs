@@ -20,7 +20,7 @@ const confirmedTemplate = Object.freeze({
 });
 
 function liveConfig(runId, env = {}) {
-  return resolveConfig('run', { MODE: 'live', RUN_ID: runId, ...validLive, TYPESAFE_API_KEY: 'k', ...env }, { repoRoot });
+  return resolveConfig('run', { MODE: 'live', RUN_ID: runId, ...validLive, TYPESAFE_API_KEY: 'chave-de-teste-s2', ...env }, { repoRoot });
 }
 
 // Transportes controlados de proveniência live; cada chamada fica registrada com o pedido completo.

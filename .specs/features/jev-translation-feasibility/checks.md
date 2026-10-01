@@ -3,9 +3,9 @@
 Profile: light
 Plan: `.specs/features/jev-translation-feasibility/plan.md`
 
-54 checks em 5 slices · 1 one-way door · 3 pré-requisitos operacionais para coleta real, mantidos no plano.
+55 checks em 5 slices · 1 one-way door · 3 pré-requisitos operacionais para coleta real, mantidos no plano.
 
-Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas. S2 implementada em 01/10/2026: C13–C20 com provas executadas por transportes controlados. S3 implementada em 01/10/2026: C21–C28, C52 e C53 com provas executadas por transportes e serviços controlados. S4 implementada em 01/10/2026: C29–C35, C37 e C38 com provas executadas por transportes, serviços e processos controlados; C36, C39 e C40 com prova parcial, sem a parte do relatório, que depende de C41. C41–C51 e C54 pendentes.** Em 30/09/2026 o usuário aprovou mover as partes live de C3 e C10, que dependem dos adaptadores, para C52–C54 em S3 e S5. Validar este documento não executa nem comprova os checks.
+Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas. S2 implementada em 01/10/2026: C13–C20 com provas executadas por transportes controlados. S3 implementada em 01/10/2026: C21–C28, C52 e C53 com provas executadas por transportes e serviços controlados. S4 implementada em 01/10/2026: C29–C35, C37, C38 e C55 com provas executadas por transportes, serviços e processos controlados; C36, C39 e C40 com prova parcial, sem a parte do relatório, que depende de C41. C41–C51 e C54 pendentes.** Em 30/09/2026 o usuário aprovou mover as partes live de C3 e C10, que dependem dos adaptadores, para C52–C54 em S3 e S5. Validar este documento não executa nem comprova os checks.
 
 Comando disponível: `make check-proof`, usando o runner nativo do Node 24 observado no WSL. Os seletores abaixo reservam nomes `C<n>: descrição` nos futuros arquivos `tests/ai-study/*.test.mjs`. O comando usa `--test-isolation=none` e exige no TAP pelo menos um check nomeado executado, sem skip/TODO, além da saída zero do Node. As provas devem isolar seu estado explicitamente; testes de concorrência ainda precisam criar os processos ou chamadas que sua obrigação exige. Arquivo ausente, teste ausente, skip ou zero testes executados não encerram um check. A existência e a execução do teste selecionado deverão ser verificadas na fase de implementação e pelo verificador independente. Não foram adicionados testes vazios para produzir sucesso artificial.
 
@@ -172,7 +172,7 @@ Status: prova executada em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`):
 
 **C36** - Segredos sentinela em tokens, chaves, URL credenciada e cabeçalhos de autenticação não aparecem em stdout, stderr, manifesto, resultados ou relatório, inclusive em erros HTTP e de parsing (AC 31).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C36:'`
-Status: prova parcial em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): segredos sentinela ecoados pelos serviços em respostas, erros HTTP, corpos fora de JSON e falhas de transporte; stdout, stderr e todos os arquivos de evidência conferidos. Ainda não há relatório: C41/S5 deve repetir a varredura nele.
+Status: prova parcial em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): segredos sentinela ecoados pelos serviços em respostas, erros HTTP, corpos fora de JSON e falhas de transporte; stdout, stderr e todos os arquivos de evidência conferidos; chave e token com menos de 8 caracteres são recusados na configuração (código 2, zero chamadas). Ainda não há relatório: C41/S5 deve repetir a varredura nele.
 
 **C37** - Nova tentativa explícita usa nova execução e não importa silenciosamente resultados ou caches de execução anterior; executar novamente com o ID anterior segue C30 (S4, Relations).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C37:'`
@@ -189,6 +189,10 @@ Status: prova parcial em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): `
 **C40** - Manifesto e registros `schema_version: 1` mantêm relações execução→configuração/corpus/itens, tradução→original/caso e avaliação→caso/braço; relatório recusa vínculo a outra execução ou revisão, incluindo arquivo incompatível com a versão de schema (Relations, Landing 1).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C40:'`
 Status: prova parcial em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): `loadRun` (leitor de evidências para o relatório) recusa vínculo a outra execução, revisão de corpus/gabarito ou `schema_version`. A recusa pela fronteira `make ai-study-report` fica para C41/S5.
+
+**C55** - O primeiro SIGINT ou SIGTERM encerra a espera e a coleta `incomplete` com motivo `interrupted`, código 1, `remote_outcome: unknown` sem alegar cancelamento remoto, e libera a trava; um segundo sinal segue o comportamento padrão, sem limpeza (AC 25, 28; emenda de 01/10/2026 no plano).
+Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C55:'`
+Status: prova executada em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): processos `make` reais com chamada Jev sem resposta (SIGINT e SIGTERM) e segundo SIGINT fora de uma chamada.
 
 ### S5 - Relatório para uma decisão informada
 
@@ -237,7 +241,7 @@ Esta tabela aloca os membros a provas futuras. `-` significa nenhum membro sem c
 | AC S1 (10) | `1` C1 · `2` C2 · `3` C3 C52 C54 · `4` C4 · `5` C5 C11 C12 · `6` C6 · `7` C7 · `8` C8 · `9` C9 · `10` C10 C53 | - |
 | AC S2 (7) | `11` C13 · `12` C14 · `13` C15 · `14` C16 · `15` C17 · `16` C18 · `17` C19 | - |
 | AC S3 (7) | `18` C21 · `19` C22 · `20` C23 · `21` C25 · `22` C26 · `23` C27 · `24` C28 | - |
-| AC S4 (7) | `25` C29 · `26` C30 · `27` C31 · `28` C33 · `29` C34 · `30` C35 · `31` C36 | - |
+| AC S4 (7) | `25` C29 C55 · `26` C30 · `27` C31 · `28` C33 C55 · `29` C34 · `30` C35 · `31` C36 | - |
 | AC S5 (6) | `32` C41 · `33` C42 · `34` C43 · `35` C44 · `36` C45 · `37` C46 | - |
 | Landing (1) | bancada Make + `schema_version: 1` + diretório de evidências C9 C39 C40 C41 | - |
 | Relations (7) | execução C8 C40 · revisão corpus/gabarito C8 C47 · configuração C1 C40 · item planejado C33 C34 · tradução C13 C17 · avaliação C26 · revisão semântica/relatório C40 C41 C44 | - |
@@ -269,7 +273,8 @@ Esta tabela aloca os membros a provas futuras. `-` significa nenhum membro sem c
 | Falhas externas (5) | transporte C34 · HTTP C34 · resposta inválida C34 · timeout local C33 · timeout Jev C33 | - |
 | Razões da tradução (4) | `template_unverified` C14 · `input_limit` C15 · `token_count_unavailable` C16 · `invalid_translation` C18 | - |
 | Persistência atômica (4) | manifesto antes de substituir C35 · manifesto depois C35 · resultado antes C35 · resultado depois C35 | - |
-| Segredos (4) | chave C36 · token C36 · URL credenciada C36 · cabeçalho de autenticação C36 | - |
+| Segredos (5) | chave C36 · token C36 · URL credenciada C36 · cabeçalho de autenticação C36 · chave/token curtos recusados C36 | - |
+| Término por sinal (2) | primeiro SIGINT/SIGTERM C55 · segundo sinal C55 | - |
 | Saídas redigidas (6) | stdout C36 · stderr C36 · manifesto C36 · resultado C36 · relatório C36 · diagnóstico HTTP/parsing C36 | - |
 | CLIs excluídas (5) | Codex C3 C52 C54 · Claude C3 C52 C54 · Grok C3 C52 C54 · agy C3 C52 C54 · Cloak C3 C52 C54 | - |
 | Relatório (6) | configuração/proveniência C42 · completude C42 · originais/traduções C42 · revisão semântica C42 · comparação Jev C42 C43 · limitações C42 C48 | - |
@@ -286,7 +291,7 @@ Claims sobre códigos de saída e comandos (C1, C4–C7, C9–C10, C30, C34, C41
 - failure modes: C10 C53 C14 C16 C18 C28 C33 C34 C35.
 - idempotency: C30 C31 C37; coleta repetida não sobrescreve nem reutiliza silenciosamente.
 - authorization: C2 C3 C52 C54 C12 C22 C31 C36 C38; não há API recebida nem autenticação de usuário nesta entrega.
-- concurrency: C24 C29 C32 C35; exclusão local e uma chamada em andamento.
+- concurrency: C24 C29 C32 C35 C55; exclusão local e uma chamada em andamento.
 - data lifecycle: C8 C17 C26 C30 C37 C39 C40 C44 C47.
 - dependency failure: C14 C16 C18 C20 C25 C33 C34; simulação não fecha C50 C51.
 - state transitions: C9 C10 C53 C28 C33 C34 C44 C45 C46.

@@ -78,6 +78,12 @@ export function resolveConfig(command, env, { repoRoot, commandLineNames = [] } 
   const jevModel = nonBlankOrNull('JEV_MODEL');
   const jevApiKey = nonBlankOrNull('TYPESAFE_API_KEY');
   const localApiToken = nonBlankOrNull('LOCAL_API_TOKEN');
+  // Segredo curto coincidiria com texto comum e não poderia ser omitido das evidências (AC 31).
+  for (const [name, value] of [['TYPESAFE_API_KEY', jevApiKey], ['LOCAL_API_TOKEN', localApiToken]]) {
+    if (value !== null && value.length < MIN_REDACTED_SECRET) {
+      problems.push(`${name} curto demais: use ao menos ${MIN_REDACTED_SECRET} caracteres, para que possa ser omitido das evidências`);
+    }
+  }
 
   let localBaseUrl = null;
   if (nonBlankOrNull('LOCAL_BASE_URL')) {
@@ -156,12 +162,13 @@ function omitSecrets(text, secrets) {
     .reduce((result, secret) => result.split(secret).join('[omitido]'), text);
 }
 
-// Segredo mais curto que isto coincide por acaso com texto comum: omiti-lo das evidências corromperia
-// traduções e identificadores sem proteger nada.
+// Segredo mais curto que isto coincidiria por acaso com texto comum: omiti-lo das evidências corromperia
+// traduções e identificadores. A configuração recusa chave e token mais curtos (código 2), então todo
+// segredo de uma execução é omitido (AC 31).
 export const MIN_REDACTED_SECRET = 8;
 
 // Evidência gravada: omite os segredos em qualquer texto (chaves inclusive), sem reescrever URLs, que
-// podem fazer parte de uma tradução literal.
+// podem fazer parte de uma tradução literal. O filtro de tamanho só protege chamadas fora da configuração.
 export function redactValue(value, secrets) {
   const relevant = secrets.filter((secret) => typeof secret === 'string' && secret.length >= MIN_REDACTED_SECRET);
   const walk = (v) => {

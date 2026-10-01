@@ -171,6 +171,10 @@ O usuário sabe quanto pode ser chamado e conserva as evidências se a coleta pa
 
 Limites iniciais: uma chamada em andamento, timeout local de 120 segundos e Jev de 30 segundos, saída local até 2048 tokens. As 20 chamadas locais acomodam 18 traduções e até duas verificações de template. A contagem inclui retries de SDK, se existirem; a implementação deve desativá-los, não contar só as chamadas do código chamador.
 
+Emenda de 01/10/2026 à AC 27: além das 20 chamadas locais, a execução admite até 18 contagens de tokens (uma por tradução), num orçamento próprio, registrado em `manifest.calls` como serviço separado (`local_token_count`). Elas são contadas antes do envio, falhas inclusive, seguem a regra de uma chamada em andamento e o timeout local e não têm retry (reconexão e retry do `@lmstudio/sdk` desativados). Justificativa: a contagem não executa inferência; escondê-la nas 20 chamadas ou abrir mão dela violaria AC 13–14. A contagem ainda não está implementada e segue bloqueando a coleta live.
+
+Término por sinal (01/10/2026): o primeiro SIGINT ou SIGTERM encerra a espera e a coleta como `incomplete` com motivo `interrupted` (código 1, resultado remoto desconhecido, sem alegar cancelamento) e libera a exclusão mútua; um segundo sinal segue o comportamento padrão. A trava de uma coleta encerrada sem liberá-la não é tomada automaticamente: a coleta seguinte sai com código 2 e indica a remoção manual. O relatório (S5) trata `interrupted` como coleta incompleta.
+
 Interromper a espera não comprova cancelamento da inferência remota; registrar resultado desconhecido quando aplicável. Uma nova tentativa cria nova execução explícita, sem retomar ou reaproveitar resultados silenciosamente.
 
 Somente exemplos sintéticos: não ler outros chats, perfis ou diretórios de credenciais. Artefatos não entram no Git; corpus e código podem ser versionados. Não há limpeza automática de evidências. A conclusão de coleta se distingue de sua qualidade semântica.
@@ -233,7 +237,7 @@ Uso ausente não significa custo zero. Só converter tokens em dinheiro com tari
 | --- | --- | --- |
 | Comandos Make | Modos, parâmetros e configuração inválida | AC 1, 4, 5 e assinatura local abaixo. |
 | Comandos Make | Saída e verbosidade | AC 1, 9, 29, 32; manifesto legível, estado e caminho de artefatos, sem despejar credenciais. |
-| Comandos Make | Códigos de saída | AC 5, 9, 26, 29; 0 concluído, 1 incompleto, 2 uso/configuração inválida. Qualidade não é inferida do código 0. |
+| Comandos Make | Códigos de saída | AC 5, 9, 26, 29; 0 concluído, 1 incompleto, 2 uso/configuração inválida. Qualidade não é inferida do código 0. Emenda de 01/10/2026: o código é o da CLI Node; via `make`, ele aparece na linha `make: *** [...] Error N`, e o próprio make sai com 2 em qualquer falha. Para automação, a fonte autoritativa do término é `status`/`failure` do manifesto. Não há entrypoint alternativo. |
 | Comandos Make | Falha parcial | AC 28–30; preservar resultados e enumerar os não executados. |
 | Documento | Estrutura, idioma e próxima ação | AC 33–37; prosa em português, originais preservados, revisão e recomendação humana. |
 | Corpus | Agrupamento, nomes e ordem | AC 6–8; casos R e T em ordem numérica e IDs únicos. |
