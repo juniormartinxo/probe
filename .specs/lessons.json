@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "promote_threshold": 2,
+  "window_days": 45,
+  "quarantine_threshold": 2,
+  "next_id": 4,
+  "lessons": [
+    {
+      "id": "L-001",
+      "key": "ac_gap::allocate each claim clause that depends on a later command to a check in the slice that builds that command instead of proving it through a stand in reader",
+      "text": "Allocate each claim clause that depends on a later command to a check in the slice that builds that command, instead of proving it through a stand-in reader",
+      "signal": "ac_gap",
+      "scope": "checks-allocation",
+      "status": "candidate",
+      "features": [
+        "jev-translation-feasibility"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C36/C39/C40 PARTIAL - tests/ai-study/s4-limits.test.mjs:455; src/ai-study/run-reader.mjs:23 (checks-allocation)"
+      ],
+      "created": "2026-10-01T20:31:05Z",
+      "last_seen": "2026-10-01T20:31:05Z"
+    },
+    {
+      "id": "L-002",
+      "key": "spec_precision_gap::state where an exit code is observed when the published boundary is a make target since make itself exits 2 on any recipe failure",
+      "text": "State where an exit code is observed when the published boundary is a make target, since make itself exits 2 on any recipe failure",
+      "signal": "spec_precision_gap",
+      "scope": "cli-boundary",
+      "status": "candidate",
+      "features": [
+        "jev-translation-feasibility"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C34 - tests/ai-study/s4-limits.test.mjs:605-606; tests/ai-study/helpers.mjs:148-152 (cli-boundary)"
+      ],
+      "created": "2026-10-01T20:31:05Z",
+      "last_seen": "2026-10-01T20:31:05Z"
+    },
+    {
+      "id": "L-003",
+      "key": "ac_gap::add or amend a check in the same change that amends an acceptance criterion in the plan",
+      "text": "Add or amend a check in the same change that amends an acceptance criterion in the plan",
+      "signal": "ac_gap",
+      "scope": "checks-allocation",
+      "status": "candidate",
+      "features": [
+        "jev-translation-feasibility"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "plan.md AC 27 amendment (local_token_count) - no check row; C31 (checks-allocation)"
+      ],
+      "created": "2026-10-01T20:31:05Z",
+      "last_seen": "2026-10-01T20:31:05Z"
+    }
+  ]
+}
