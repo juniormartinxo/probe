@@ -437,7 +437,7 @@ test('C19: registro da tradução contém duração em ms e modelo/tokens/memór
       await new Promise((resolve) => setTimeout(resolve, 30));
       return request.item.case_id === 'R01'
         ? { provenance: 'live', output: 'Text', finish_reason: 'stop', model: MODEL, usage, memory }
-        : { provenance: 'live', output: 'Text', finish_reason: 'stop', model: null, usage: null, memory: null };
+        : { provenance: 'live', output: 'Text', finish_reason: 'stop', model: MODEL, usage: null, memory: null };
     },
   });
   const { error, run } = await collect(sandbox, 'c19', { transports });
@@ -451,13 +451,32 @@ test('C19: registro da tradução contém duração em ms e modelo/tokens/memór
   assert.deepEqual(r01.model, { available: true, value: MODEL });
   assert.deepEqual(r01.tokens, { available: true, value: usage });
   assert.deepEqual(r01.memory, { available: true, value: memory });
-  for (const field of ['model', 'tokens', 'memory']) {
+  assert.deepEqual(r02.model, { available: true, value: MODEL });
+  for (const field of ['tokens', 'memory']) {
     assert.equal(r02[field].available, false, field);
     assert.ok(!('value' in r02[field]), `${field}: sem valor inventado`);
     assert.ok(r02[field].justification.length > 0, field);
   }
   assert.match(r02.memory.justification, /download/);
   assert.match(r02.memory.justification, /VRAM/);
+
+  // Modelo não informado na resposta live: registrado como indisponível, com justificativa, e a coleta
+  // para sem aceitar a saída (C20).
+  const unnamed = controlled({
+    translate: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return { provenance: 'live', output: 'Text', finish_reason: 'stop', model: null, usage: null, memory: null };
+    },
+  });
+  const missing = await collect(sandbox, 'c19-sem-modelo', { transports: unnamed.transports });
+  assertIncomplete(missing, 'model_mismatch');
+  const blockedRuntime = missing.run.manifest.blocked.runtime;
+  for (const field of ['model', 'tokens', 'memory']) {
+    assert.equal(blockedRuntime[field].available, false, field);
+    assert.ok(!('value' in blockedRuntime[field]), `${field}: sem valor inventado`);
+    assert.ok(blockedRuntime[field].justification.length > 0, field);
+  }
+  assert.ok(missing.run.manifest.blocked.duration_ms >= 25);
 
   // Pelo adaptador LM Studio: modelo e tokens vêm da resposta; memória não é informada nem inferida.
   const lm = fakeFetch(lmStudioRoute);
@@ -528,6 +547,37 @@ test('C20: o adaptador registra identidade solicitada e retornada; indisponível
     assert.equal(outcome.run.manifest.translation.returned_model, returned);
     assert.deepEqual(outcome.run.resultFiles, []);
   }
+  // Resposta de tradução sem identificação do modelo: nada confirma o candidato, então bloqueia.
+  const anonymous = fakeFetch((call) =>
+    call.method === 'POST' ? { body: completion('Text', { model: undefined }) } : lmStudioRoute(call),
+  );
+  const unnamed = await collect(sandbox, 'c20-unnamed', {
+    transports: lmStudioWithCount(liveConfig('c20-unnamed'), anonymous.fetch, jev()),
+  });
+  assertIncomplete(unnamed, 'model_mismatch');
+  assert.equal(anonymous.calls.filter((c) => c.method === 'POST').length, 1);
+  assert.equal(unnamed.run.manifest.blocked.returned_model, null);
+  assert.deepEqual(unnamed.run.resultFiles, [], 'saída sem identidade não vira evidência válida');
+
+  // Prefixo de LOCAL_BASE_URL (proxy) é preservado; só o sufixo /v1 da API compatível sai do caminho.
+  for (const [base, prefix] of [
+    ['http://gateway:8080/lmstudio', '/lmstudio'],
+    ['http://gateway:8080/lmstudio/v1/', '/lmstudio'],
+    ['http://usuario:senha@127.0.0.1:1234/v1?x=1', ''],
+  ]) {
+    const runId = `c20-base-${prefix.replace('/', '') || 'raiz'}-${base.length}`;
+    const routed = fakeFetch((call) =>
+      lmStudioRoute({ ...call, path: call.path.startsWith(prefix) ? call.path.slice(prefix.length) : call.path }),
+    );
+    const outcome = await collect(sandbox, runId, {
+      transports: lmStudioWithCount(liveConfig(runId, { LOCAL_BASE_URL: base }), routed.fetch, jev()),
+    });
+    assert.equal(outcome.error, null, base);
+    assert.equal(routed.calls[0].path, `${prefix}${modelPath}`, base);
+    assert.ok(routed.calls.every((c) => c.path.startsWith(`${prefix}/api/v0/`)), base);
+    assert.ok(routed.calls.every((c) => !c.href.includes('senha') && !c.href.includes('?')), `${base}: sem credencial/query`);
+  }
+
   // Resposta de tradução gerada por outro modelo no meio da coleta: bloqueia, sem aceitar a troca.
   let posts = 0;
   const swapped = fakeFetch((call) => {

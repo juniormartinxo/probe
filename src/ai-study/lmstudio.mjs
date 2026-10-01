@@ -5,9 +5,11 @@ const COUNT_UNAVAILABLE =
 
 export function createLmStudioTransport(config, { fetch = globalThis.fetch } = {}) {
   const { baseUrl, model, apiToken, timeoutSeconds, maxOutputTokens } = config.local;
-  // A origem descarta usuário e senha da URL; o token vai só no cabeçalho.
+  // REST v0 fica na raiz do servidor: preserva o prefixo de um proxy e tira só o sufixo /v1 da API compatível.
+  // Origem e caminho descartam usuário, senha e query da URL; o token vai só no cabeçalho.
+  const root = `${baseUrl.origin}${baseUrl.pathname.replace(/\/+$/, '').replace(/\/v1$/, '')}`;
   const request = (path, init = {}) =>
-    fetch(new URL(`/api/v0/${path}`, baseUrl.origin), {
+    fetch(`${root}/api/v0/${path}`, {
       ...init,
       headers: { 'content-type': 'application/json', ...(apiToken ? { authorization: `Bearer ${apiToken}` } : {}) },
       signal: AbortSignal.timeout(timeoutSeconds * 1000),

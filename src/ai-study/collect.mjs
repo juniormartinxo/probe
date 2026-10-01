@@ -203,14 +203,17 @@ export async function runCollection({
       const durationMs = Math.round(performance.now() - started);
       rejectMixedProvenance(response?.provenance, item);
       ensureCorpusUnchanged();
-      // Cada resposta live identifica o modelo que a gerou; outro modelo não é aceito no lugar do candidato.
-      if (item.kind === 'translation' && candidateModel && response.model != null && response.model !== candidateModel) {
+      // Cada resposta live precisa identificar o candidato; ausente ou outro modelo, a saída não é aceita.
+      if (item.kind === 'translation' && candidateModel && response.model !== candidateModel) {
         const { id, run_id: _, ...traceable } = prepared;
-        stop('model_mismatch', `${id}: runtime respondeu com ${response.model}, não ${candidateModel}`, {
+        const returned = response.model ?? null;
+        stop('model_mismatch', `${id}: resposta ${returned ? `gerada por ${returned}` : 'sem identificação do modelo'}, não ${candidateModel}`, {
           item: id,
           ...traceable,
           reason: 'model_mismatch',
-          returned_model: response.model,
+          returned_model: returned,
+          duration_ms: durationMs,
+          runtime: runtimeInfo(response),
         });
       }
       const record = {
