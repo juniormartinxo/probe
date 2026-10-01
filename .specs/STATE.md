@@ -27,7 +27,7 @@ S2 implementada em `src/ai-study/template.mjs` (template versionado e revisão S
 
 **Verification profile**: `light`, padrão do harness; nenhuma elevação foi escolhida. A implementação posterior exige verificador independente conforme a tlc-spec-lean.
 
-**Checks tooling**: `make plan-validate` e `make checks-validate` validam estrutura. `make check-proof TEST_FLAGS='--test-name-pattern=^C1:'` selecionará a prova futura; arquivos de testes ausentes são erro. C1–C12 têm prova executada; C13–C54 continuam pendentes. Node 24.14.0 foi confirmado no WSL; runner nativo adotado como escolha reversível, sem adicionar Vitest ou dependências.
+**Checks tooling**: `make plan-validate` e `make checks-validate` validam estrutura. `make check-proof TEST_FLAGS='--test-name-pattern=^C1:'` selecionará a prova futura; arquivos de testes ausentes são erro. C1–C20 têm prova executada e verificação independente PASS (S1+S2, em `166a2b9`, relatório em `verification.md`); C21–C54 continuam pendentes. Node 24.14.0 foi confirmado no WSL; runner nativo adotado como escolha reversível, sem adicionar Vitest ou dependências.
 
 **Uncommitted**: conferir `git status`. Evidências ficam em `artifacts/`, ignorado pelo Git.
 
