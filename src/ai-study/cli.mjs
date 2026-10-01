@@ -5,7 +5,7 @@ import { runCollection, planItems } from './collect.mjs';
 import { displayPath, evidenceDirFor, redact, resolveConfig } from './config.mjs';
 import { loadCorpus } from './corpus.mjs';
 import { IncompleteError, UsageError } from './errors.mjs';
-import { createFixtureTransports, loadFixtureResponses } from './fixture.mjs';
+import { createFixtureTransports } from './fixture.mjs';
 import { formatDryRun, formatRunSummary } from './manifest.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -18,11 +18,9 @@ function unavailableLive() {
   );
 }
 
-// Fixture nunca constrói transportes live.
-export function selectTransports(config, { env, createLiveTransports = unavailableLive }) {
-  if (config.mode === 'live') return createLiveTransports(config);
-  const path = env.AI_STUDY_FIXTURE_RESPONSES;
-  return createFixtureTransports({ responses: path ? loadFixtureResponses(path) : {} });
+// Fixture nunca constrói transportes live, e não há opção para injetar respostas.
+export function selectTransports(config, { createLiveTransports = unavailableLive } = {}) {
+  return config.mode === 'live' ? createLiveTransports(config) : createFixtureTransports();
 }
 
 export async function main(argv, env, io) {
@@ -41,8 +39,8 @@ export async function main(argv, env, io) {
       io.stdout.write(formatDryRun(config, corpusInfo, planItems(corpusInfo.corpus)));
       return 0;
     }
-    const transports = selectTransports(config, { env });
-    const outcome = await runCollection({ config, corpusInfo, transports, evidenceDir: evidenceDirFor(env, repoRoot) });
+    const transports = selectTransports(config);
+    const outcome = await runCollection({ config, corpusInfo, transports, evidenceDir: evidenceDirFor(repoRoot) });
     io.stdout.write(formatRunSummary(outcome, displayPath(repoRoot, outcome.runDir)));
     return 0;
   } catch (error) {

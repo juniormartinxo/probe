@@ -83,36 +83,41 @@ export async function runCollection({ config, corpusInfo, transports, evidenceDi
     finish('rejected', 'corpus_changed');
     throw new UsageError('CORPUS alterado durante a coleta; resultados de revisões diferentes não são comparáveis');
   };
+  const rejectMixedProvenance = (provenance, item) => {
+    if (provenance === config.mode) return;
+    finish('rejected', 'provenance_mismatch');
+    throw new UsageError(
+      `proveniência ${JSON.stringify(provenance ?? null)} incompatível com MODE=${config.mode} em ${item.id}; ` +
+        'respostas simuladas e reais não se misturam numa execução',
+    );
+  };
   save();
 
   try {
     for (const [index, item] of items.entries()) {
       ensureCorpusUnchanged();
       const payload = buildPayload(item, cases.get(item.case_id), translations);
+      const transport = item.kind === 'translation' ? transports.local : transports.jev;
+      // A proveniência vem do transporte construído para o modo; a resposta só pode confirmá-la.
+      rejectMixedProvenance(transport.provenance, item);
       let response;
       try {
         response =
           item.kind === 'translation'
-            ? await transports.local.translate({ item, ...payload })
-            : await transports.jev.evaluate({ item, ...payload });
+            ? await transport.translate({ item, ...payload })
+            : await transport.evaluate({ item, ...payload });
       } catch (error) {
         finish('incomplete', 'transport_error');
         throw new IncompleteError(`falha em ${item.id}: ${error.message}; coleta incompleta, prefixo preservado`);
       }
-      if (response?.provenance !== config.mode) {
-        finish('rejected', 'provenance_mismatch');
-        throw new UsageError(
-          `proveniência ${JSON.stringify(response?.provenance ?? null)} incompatível com MODE=${config.mode} em ${item.id}; ` +
-            'respostas simuladas e reais não se misturam numa execução',
-        );
-      }
+      rejectMixedProvenance(response?.provenance, item);
       ensureCorpusUnchanged();
       if (item.kind === 'translation') translations.set(item.case_id, response.output);
       writeJsonAtomic(join(runDir, 'results', `${String(index + 1).padStart(3, '0')}-${item.id}.json`), {
         schema_version: SCHEMA_VERSION,
         run_id: runId,
         mode: config.mode,
-        provenance: response.provenance,
+        provenance: transport.provenance,
         corpus_hash: corpusInfo.corpusHash,
         gabarito_hash: corpusInfo.gabaritoHash,
         sequence: index + 1,

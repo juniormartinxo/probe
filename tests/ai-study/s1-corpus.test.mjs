@@ -145,6 +145,7 @@ test('C8: resultados de uma execução ficam vinculados aos mesmos hashes e alte
   let calls = 0;
   const transports = {
     local: {
+      provenance: 'fixture',
       async translate(request) {
         calls += 1;
         if (calls === 2) {

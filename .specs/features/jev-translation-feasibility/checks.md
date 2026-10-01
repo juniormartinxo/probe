@@ -53,7 +53,7 @@ Status: prova executada em 30/09/2026 (S1, `tests/ai-study/s1-*.test.mjs`).
 
 **C10** - Tentativa de incorporar resposta fixture em execução live ou resposta live em execução fixture é rejeitada com código 2, preservando as evidências anteriores (AC 10).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C10:'`
-Status: parcial em 30/09/2026 — resposta live em coleta fixture rejeitada na fronteira `make` com código 2; resposta fixture em coleta live só está provada no coletor (`runCollection`), pois `ai-study-run MODE=live` depende dos adaptadores de S2/S3.
+Status: parcial em 30/09/2026 — transporte live em coleta fixture rejeitado na fronteira `make` com código 2 (injeção só por pré-carga de teste; a bancada não aceita respostas externas); transporte ou resposta fixture em coleta live só está provado no coletor (`runCollection`), pois `ai-study-run MODE=live` depende dos adaptadores de S2/S3. A proveniência registrada vem do transporte construído para o modo, não do rótulo da resposta.
 
 **C11** - Configuração válida aceita RUN_ID de 1 e 64 caracteres ASCII permitidos, timeout inteiro positivo e saída de 1 e 2048 tokens; limites de chamadas permanecem 20/24 (AC 5, 27, Observable).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C11:'`

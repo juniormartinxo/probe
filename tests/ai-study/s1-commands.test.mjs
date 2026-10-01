@@ -12,6 +12,7 @@ import { createFixtureTransports } from '../../src/ai-study/fixture.mjs';
 import {
   defaultCorpusPath,
   excludedClis,
+  liveJevInFixture,
   listRuns,
   makeSandbox,
   parseManifest,
@@ -41,7 +42,7 @@ function forbiddenTransports() {
   const fail = (name) => async () => {
     throw new Error(`transporte ${name} usado`);
   };
-  return { local: { translate: fail('local') }, jev: { evaluate: fail('jev') } };
+  return { local: { provenance: 'live', translate: fail('local') }, jev: { provenance: 'live', evaluate: fail('jev') } };
 }
 
 test('C1: dry-run imprime manifesto com modo, hashes, modelos, limites 20/24 e destinos sem credenciais', () => {
@@ -178,6 +179,7 @@ test('C5: configuração inválida encerra com código 2 antes de coletar, nomea
     ['corpus ilegível', { CORPUS: join(sandbox.dir, 'inexistente.json') }, {}, /CORPUS/],
     ['corpus diretório', { CORPUS: sandbox.dir }, {}, /CORPUS/],
     ['corpus vazio explícito', { CORPUS: '' }, {}, /CORPUS/],
+    ['URL com senha mal codificada', { MODE: 'bogus', LOCAL_BASE_URL: `http://operador:%zz${SECRET}@127.0.0.1:1234/v1` }, {}, /MODE/],
   ];
   for (const name of ['LOCAL_TIMEOUT_SECONDS', 'JEV_TIMEOUT_SECONDS']) {
     for (const value of ['0', '-1', '1.5', 'abc', '', '1e2']) {
@@ -204,6 +206,9 @@ test('C5: configuração inválida encerra com código 2 antes de coletar, nomea
   assertNoSecret(argv);
   const command = runCli(sandbox, ['collect']);
   assertUsageFailure(command, /comando/, 'comando desconhecido');
+  const badUrl = runCli(sandbox, ['collect'], { env: { LOCAL_BASE_URL: `http://operador:%zz${SECRET}@127.0.0.1/` } });
+  assertUsageFailure(badUrl, /^ai-study: comando inválido/m, 'redação com URL mal codificada');
+  assertNoSecret(badUrl);
 });
 
 test('C9: ai-study-run com modo omitido conclui com código 0 e artefatos fixture schema_version 1', () => {
@@ -235,54 +240,63 @@ test('C9: ai-study-run com modo omitido conclui com código 0 e artefatos fixtur
 });
 
 test('C10: resposta com proveniência diferente do modo é rejeitada com código 2, preservando evidências anteriores', async () => {
+  // Fronteira make: um transporte Jev live dentro da coleta fixture (injetado só pela pré-carga de teste).
   const sandbox = makeSandbox();
-  const responses = join(sandbox.dir, 'respostas.json');
-  writeFileSync(
-    responses,
-    JSON.stringify({ responses: { 'R01-evaluate-en': { provenance: 'live', model: 'jev-real', results: [] } } }),
-  );
-  const run = runMake(sandbox, 'ai-study-run', {
-    vars: { RUN_ID: 'c10-fixture' },
-    env: { AI_STUDY_FIXTURE_RESPONSES: responses },
-  });
-  assertUsageFailure(run, /proveniência/, 'live em fixture');
+  const run = runMake(sandbox, 'ai-study-run', { vars: { RUN_ID: 'c10-fixture' }, preload: [liveJevInFixture] });
+  assertUsageFailure(run, /proveniência "live" incompatível com MODE=fixture/, 'live em fixture');
+  assert.deepEqual(run.guard.attempts, [], 'o transporte live nem chega a ser chamado');
   const evidence = readRun(sandbox, 'c10-fixture');
   assert.equal(evidence.manifest.status, 'rejected');
   assert.equal(evidence.manifest.reason, 'provenance_mismatch');
-  assert.deepEqual(evidence.results.map((r) => r.item.id), ['R01-translate-pt-en', 'R01-evaluate-pt']);
-  assert.ok(evidence.results.every((r) => r.provenance === 'fixture'));
-  assert.ok(evidence.manifest.not_executed_items.includes('R01-evaluate-en'));
+  assert.deepEqual(evidence.results.map((r) => r.item.id), ['R01-translate-pt-en']);
+  assert.equal(evidence.results[0].provenance, 'fixture');
+  assert.ok(evidence.manifest.not_executed_items.includes('R01-evaluate-pt'));
 
-  // Execução live com resposta simulada: mesma rejeição, prefixo intacto byte a byte.
-  const config = resolveConfig(
-    'run',
-    { MODE: 'live', RUN_ID: 'c10-live', ...validLive, TYPESAFE_API_KEY: SECRET },
-    { repoRoot },
-  );
-  const corpusInfo = loadCorpus(config.corpusPath);
+  // Coletor em modo live: transporte simulado ou resposta que se declara simulada são rejeitados.
   const fixture = createFixtureTransports();
-  let snapshot;
-  const transports = {
-    local: { translate: async (r) => ({ ...(await fixture.local.translate(r)), provenance: 'live' }) },
-    jev: {
-      async evaluate(request) {
-        const response = await fixture.jev.evaluate(request);
-        if (request.item.id === 'R01-evaluate-en') {
-          snapshot = readRun(sandbox, 'c10-live').rawResults;
-          return response;
-        }
-        return { ...response, provenance: 'live' };
-      },
-    },
+  const liveLocal = {
+    provenance: 'live',
+    translate: async (r) => ({ ...(await fixture.local.translate(r)), provenance: 'live' }),
   };
+  const liveConfig = (runId) =>
+    resolveConfig('run', { MODE: 'live', RUN_ID: runId, ...validLive, TYPESAFE_API_KEY: SECRET }, { repoRoot });
+  const corpusInfo = loadCorpus(defaultCorpusPath);
+  let snapshot;
+  let fixtureJevCalls = 0;
+  const scenarios = [
+    ['c10-live-transport', { provenance: 'fixture', evaluate: async (r) => (fixtureJevCalls += 1, fixture.jev.evaluate(r)) }],
+    [
+      'c10-live-response',
+      {
+        provenance: 'live',
+        async evaluate(request) {
+          snapshot = readRun(sandbox, 'c10-live-response').rawResults;
+          return fixture.jev.evaluate(request);
+        },
+      },
+    ],
+  ];
+  for (const [runId, jev] of scenarios) {
+    await assert.rejects(
+      runCollection({ config: liveConfig(runId), corpusInfo, transports: { local: liveLocal, jev }, evidenceDir: sandbox.evidenceDir }),
+      (error) => error instanceof UsageError && error.exitCode === 2 && /proveniência "fixture"/.test(error.message),
+      runId,
+    );
+    const rejected = readRun(sandbox, runId);
+    assert.equal(rejected.manifest.reason, 'provenance_mismatch', runId);
+    assert.deepEqual(rejected.results.map((r) => r.provenance), ['live'], runId);
+  }
+  assert.equal(fixtureJevCalls, 0, 'transporte simulado não é chamado em execução live');
+  assert.deepEqual(readRun(sandbox, 'c10-live-response').rawResults, snapshot, 'prefixo intacto byte a byte');
+
+  // Coletor em modo fixture: resposta que se declara live é rejeitada mesmo vinda do transporte fixture.
+  const fixtureConfig = resolveConfig('run', { RUN_ID: 'c10-fixture-response' }, { repoRoot });
+  const lying = { ...fixture, jev: { provenance: 'fixture', evaluate: async (r) => ({ ...(await fixture.jev.evaluate(r)), provenance: 'live' }) } };
   await assert.rejects(
-    runCollection({ config, corpusInfo, transports, evidenceDir: sandbox.evidenceDir }),
-    (error) => error instanceof UsageError && error.exitCode === 2,
+    runCollection({ config: fixtureConfig, corpusInfo, transports: lying, evidenceDir: sandbox.evidenceDir }),
+    (error) => error instanceof UsageError && /proveniência "live"/.test(error.message),
   );
-  const liveEvidence = readRun(sandbox, 'c10-live');
-  assert.equal(liveEvidence.manifest.reason, 'provenance_mismatch');
-  assert.deepEqual(liveEvidence.rawResults, snapshot);
-  assert.equal(snapshot.length, 2);
+  assert.equal(readRun(sandbox, 'c10-fixture-response').results.length, 1);
 });
 
 test('C11: configuração válida aceita RUN_ID de 1 e 64 caracteres, timeout inteiro positivo e saída de 1 e 2048 tokens', () => {
@@ -363,4 +377,17 @@ test('C12: preparação resolve os defaults publicados e não oferece seleção 
     assertUsageFailure(runCli(sandbox, ['run', flag]), /argumento desconhecido/, flag);
   }
   assert.equal(listRuns(sandbox).length, 1, 'somente a coleta válida criou evidências');
+
+  // Variáveis não publicadas não alteram destino nem respostas da coleta.
+  const elsewhere = join(sandbox.dir, 'outro-destino');
+  const injected = join(sandbox.dir, 'respostas.json');
+  writeFileSync(injected, JSON.stringify({ responses: { 'R01-evaluate-pt': { provenance: 'fixture', model: 'jev-real' } } }));
+  const seams = runMake(sandbox, 'ai-study-run', {
+    vars: { RUN_ID: 'c12-seams' },
+    env: { AI_STUDY_ARTIFACTS_ROOT: elsewhere, AI_STUDY_FIXTURE_RESPONSES: injected },
+  });
+  assert.equal(seams.status, 0, seams.output);
+  assert.ok(!existsSync(elsewhere), 'AI_STUDY_ARTIFACTS_ROOT ignorada');
+  const seamRun = readRun(sandbox, 'c12-seams');
+  assert.ok(seamRun.results.every((r) => r.response.model === 'fixture'), 'AI_STUDY_FIXTURE_RESPONSES ignorada');
 });

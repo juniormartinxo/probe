@@ -136,16 +136,25 @@ export function secretValues(env) {
   const values = SECRET_NAMES.map((name) => env[name]);
   const url = typeof env.LOCAL_BASE_URL === 'string' ? parseHttpUrl(env.LOCAL_BASE_URL) : null;
   if (url) {
-    values.push(url.username, url.password, decodeURIComponent(url.password));
+    values.push(url.username, url.password, safeDecode(url.username), safeDecode(url.password));
     for (const value of url.searchParams.values()) values.push(value);
   }
   return [...new Set(values.filter((v) => typeof v === 'string' && v.length > 0))];
+}
+
+// Credencial com escape percentual inválido continua omitida pela forma bruta.
+function safeDecode(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 export function redact(text, env) {
   return secretValues(env).reduce((result, secret) => result.split(secret).join('[omitido]'), text);
 }
 
-export function evidenceDirFor(env, repoRoot) {
-  return join(env.AI_STUDY_ARTIFACTS_ROOT || repoRoot, 'artifacts', 'ai-study');
+export function evidenceDirFor(repoRoot) {
+  return join(repoRoot, 'artifacts', 'ai-study');
 }

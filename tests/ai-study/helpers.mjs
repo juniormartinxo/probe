@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,8 @@ export const defaultCorpusPath = join(repoRoot, 'src/ai-study/corpus/revision-1.
 export const excludedClis = ['codex', 'claude', 'grok', 'agy', 'cloak'];
 
 const guardPath = fileURLToPath(new URL('./support/guard.mjs', import.meta.url));
+// Pré-carga só de teste: substitui o transporte Jev da coleta fixture por um transporte live.
+export const liveJevInFixture = fileURLToPath(new URL('./support/live-jev-in-fixture.mjs', import.meta.url));
 
 export const validLive = Object.freeze({
   LOCAL_BASE_URL: 'http://127.0.0.1:1234/v1',
@@ -21,10 +23,14 @@ process.on('exit', () => {
   for (const dir of sandboxes) rmSync(dir, { recursive: true, force: true });
 });
 
-// Diretório isolado: evidências, registro da guarda e shims das CLIs excluídas.
+// Diretório isolado: cópia da bancada (evidências no caminho publicado), registro da guarda e
+// shims das CLIs excluídas.
 export function makeSandbox() {
   const dir = mkdtempSync(join(tmpdir(), 'ai-study-test-'));
   sandboxes.push(dir);
+  const repo = join(dir, 'repo');
+  cpSync(join(repoRoot, 'Makefile'), join(repo, 'Makefile'));
+  cpSync(join(repoRoot, 'src'), join(repo, 'src'), { recursive: true });
   const shimDir = join(dir, 'bin');
   mkdirSync(shimDir);
   const shimLog = join(dir, 'shim.log');
@@ -37,19 +43,19 @@ export function makeSandbox() {
     dir,
     shimDir,
     shimLog,
+    repo,
     guardLog: join(dir, 'guard.log'),
-    evidenceDir: join(dir, 'artifacts', 'ai-study'),
+    evidenceDir: join(repo, 'artifacts', 'ai-study'),
   };
 }
 
-function baseEnv(sandbox, env) {
+function baseEnv(sandbox, env, preload) {
   return {
     PATH: `${sandbox.shimDir}:${process.env.PATH}`,
     HOME: sandbox.dir,
     LANG: 'C.UTF-8',
-    AI_STUDY_ARTIFACTS_ROOT: sandbox.dir,
     AI_STUDY_GUARD_LOG: sandbox.guardLog,
-    NODE_OPTIONS: `--import=${guardPath}`,
+    NODE_OPTIONS: [guardPath, ...preload].map((path) => `--import=${path}`).join(' '),
     ...env,
   };
 }
@@ -66,16 +72,16 @@ function finish(result, sandbox) {
 }
 
 // Atravessa a fronteira publicada: `make <target> VAR=valor`, sem herdar o ambiente do teste.
-export function runMake(sandbox, target, { vars = {}, env = {} } = {}) {
-  const args = ['-s', '--no-print-directory', '-C', repoRoot, target];
+export function runMake(sandbox, target, { vars = {}, env = {}, preload = [] } = {}) {
+  const args = ['-s', '--no-print-directory', '-C', sandbox.repo, target];
   for (const [name, value] of Object.entries(vars)) args.push(`${name}=${value}`);
-  const result = spawnSync('make', args, { env: baseEnv(sandbox, env), encoding: 'utf8' });
+  const result = spawnSync('make', args, { env: baseEnv(sandbox, env, preload), encoding: 'utf8' });
   return { ...finish(result, sandbox), nodeStatus: nodeStatusFromMake(result) };
 }
 
 export function runCli(sandbox, argv, { env = {} } = {}) {
-  const result = spawnSync(process.execPath, [join(repoRoot, 'src/ai-study/cli.mjs'), ...argv], {
-    env: baseEnv(sandbox, env),
+  const result = spawnSync(process.execPath, [join(sandbox.repo, 'src/ai-study/cli.mjs'), ...argv], {
+    env: baseEnv(sandbox, env, []),
     encoding: 'utf8',
   });
   return finish(result, sandbox);
