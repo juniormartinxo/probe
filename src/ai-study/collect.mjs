@@ -81,6 +81,7 @@ async function collect({
   // Segredos vão só em cabeçalhos; se um serviço os ecoar, a evidência gravada os omite.
   const secrets = secretValues(config);
   const writeEvidence = (path, value) => writeJsonAtomic(path, redactValue(value, secrets));
+  const callsUsed = () => transports.budget?.snapshot() ?? null;
 
   createRunDir(evidenceDir, runDir, runId);
   const manifest = {
@@ -101,13 +102,14 @@ async function collect({
     config: { ...publicConfig(config), run_id: runId },
     limits: { local_calls: config.limits.localCalls, jev_calls: config.limits.jevCalls },
     // Chamadas tentadas por serviço, falhas inclusive; nulo se os transportes não usam o orçamento.
-    calls: transports.budget?.snapshot() ?? null,
+    calls: callsUsed(),
     planned_items: items.map((i) => i.id),
     completed_items: [],
     not_executed_items: items.map((i) => i.id),
     skipped_items: [],
     blocked: null,
-    // Chamada que encerrou a coleta: fica fora de `not_executed_items`, com o que se sabe do serviço.
+    // Chamada que encerrou a coleta, com o que se sabe do serviço. Se o pedido saiu, ela fica fora de
+    // `not_executed_items`; bloqueada antes do envio (`call_limit`), continua não executada.
     failure: null,
     translation: {
       requested_model: config.local.model,
@@ -124,9 +126,10 @@ async function collect({
   };
   const manifestPath = join(runDir, 'manifest.json');
   const save = () => {
-    const done = new Set([...manifest.completed_items, manifest.failure?.item]);
-    manifest.not_executed_items = manifest.planned_items.filter((id) => !done.has(id));
-    manifest.calls = transports.budget?.snapshot() ?? null;
+    const attempted = manifest.failure?.request_sent === false ? null : manifest.failure?.item;
+    const finished = new Set([...manifest.completed_items, attempted]);
+    manifest.not_executed_items = manifest.planned_items.filter((id) => !finished.has(id));
+    manifest.calls = callsUsed();
     writeEvidence(manifestPath, manifest);
   };
   // A comparação acompanha qualquer término: resultados individuais concluídos continuam visíveis.

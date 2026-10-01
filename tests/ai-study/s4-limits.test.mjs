@@ -163,6 +163,8 @@ test('C31: a execução envia no máximo 20 chamadas locais e 24 Jev, contando f
   assert.equal(retryingLocal.run.manifest.failure.item, 'R10-translate-pt-en');
   assert.equal(retryingLocal.run.manifest.failure.request_sent, false);
   assert.equal(retryingLocal.run.manifest.failure.remote_outcome, 'not_sent');
+  // Bloqueado antes do envio: o item continua entre os não executados, com todos os restantes.
+  assert.deepEqual(retryingLocal.run.manifest.not_executed_items, PLANNED.slice(PLANNED.indexOf('R10-translate-pt-en')));
 
   // O mesmo para o Jev: a 25ª avaliação (R07 PT, primeiro braço da 13ª chamada) não sai.
   const retryingJev = await collect(sandbox, 'c31-jev', {
@@ -559,6 +561,7 @@ test('C34: falha de transporte, HTTP ou resposta inválida após dois resultados
     ['jev-http', 'jev:2:http', 'http_error', 'R01-evaluate-en', prefix],
     // Resposta Jev inválida é registrada como `invalid_response` (AC 21) e encerra a coleta.
     ['jev-invalida', 'jev:2:invalid', 'invalid_response', null, [...prefix, 'R01-evaluate-en']],
+    ['local-transporte', 'local:2:network', 'transport_error', 'R02-translate-pt-en', [...prefix, 'R01-evaluate-en']],
     ['local-http', 'local:2:http', 'http_error', 'R02-translate-pt-en', [...prefix, 'R01-evaluate-en']],
     ['local-invalida', 'local:2:invalid', 'invalid_response', 'R02-translate-pt-en', [...prefix, 'R01-evaluate-en']],
   ]) {

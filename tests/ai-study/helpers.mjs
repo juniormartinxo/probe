@@ -90,19 +90,19 @@ function finish(result, sandbox) {
 }
 
 // Atravessa a fronteira publicada: `make <target> VAR=valor`, sem herdar o ambiente do teste.
+function makeArgs(sandbox, target, vars) {
+  return ['-s', '--no-print-directory', '-C', sandbox.repo, target, ...Object.entries(vars).map(([name, value]) => `${name}=${value}`)];
+}
+
 // `timeout` (ms) encerra o make que não termina; o teste então falha em vez de travar.
 export function runMake(sandbox, target, { vars = {}, env = {}, preload = [], timeout } = {}) {
-  const args = ['-s', '--no-print-directory', '-C', sandbox.repo, target];
-  for (const [name, value] of Object.entries(vars)) args.push(`${name}=${value}`);
-  const result = spawnSync('make', args, { env: baseEnv(sandbox, env, preload), encoding: 'utf8', timeout });
+  const result = spawnSync('make', makeArgs(sandbox, target, vars), { env: baseEnv(sandbox, env, preload), encoding: 'utf8', timeout });
   return { ...finish(result, sandbox), nodeStatus: nodeStatusFromMake(result) };
 }
 
 // Mesma fronteira, em segundo plano: para coletas concorrentes reais entre processos.
 export function startMake(sandbox, target, { vars = {}, env = {}, preload = [] } = {}) {
-  const args = ['-s', '--no-print-directory', '-C', sandbox.repo, target];
-  for (const [name, value] of Object.entries(vars)) args.push(`${name}=${value}`);
-  const child = spawn('make', args, { env: baseEnv(sandbox, env, preload) });
+  const child = spawn('make', makeArgs(sandbox, target, vars), { env: baseEnv(sandbox, env, preload) });
   let stdout = '';
   let stderr = '';
   child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));

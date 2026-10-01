@@ -40,10 +40,10 @@ export function createRunDir(evidenceDir, runDir, runId) {
 // (O_EXCL) e só o dono a remove. Uma trava de processo encerrado sem liberá-la não é tomada
 // automaticamente: tomá-la sem corrida exigiria um protocolo que o Node não oferece, então a coleta
 // recusa e o diagnóstico indica a remoção manual.
-export function acquireCollectionLock(evidenceDir, { now = () => new Date() } = {}) {
+export function acquireCollectionLock(evidenceDir) {
   mkdirSync(evidenceDir, { recursive: true });
   const path = join(evidenceDir, LOCK_NAME);
-  const owner = { pid: process.pid, token: randomUUID(), acquired_at: now().toISOString() };
+  const owner = { pid: process.pid, token: randomUUID(), acquired_at: new Date().toISOString() };
   try {
     writeFileSync(path, JSON.stringify(owner), { flag: 'wx' });
   } catch (error) {

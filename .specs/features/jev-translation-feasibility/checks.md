@@ -5,7 +5,7 @@ Plan: `.specs/features/jev-translation-feasibility/plan.md`
 
 54 checks em 5 slices · 1 one-way door · 3 pré-requisitos operacionais para coleta real, mantidos no plano.
 
-Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas. S2 implementada em 01/10/2026: C13–C20 com provas executadas por transportes controlados. S3 implementada em 01/10/2026: C21–C28, C52 e C53 com provas executadas por transportes e serviços controlados. S4 implementada em 01/10/2026: C29–C40 com provas executadas por transportes, serviços e processos controlados. C41–C51 e C54 pendentes.** Em 30/09/2026 o usuário aprovou mover as partes live de C3 e C10, que dependem dos adaptadores, para C52–C54 em S3 e S5. Validar este documento não executa nem comprova os checks.
+Status: obrigações derivadas do plano aprovado em 22/09/2026. **S1 implementada em 30/09/2026: C1–C12 com provas executadas. S2 implementada em 01/10/2026: C13–C20 com provas executadas por transportes controlados. S3 implementada em 01/10/2026: C21–C28, C52 e C53 com provas executadas por transportes e serviços controlados. S4 implementada em 01/10/2026: C29–C35, C37 e C38 com provas executadas por transportes, serviços e processos controlados; C36, C39 e C40 com prova parcial, sem a parte do relatório, que depende de C41. C41–C51 e C54 pendentes.** Em 30/09/2026 o usuário aprovou mover as partes live de C3 e C10, que dependem dos adaptadores, para C52–C54 em S3 e S5. Validar este documento não executa nem comprova os checks.
 
 Comando disponível: `make check-proof`, usando o runner nativo do Node 24 observado no WSL. Os seletores abaixo reservam nomes `C<n>: descrição` nos futuros arquivos `tests/ai-study/*.test.mjs`. O comando usa `--test-isolation=none` e exige no TAP pelo menos um check nomeado executado, sem skip/TODO, além da saída zero do Node. As provas devem isolar seu estado explicitamente; testes de concorrência ainda precisam criar os processos ou chamadas que sua obrigação exige. Arquivo ausente, teste ausente, skip ou zero testes executados não encerram um check. A existência e a execução do teste selecionado deverão ser verificadas na fase de implementação e pelo verificador independente. Não foram adicionados testes vazios para produzir sucesso artificial.
 
@@ -164,7 +164,7 @@ Status: prova executada em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`):
 
 **C34** - Falha de transporte, HTTP ou resposta inválida após dois resultados conclui a fronteira de coleta com código 1, preserva o prefixo e lista todos os itens restantes como não executados, sem trocar provedor/idioma (AC 29, Flow).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C34:'`
-Status: prova executada em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): fronteira `make` com falha injetada no `fetch` controlado (transporte, HTTP e resposta inválida no Jev; HTTP e resposta inválida no LM Studio). O código 1 do Node é lido na linha `Error 1` do make (STATE.md, Decisões da S4).
+Status: prova executada em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): fronteira `make` com falha injetada no `fetch` controlado (transporte, HTTP e resposta inválida no Jev e no LM Studio). O código 1 do Node é lido na linha `Error 1` do make (STATE.md, Decisões da S4).
 
 **C35** - Interrupção injetada antes e depois da substituição de manifesto/resultado deixa o arquivo de destino anterior ou novo íntegro; arquivo temporário ou JSON parcial não é aceito como evidência (AC 30).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C35:'`
@@ -172,7 +172,7 @@ Status: prova executada em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`):
 
 **C36** - Segredos sentinela em tokens, chaves, URL credenciada e cabeçalhos de autenticação não aparecem em stdout, stderr, manifesto, resultados ou relatório, inclusive em erros HTTP e de parsing (AC 31).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C36:'`
-Status: prova executada em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): segredos sentinela ecoados pelos serviços em respostas, erros HTTP, corpos fora de JSON e falhas de transporte; stdout, stderr e todos os arquivos de evidência conferidos. Ainda não há relatório: C41/S5 deve repetir a varredura nele.
+Status: prova parcial em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): segredos sentinela ecoados pelos serviços em respostas, erros HTTP, corpos fora de JSON e falhas de transporte; stdout, stderr e todos os arquivos de evidência conferidos. Ainda não há relatório: C41/S5 deve repetir a varredura nele.
 
 **C37** - Nova tentativa explícita usa nova execução e não importa silenciosamente resultados ou caches de execução anterior; executar novamente com o ID anterior segue C30 (S4, Relations).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C37:'`
@@ -184,11 +184,11 @@ Status: prova executada em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`):
 
 **C39** - Evidências ficam fora dos arquivos rastreados pelo Git e sobrevivem a nova coleta e geração de relatório, sem limpeza automática (S4, Landing 1).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C39:'`
-Status: prova executada em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): `git check-ignore` no repositório real e preservação byte a byte após nova coleta e leitura por `loadRun`. Ainda não há `make ai-study-report`: a parte do relatório usa o leitor que ele deverá usar e deve ser repetida em S5.
+Status: prova parcial em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): `git check-ignore` no repositório real e preservação byte a byte após nova coleta e leitura por `loadRun`. Ainda não há `make ai-study-report`: a parte do relatório usa o leitor que ele deverá usar e deve ser repetida em S5.
 
 **C40** - Manifesto e registros `schema_version: 1` mantêm relações execução→configuração/corpus/itens, tradução→original/caso e avaliação→caso/braço; relatório recusa vínculo a outra execução ou revisão, incluindo arquivo incompatível com a versão de schema (Relations, Landing 1).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C40:'`
-Status: prova executada em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): `loadRun` (leitor de evidências para o relatório) recusa vínculo a outra execução, revisão de corpus/gabarito ou `schema_version`. A recusa pela fronteira `make ai-study-report` fica para C41/S5.
+Status: prova parcial em 01/10/2026 (S4, `tests/ai-study/s4-limits.test.mjs`): `loadRun` (leitor de evidências para o relatório) recusa vínculo a outra execução, revisão de corpus/gabarito ou `schema_version`. A recusa pela fronteira `make ai-study-report` fica para C41/S5.
 
 ### S5 - Relatório para uma decisão informada
 
