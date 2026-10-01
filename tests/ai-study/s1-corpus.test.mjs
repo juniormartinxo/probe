@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
@@ -21,14 +21,19 @@ import {
 const R_IDS = Array.from({ length: 12 }, (_, i) => `R${String(i + 1).padStart(2, '0')}`);
 const T_IDS = Array.from({ length: 6 }, (_, i) => `T${String(i + 1).padStart(2, '0')}`);
 
+// Dry-run e coleta usam o mesmo carregamento do corpus; as duas fronteiras recusam antes de coletar.
 function expectInvalidCorpus(sandbox, name, mutate, pattern) {
   const path = writeCorpusVariant(sandbox, name, mutate);
-  const run = runMake(sandbox, 'ai-study-dry-run', { vars: { CORPUS: path } });
-  assert.equal(run.status, 2, `${name}: ${run.output}`);
-  assert.equal(run.nodeStatus, 2, `${name}: código do Node`);
-  assert.match(run.stderr, /CORPUS/, `${name}: diagnóstico nomeia CORPUS`);
-  assert.match(run.stderr, pattern, `${name}: diagnóstico específico`);
-  assert.doesNotMatch(run.stdout, /hash do corpus/, `${name}: sem manifesto`);
+  for (const target of ['ai-study-dry-run', 'ai-study-run']) {
+    const label = `${name} (${target})`;
+    const run = runMake(sandbox, target, { vars: { CORPUS: path, RUN_ID: name } });
+    assert.equal(run.status, 2, `${label}: ${run.output}`);
+    assert.equal(run.nodeStatus, 2, `${label}: código do Node`);
+    assert.match(run.stderr, /CORPUS/, `${label}: diagnóstico nomeia CORPUS`);
+    assert.match(run.stderr, pattern, `${label}: diagnóstico específico`);
+    assert.doesNotMatch(run.stdout, /hash do corpus/, `${label}: sem manifesto`);
+    assert.ok(!existsSync(join(sandbox.evidenceDir, name)), `${label}: nenhuma execução criada`);
+  }
 }
 
 test('corpus estruturado preserva os textos e gabaritos de corpus.md revisão 1', () => {

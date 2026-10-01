@@ -1,10 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 
+import { ServiceCallError } from './calls.mjs';
 import { buildComparison } from './comparison.mjs';
+import { redactText, redactValue, secretValues } from './config.mjs';
 import { fileHash, JUDGMENT_IDS } from './corpus.mjs';
 import { IncompleteError, UsageError } from './errors.mjs';
-import { createRunDir, SCHEMA_VERSION, writeJsonAtomic } from './evidence.mjs';
+import { acquireCollectionLock, createRunDir, SCHEMA_VERSION, writeJsonAtomic } from './evidence.mjs';
 import { buildJevBody, evaluationRecord, JEV_RUBRIC, rubricRevision } from './jev.mjs';
 import { publicConfig } from './manifest.mjs';
 import { renderPrompt, templateRevision, TRANSLATION_TEMPLATE } from './template.mjs';
@@ -39,13 +41,25 @@ function generateRunId(now) {
   return `${now.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}-${randomBytes(3).toString('hex')}`;
 }
 
-export async function runCollection({
+// Uma coleta por diretório de evidências: a trava é tomada antes de qualquer arquivo ou chamada e
+// liberada em qualquer término.
+export async function runCollection(options) {
+  const release = acquireCollectionLock(options.evidenceDir);
+  try {
+    return await collect(options);
+  } finally {
+    release();
+  }
+}
+
+async function collect({
   config,
   corpusInfo,
   transports,
   evidenceDir,
   translationTemplate = TRANSLATION_TEMPLATE,
   now = () => new Date(),
+  signal = null,
 }) {
   const runId = config.runId ?? generateRunId(now());
   const runDir = join(evidenceDir, runId);
@@ -63,6 +77,10 @@ export async function runCollection({
     official: translationTemplate.official,
     justification: translationTemplate.justification,
   };
+
+  // Segredos vão só em cabeçalhos; se um serviço os ecoar, a evidência gravada os omite.
+  const secrets = secretValues(config);
+  const writeEvidence = (path, value) => writeJsonAtomic(path, redactValue(value, secrets));
 
   createRunDir(evidenceDir, runDir, runId);
   const manifest = {
@@ -82,11 +100,15 @@ export async function runCollection({
     },
     config: { ...publicConfig(config), run_id: runId },
     limits: { local_calls: config.limits.localCalls, jev_calls: config.limits.jevCalls },
+    // Chamadas tentadas por serviço, falhas inclusive; nulo se os transportes não usam o orçamento.
+    calls: transports.budget?.snapshot() ?? null,
     planned_items: items.map((i) => i.id),
     completed_items: [],
     not_executed_items: items.map((i) => i.id),
     skipped_items: [],
     blocked: null,
+    // Chamada que encerrou a coleta: fica fora de `not_executed_items`, com o que se sabe do serviço.
+    failure: null,
     translation: {
       requested_model: config.local.model,
       returned_model: null,
@@ -102,22 +124,29 @@ export async function runCollection({
   };
   const manifestPath = join(runDir, 'manifest.json');
   const save = () => {
-    const completed = new Set(manifest.completed_items);
-    manifest.not_executed_items = manifest.planned_items.filter((id) => !completed.has(id));
-    writeJsonAtomic(manifestPath, manifest);
+    const done = new Set([...manifest.completed_items, manifest.failure?.item]);
+    manifest.not_executed_items = manifest.planned_items.filter((id) => !done.has(id));
+    manifest.calls = transports.budget?.snapshot() ?? null;
+    writeEvidence(manifestPath, manifest);
   };
   // A comparação acompanha qualquer término: resultados individuais concluídos continuam visíveis.
-  // Se ela não puder ser gravada, o manifesto termina `incomplete` com `internal_error`, nunca `running`.
+  // Se ela não puder ser gravada, o manifesto nunca fica `running` nem `completed`: uma coleta que
+  // terminaria concluída vira `incomplete` com `internal_error`; um término já incompleto ou rejeitado
+  // conserva seu motivo original e registra o erro da comparação.
   const finish = (status, reason) => {
     manifest.finished_at = now().toISOString();
     const reference = { corpus_hash: corpusInfo.corpusHash, gabarito_hash: corpusInfo.gabaritoHash };
     try {
-      writeJsonAtomic(
+      writeEvidence(
         join(runDir, 'comparison.json'),
         buildComparison({ runId, corpus: corpusInfo.corpus, reference, records: evaluations }),
       );
     } catch (error) {
-      Object.assign(manifest, { status: 'incomplete', reason: 'internal_error' });
+      Object.assign(
+        manifest,
+        status === 'completed' ? { status: 'incomplete', reason: 'internal_error' } : { status, reason },
+        { comparison_error: redactText(error.message, secrets) },
+      );
       save();
       throw error;
     }
@@ -142,12 +171,24 @@ export async function runCollection({
     finish('incomplete', reason);
     throw new IncompleteError(`${message}; coleta incompleta, prefixo preservado`);
   };
-  const call = async (label, operation) => {
+  // Falha de chamada encerra a coleta sem retry nem troca de provedor ou idioma (AC 28–29).
+  const call = async (label, service, operation) => {
     try {
       return await operation();
     } catch (error) {
-      finish('incomplete', 'transport_error');
-      throw new IncompleteError(`falha em ${label}: ${error.message}; coleta incompleta, prefixo preservado`);
+      const known = error instanceof ServiceCallError;
+      const message = redactText(error.message, secrets);
+      manifest.failure = {
+        item: label,
+        service,
+        reason: known ? error.reason : 'transport_error',
+        request_sent: known ? error.requestSent : null,
+        remote_outcome: known ? error.remoteOutcome : 'unknown',
+        message,
+        ...(known ? error.details : {}),
+      };
+      finish('incomplete', manifest.failure.reason);
+      throw new IncompleteError(`falha em ${label}: ${message}; coleta incompleta, prefixo preservado`);
     }
   };
   // Live: template oficial e identidade do candidato confirmados antes de qualquer tradução do corpus.
@@ -159,7 +200,7 @@ export async function runCollection({
     }
     rejectMixedProvenance(transports.local.provenance, { id: 'model-check' });
     const started = performance.now();
-    const inspection = await call('model-check', () => transports.local.inspect());
+    const inspection = await call('model-check', 'local', () => transports.local.inspect());
     const durationMs = Math.round(performance.now() - started);
     rejectMixedProvenance(inspection?.provenance, { id: 'model-check' });
     const model = inspection.model ?? null;
@@ -179,6 +220,7 @@ export async function runCollection({
   try {
     const candidateModel = await prepareTranslation();
     for (const [index, item] of items.entries()) {
+      if (signal?.aborted) stop('interrupted', `coleta interrompida antes de ${item.id}`);
       ensureCorpusUnchanged();
       if (item.kind === 'evaluation' && item.arm === 'en' && invalidTranslations.has(item.case_id)) {
         manifest.skipped_items.push({ item: item.id, reason: 'invalid_translation' });
@@ -204,7 +246,7 @@ export async function runCollection({
         payload.prompt = renderPrompt(translationTemplate, item.direction, payload.text);
         let inputTokens = null;
         if (candidateModel) {
-          const count = await call(item.id, () =>
+          const count = await call(item.id, 'local', () =>
             transport.countTokens({ item, model: config.local.model, prompt: payload.prompt }),
           );
           const blocked = checkInputTokens(count, candidateModel);
@@ -217,7 +259,7 @@ export async function runCollection({
         prepared.input_tokens = inputTokens;
       }
       const started = performance.now();
-      const response = await call(item.id, () =>
+      const response = await call(item.id, item.service, () =>
         item.kind === 'translation' ? transport.translate({ item, ...payload }) : transport.evaluate({ item, ...payload }),
       );
       const durationMs = Math.round(performance.now() - started);
@@ -273,7 +315,7 @@ export async function runCollection({
         });
         evaluations.push(record);
       }
-      writeJsonAtomic(join(runDir, 'results', `${String(index + 1).padStart(3, '0')}-${item.id}.json`), record);
+      writeEvidence(join(runDir, 'results', `${String(index + 1).padStart(3, '0')}-${item.id}.json`), record);
       manifest.completed_items.push(item.id);
       save();
       if (record.evaluation?.status === 'invalid_response') {

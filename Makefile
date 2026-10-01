@@ -30,11 +30,15 @@ checks-validate:
 
 # Ausência de arquivos de prova é erro, não sucesso.
 # Exige um teste nomeado C<n>: executado, sem aceitar zero testes, skip ou TODO.
+# TEST_FLAGS chega pelo ambiente e é expandido sem glob: padrões como ^(C1|C2): não viram sintaxe do shell.
+check-proof: export AI_STUDY_TEST_FLAGS = $(TEST_FLAGS)
 check-proof:
 	@set -eu; \
+	set -- $(TEST_FILES); \
 	proof_output=$$(mktemp); \
 	trap 'rm -f "$$proof_output"' EXIT; \
-	if RUN_ID="$(RUN_ID)" $(NODE) --test --test-isolation=none --test-reporter=tap $(TEST_FLAGS) $(TEST_FILES) >"$$proof_output" 2>&1; then \
+	set -f; \
+	if RUN_ID="$(RUN_ID)" $(NODE) --test --test-isolation=none --test-reporter=tap $$AI_STUDY_TEST_FLAGS "$$@" >"$$proof_output" 2>&1; then \
 	  proof_status=0; \
 	else proof_status=$$?; fi; \
 	cat "$$proof_output"; \

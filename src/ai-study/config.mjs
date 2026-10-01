@@ -135,12 +135,44 @@ export function displayPath(repoRoot, path) {
 // uma credencial curta como `u` ou `MODE` corromperia qualquer diagnóstico. Segredos do ambiente
 // são omitidos onde aparecerem.
 export function redact(text, env) {
+  return redactText(text, SECRET_NAMES.map((name) => env[name]));
+}
+
+export function redactText(text, secrets) {
   const structural = text
     .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#]*@/gi, '$1[omitido]@')
     .replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#]*)\?[^\s#]*/gi, '$1?[omitido]');
-  return SECRET_NAMES.map((name) => env[name])
+  return omitSecrets(structural, secrets);
+}
+
+// Valores secretos da configuração: vão só em cabeçalhos, e um serviço pode ecoá-los na resposta.
+export function secretValues(config) {
+  return [config.jev.apiKey, config.local.apiToken];
+}
+
+function omitSecrets(text, secrets) {
+  return secrets
     .filter((value) => typeof value === 'string' && value.length > 0)
-    .reduce((result, secret) => result.split(secret).join('[omitido]'), structural);
+    .reduce((result, secret) => result.split(secret).join('[omitido]'), text);
+}
+
+// Segredo mais curto que isto coincide por acaso com texto comum: omiti-lo das evidências corromperia
+// traduções e identificadores sem proteger nada.
+export const MIN_REDACTED_SECRET = 8;
+
+// Evidência gravada: omite os segredos em qualquer texto (chaves inclusive), sem reescrever URLs, que
+// podem fazer parte de uma tradução literal.
+export function redactValue(value, secrets) {
+  const relevant = secrets.filter((secret) => typeof secret === 'string' && secret.length >= MIN_REDACTED_SECRET);
+  const walk = (v) => {
+    if (typeof v === 'string') return omitSecrets(v, relevant);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v !== null && typeof v === 'object') {
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [omitSecrets(k, relevant), walk(x)]));
+    }
+    return v;
+  };
+  return relevant.length === 0 ? value : walk(value);
 }
 
 export function evidenceDirFor(repoRoot) {

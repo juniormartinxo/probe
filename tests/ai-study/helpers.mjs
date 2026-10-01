@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,6 +18,12 @@ export const liveServicesFixtureJev = fileURLToPath(new URL('./support/live-serv
 export const liveServicesFixtureJevResponse = fileURLToPath(
   new URL('./support/live-services-fixture-jev-response.mjs', import.meta.url),
 );
+// Pré-cargas só de teste da S4: barreira na primeira chamada fixture, interrupção na troca de arquivo e
+// registro das leituras do sistema de arquivos.
+export const fixtureBarrier = fileURLToPath(new URL('./support/fixture-barrier.mjs', import.meta.url));
+export const interruptOnRename = fileURLToPath(new URL('./support/interrupt-on-rename.mjs', import.meta.url));
+export const fsTrace = fileURLToPath(new URL('./support/fs-trace.mjs', import.meta.url));
+export const supportDir = fileURLToPath(new URL('./support/', import.meta.url));
 
 export const validLive = Object.freeze({
   LOCAL_BASE_URL: 'http://127.0.0.1:1234/v1',
@@ -53,6 +59,7 @@ export function makeSandbox() {
     repo,
     guardLog: join(dir, 'guard.log'),
     servicesLog: join(dir, 'services.log'),
+    fsLog: join(dir, 'fs.log'),
     evidenceDir: join(repo, 'artifacts', 'ai-study'),
   };
 }
@@ -64,6 +71,7 @@ function baseEnv(sandbox, env, preload) {
     LANG: 'C.UTF-8',
     AI_STUDY_GUARD_LOG: sandbox.guardLog,
     AI_STUDY_SERVICES_LOG: sandbox.servicesLog,
+    AI_STUDY_FS_LOG: sandbox.fsLog,
     NODE_OPTIONS: [guardPath, ...preload].map((path) => `--import=${path}`).join(' '),
     ...env,
   };
@@ -72,6 +80,7 @@ function baseEnv(sandbox, env, preload) {
 function finish(result, sandbox) {
   return {
     status: result.status,
+    signal: result.signal,
     stdout: result.stdout,
     stderr: result.stderr,
     output: `${result.stdout}\n${result.stderr}`,
@@ -81,19 +90,57 @@ function finish(result, sandbox) {
 }
 
 // Atravessa a fronteira publicada: `make <target> VAR=valor`, sem herdar o ambiente do teste.
-export function runMake(sandbox, target, { vars = {}, env = {}, preload = [] } = {}) {
+// `timeout` (ms) encerra o make que não termina; o teste então falha em vez de travar.
+export function runMake(sandbox, target, { vars = {}, env = {}, preload = [], timeout } = {}) {
   const args = ['-s', '--no-print-directory', '-C', sandbox.repo, target];
   for (const [name, value] of Object.entries(vars)) args.push(`${name}=${value}`);
-  const result = spawnSync('make', args, { env: baseEnv(sandbox, env, preload), encoding: 'utf8' });
+  const result = spawnSync('make', args, { env: baseEnv(sandbox, env, preload), encoding: 'utf8', timeout });
   return { ...finish(result, sandbox), nodeStatus: nodeStatusFromMake(result) };
 }
 
-export function runCli(sandbox, argv, { env = {} } = {}) {
+// Mesma fronteira, em segundo plano: para coletas concorrentes reais entre processos.
+export function startMake(sandbox, target, { vars = {}, env = {}, preload = [] } = {}) {
+  const args = ['-s', '--no-print-directory', '-C', sandbox.repo, target];
+  for (const [name, value] of Object.entries(vars)) args.push(`${name}=${value}`);
+  const child = spawn('make', args, { env: baseEnv(sandbox, env, preload) });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));
+  child.stderr.setEncoding('utf8').on('data', (chunk) => (stderr += chunk));
+  const done = new Promise((resolve) =>
+    child.on('close', (status, signal) => {
+      const result = { status, signal, stdout, stderr };
+      resolve({ ...finish(result, sandbox), nodeStatus: nodeStatusFromMake(result) });
+    }),
+  );
+  return { child, done };
+}
+
+export function runCli(sandbox, argv, { env = {}, preload = [] } = {}) {
   const result = spawnSync(process.execPath, [join(sandbox.repo, 'src/ai-study/cli.mjs'), ...argv], {
-    env: baseEnv(sandbox, env, []),
+    env: baseEnv(sandbox, env, preload),
     encoding: 'utf8',
   });
   return finish(result, sandbox);
+}
+
+export function readFsTrace(sandbox) {
+  if (!existsSync(sandbox.fsLog)) return [];
+  return readFileSync(sandbox.fsLog, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+}
+
+// Todos os arquivos de um diretório (relativos) com seus bytes, para provar preservação byte a byte.
+export function snapshotFiles(root) {
+  const files = {};
+  const walk = (dir, prefix) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(join(dir, entry.name), rel);
+      else files[rel] = readFileSync(join(dir, entry.name), 'utf8');
+    }
+  };
+  if (existsSync(root)) walk(root, '');
+  return files;
 }
 
 // GNU Make sempre sai com 2 quando o recipe falha; o código real do Node aparece em "Error N".
