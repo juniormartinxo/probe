@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 4,
+  "next_id": 5,
   "lessons": [
     {
       "id": "L-001",
@@ -58,6 +58,24 @@
       ],
       "created": "2026-10-01T20:31:05Z",
       "last_seen": "2026-10-01T20:31:05Z"
+    },
+    {
+      "id": "L-004",
+      "key": "ac_gap::when a claim covers any member of a set in sequence such as a first and second signal prove the mixed pairs too not only the same member repeated",
+      "text": "When a claim covers any member of a set in sequence, such as a first and second signal, prove the mixed pairs too, not only the same member repeated",
+      "signal": "ac_gap",
+      "scope": "signals",
+      "status": "candidate",
+      "features": [
+        "jev-translation-feasibility"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C55 FAIL - src/ai-study/cli.mjs:61; tests/ai-study/s4-limits.test.mjs:917-925 (signals)"
+      ],
+      "created": "2026-10-01T20:59:56Z",
+      "last_seen": "2026-10-01T20:59:56Z"
     }
   ]
 }

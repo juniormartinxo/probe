@@ -32,6 +32,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: plan.md AC 27 amendment (local_token_count) - no check row; C31 (checks-allocation)
 - last seen: 2026-10-01T20:31:05Z
 
+### L-004 - When a claim covers any member of a set in sequence, such as a first and second signal, prove the mixed pairs too, not only the same member repeated
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `signals` · harmful: 0
+- features: jev-translation-feasibility
+- evidence: C55 FAIL - src/ai-study/cli.mjs:61; tests/ai-study/s4-limits.test.mjs:917-925 (signals)
+- last seen: 2026-10-01T20:59:56Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
