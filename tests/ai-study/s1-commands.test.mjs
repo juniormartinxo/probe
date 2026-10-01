@@ -220,6 +220,8 @@ test('C5: configuração inválida encerra com código 2 antes de coletar, nomea
   const env = { TYPESAFE_API_KEY: SECRET, LOCAL_BASE_URL: `http://op:${SECRET}-pw@127.0.0.1:1234/v1?token=${SECRET}-q` };
   const redacted = redact(`falha em http://op:${SECRET}-pw@127.0.0.1:1234/v1/completions?token=${SECRET}-q (chave ${SECRET})`, env);
   assert.equal(redacted, 'falha em http://[omitido]@127.0.0.1:1234/v1/completions?[omitido] (chave [omitido])');
+  // O Node aceita `@` sem codificação na senha: a omissão vai até o último `@` antes do caminho.
+  assert.equal(redact('erro: http://u:p@ss@h/v1 falhou', {}), 'erro: http://[omitido]@h/v1 falhou');
 });
 
 test('C9: ai-study-run com modo omitido conclui com código 0 e artefatos fixture schema_version 1', () => {

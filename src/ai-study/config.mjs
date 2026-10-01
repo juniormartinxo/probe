@@ -136,7 +136,7 @@ export function displayPath(repoRoot, path) {
 // são omitidos onde aparecerem.
 export function redact(text, env) {
   const structural = text
-    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#@]*@/gi, '$1[omitido]@')
+    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#]*@/gi, '$1[omitido]@')
     .replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#]*)\?[^\s#]*/gi, '$1?[omitido]');
   return SECRET_NAMES.map((name) => env[name])
     .filter((value) => typeof value === 'string' && value.length > 0)
