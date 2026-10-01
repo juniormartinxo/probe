@@ -131,28 +131,16 @@ export function displayPath(repoRoot, path) {
   return rel.startsWith('..') || isAbsolute(rel) ? path : rel;
 }
 
-// Valores a omitir de qualquer saída: segredos do ambiente e credenciais embutidas na URL local.
-export function secretValues(env) {
-  const values = SECRET_NAMES.map((name) => env[name]);
-  const url = typeof env.LOCAL_BASE_URL === 'string' ? parseHttpUrl(env.LOCAL_BASE_URL) : null;
-  if (url) {
-    values.push(url.username, url.password, safeDecode(url.username), safeDecode(url.password));
-    for (const value of url.searchParams.values()) values.push(value);
-  }
-  return [...new Set(values.filter((v) => typeof v === 'string' && v.length > 0))];
-}
-
-// Credencial com escape percentual inválido continua omitida pela forma bruta.
-function safeDecode(value) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
+// Credenciais de URL são omitidas pela estrutura (usuário, senha e query), não por busca do valor:
+// uma credencial curta como `u` ou `MODE` corromperia qualquer diagnóstico. Segredos do ambiente
+// são omitidos onde aparecerem.
 export function redact(text, env) {
-  return secretValues(env).reduce((result, secret) => result.split(secret).join('[omitido]'), text);
+  const structural = text
+    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#@]*@/gi, '$1[omitido]@')
+    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#]*)\?[^\s#]*/gi, '$1?[omitido]');
+  return SECRET_NAMES.map((name) => env[name])
+    .filter((value) => typeof value === 'string' && value.length > 0)
+    .reduce((result, secret) => result.split(secret).join('[omitido]'), structural);
 }
 
 export function evidenceDirFor(repoRoot) {

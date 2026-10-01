@@ -5,7 +5,7 @@ import test from 'node:test';
 
 import { runCollection } from '../../src/ai-study/collect.mjs';
 import { selectTransports } from '../../src/ai-study/cli.mjs';
-import { LIMITS, resolveConfig } from '../../src/ai-study/config.mjs';
+import { LIMITS, redact, resolveConfig } from '../../src/ai-study/config.mjs';
 import { loadCorpus } from '../../src/ai-study/corpus.mjs';
 import { UsageError } from '../../src/ai-study/errors.mjs';
 import { createFixtureTransports } from '../../src/ai-study/fixture.mjs';
@@ -209,6 +209,17 @@ test('C5: configuração inválida encerra com código 2 antes de coletar, nomea
   const badUrl = runCli(sandbox, ['collect'], { env: { LOCAL_BASE_URL: `http://operador:%zz${SECRET}@127.0.0.1/` } });
   assertUsageFailure(badUrl, /^ai-study: comando inválido/m, 'redação com URL mal codificada');
   assertNoSecret(badUrl);
+
+  // Credenciais curtas na URL não corrompem o diagnóstico nem escondem o nome da configuração.
+  const shortUser = runMake(sandbox, 'ai-study-run', { vars: { MODE: 'xpto', LOCAL_BASE_URL: 'http://MODE:pw@127.0.0.1/' } });
+  assertUsageFailure(shortUser, /MODE inválido: use fixture ou live/, 'usuário igual ao nome da configuração');
+  const oneLetter = runCli(sandbox, ['collect'], { env: { LOCAL_BASE_URL: 'http://u:e@127.0.0.1/' } });
+  assertUsageFailure(oneLetter, /^ai-study: comando inválido: use dry-run ou run$/m, 'credencial de uma letra');
+
+  // Rede de segurança: URLs com credenciais em mensagens perdem usuário, senha e query.
+  const env = { TYPESAFE_API_KEY: SECRET, LOCAL_BASE_URL: `http://op:${SECRET}-pw@127.0.0.1:1234/v1?token=${SECRET}-q` };
+  const redacted = redact(`falha em http://op:${SECRET}-pw@127.0.0.1:1234/v1/completions?token=${SECRET}-q (chave ${SECRET})`, env);
+  assert.equal(redacted, 'falha em http://[omitido]@127.0.0.1:1234/v1/completions?[omitido] (chave [omitido])');
 });
 
 test('C9: ai-study-run com modo omitido conclui com código 0 e artefatos fixture schema_version 1', () => {
