@@ -176,7 +176,7 @@ function listOf(value, where, problems) {
   return [];
 }
 
-function isObject(value) {
+export function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 

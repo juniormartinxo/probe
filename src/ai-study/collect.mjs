@@ -107,15 +107,21 @@ export async function runCollection({
     writeJsonAtomic(manifestPath, manifest);
   };
   // A comparação acompanha qualquer término: resultados individuais concluídos continuam visíveis.
+  // Se ela não puder ser gravada, o manifesto termina `incomplete` com `internal_error`, nunca `running`.
   const finish = (status, reason) => {
-    manifest.status = status;
-    manifest.reason = reason;
     manifest.finished_at = now().toISOString();
     const reference = { corpus_hash: corpusInfo.corpusHash, gabarito_hash: corpusInfo.gabaritoHash };
-    writeJsonAtomic(
-      join(runDir, 'comparison.json'),
-      buildComparison({ runId, corpus: corpusInfo.corpus, reference, records: evaluations }),
-    );
+    try {
+      writeJsonAtomic(
+        join(runDir, 'comparison.json'),
+        buildComparison({ runId, corpus: corpusInfo.corpus, reference, records: evaluations }),
+      );
+    } catch (error) {
+      Object.assign(manifest, { status: 'incomplete', reason: 'internal_error' });
+      save();
+      throw error;
+    }
+    Object.assign(manifest, { status, reason });
     save();
   };
   const ensureCorpusUnchanged = () => {

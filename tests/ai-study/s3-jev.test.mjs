@@ -593,3 +593,30 @@ test('C53: na fronteira make MODE=live, transporte ou resposta fixture do Jev é
   assert.deepEqual(after.manifest, before.manifest);
   assert.deepEqual(listRuns(sandbox).sort(), ['c53-anterior', 'c53-response', 'c53-transport']);
 });
+
+test('S3: falha ao gravar comparison.json não deixa o manifesto em running nem o declara concluído', async () => {
+  const sandbox = makeSandbox();
+  // O teste ocupa o caminho de comparison.json com um diretório; a substituição atômica do arquivo falha.
+  const svc = services({
+    jev: (call, n) => {
+      if (n === 1) mkdirSync(join(sandbox.evidenceDir, 'comparison-falha', 'comparison.json'));
+      return { body: { model: JEV_MODEL, answers: allAnswers() } };
+    },
+  });
+  const config = liveConfig('comparison-falha');
+  await assert.rejects(
+    runCollection({
+      config,
+      corpusInfo: loadCorpus(config.corpusPath),
+      transports: adapters(config, svc.fetch),
+      evidenceDir: sandbox.evidenceDir,
+      translationTemplate: confirmedTemplate,
+    }),
+    (error) => !(error instanceof IncompleteError) && /comparison\.json/.test(error.message),
+  );
+  const { manifest } = readRun(sandbox, 'comparison-falha');
+  assert.equal(manifest.status, 'incomplete');
+  assert.equal(manifest.reason, 'internal_error');
+  assert.ok(manifest.finished_at, 'término registrado');
+  assert.equal(manifest.completed_items.length, 42, 'itens concluídos preservados');
+});

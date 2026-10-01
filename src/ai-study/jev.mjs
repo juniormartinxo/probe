@@ -1,4 +1,4 @@
-import { canonicalJson, CHOICES, JUDGMENT_IDS, sha256 } from './corpus.mjs';
+import { canonicalJson, CHOICES, isObject, JUDGMENT_IDS, sha256 } from './corpus.mjs';
 
 // Rubricas únicas em inglês para os dois braços: versão em inglês das rubricas da revisão 1 do corpus.
 // O estado varia entre original e tradução; instruções e critérios nunca variam.
@@ -65,7 +65,6 @@ const SUM_TOLERANCE = 0.000001;
 const FLOAT_SLACK = 1e-12;
 
 const isUnit = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
-const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // Aceita somente seis resultados choice válidos; nenhuma escolha é inferida de texto livre.
 export function validateEvaluation(results, judgments = JUDGMENT_IDS) {
@@ -105,7 +104,7 @@ export function validateEvaluation(results, judgments = JUDGMENT_IDS) {
 }
 
 // Registro de uma avaliação por caso e braço; resposta inválida fica sem escolhas, nunca inferidas.
-export function evaluationRecord({ runId, item, body, response, judgments, durationMs, rubric = JEV_RUBRIC }) {
+export function evaluationRecord({ runId, item, body, response, judgments, durationMs }) {
   const problems = validateEvaluation(response.results, judgments);
   return {
     run_id: runId,
@@ -113,8 +112,8 @@ export function evaluationRecord({ runId, item, body, response, judgments, durat
     arm: item.arm,
     requested_model: body.model,
     returned_model: response.model ?? null,
-    rubric_id: rubric.id,
-    rubric_revision: rubricRevision(rubric),
+    rubric_id: JEV_RUBRIC.id,
+    rubric_revision: rubricRevision(JEV_RUBRIC),
     ...questionHashes(body),
     status: problems.length === 0 ? 'valid' : 'invalid_response',
     problems,
