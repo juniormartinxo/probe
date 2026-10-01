@@ -13,6 +13,7 @@ import {
   defaultCorpusPath,
   excludedClis,
   liveJevInFixture,
+  liveJevResponseInFixture,
   listRuns,
   makeSandbox,
   parseManifest,
@@ -34,7 +35,8 @@ function assertNoSecret(run, secret = SECRET) {
 
 function assertUsageFailure(run, pattern, label) {
   assert.equal(run.status, 2, `${label}: ${run.output}`);
-  assert.equal(run.nodeStatus ?? run.status, 2, `${label}: código do Node`);
+  // Pela fronteira make, o código do Node vem da linha "Error N"; pela CLI direta, é o próprio status.
+  assert.equal('nodeStatus' in run ? run.nodeStatus : run.status, 2, `${label}: código do Node`);
   assert.match(run.stderr, pattern, `${label}: diagnóstico`);
 }
 
@@ -264,6 +266,15 @@ test('C10: resposta com proveniência diferente do modo é rejeitada com código
   assert.deepEqual(evidence.results.map((r) => r.item.id), ['R01-translate-pt-en']);
   assert.equal(evidence.results[0].provenance, 'fixture');
   assert.ok(evidence.manifest.not_executed_items.includes('R01-evaluate-pt'));
+
+  // Fronteira make: transporte fixture cuja resposta volta rotulada live; o prefixo fica intacto.
+  const response = runMake(sandbox, 'ai-study-run', { vars: { RUN_ID: 'c10-fixture-response-make' }, preload: [liveJevResponseInFixture] });
+  assertUsageFailure(response, /proveniência "live" incompatível com MODE=fixture em R01-evaluate-pt/, 'resposta live em fixture');
+  const responseEvidence = readRun(sandbox, 'c10-fixture-response-make');
+  assert.equal(responseEvidence.manifest.status, 'rejected');
+  assert.equal(responseEvidence.manifest.reason, 'provenance_mismatch');
+  assert.deepEqual(responseEvidence.results.map((r) => r.item.id), ['R01-translate-pt-en']);
+  assert.equal(responseEvidence.results[0].provenance, 'fixture');
 
   // Coletor em modo live: transporte simulado ou resposta que se declara simulada são rejeitados.
   const fixture = createFixtureTransports();

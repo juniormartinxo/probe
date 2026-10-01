@@ -9,8 +9,9 @@ export const defaultCorpusPath = join(repoRoot, 'src/ai-study/corpus/revision-1.
 export const excludedClis = ['codex', 'claude', 'grok', 'agy', 'cloak'];
 
 const guardPath = fileURLToPath(new URL('./support/guard.mjs', import.meta.url));
-// Pré-carga só de teste: substitui o transporte Jev da coleta fixture por um transporte live.
+// Pré-cargas só de teste: transporte Jev live, ou resposta Jev live de um transporte fixture, na coleta fixture.
 export const liveJevInFixture = fileURLToPath(new URL('./support/live-jev-in-fixture.mjs', import.meta.url));
+export const liveJevResponseInFixture = fileURLToPath(new URL('./support/live-jev-response-in-fixture.mjs', import.meta.url));
 
 export const validLive = Object.freeze({
   LOCAL_BASE_URL: 'http://127.0.0.1:1234/v1',
@@ -88,10 +89,12 @@ export function runCli(sandbox, argv, { env = {} } = {}) {
 }
 
 // GNU Make sempre sai com 2 quando o recipe falha; o código real do Node aparece em "Error N".
+// Sem essa linha o teste não distingue o código do Node do 2 genérico do make, então falha.
 function nodeStatusFromMake(result) {
   if (result.status === 0) return 0;
   const match = result.stderr.match(/\] Error (\d+)$/m);
-  return match ? Number(match[1]) : null;
+  if (!match) throw new Error(`make falhou sem a linha "Error N" com o código do Node:\n${result.stderr}`);
+  return Number(match[1]);
 }
 
 export function readGuard(sandbox) {
