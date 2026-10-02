@@ -514,13 +514,14 @@ test('C49: todo relatório fixture identifica os resultados como simulados, sem 
   await liveCollection(sandbox, 'c49-live');
   const live = report(sandbox, 'c49-live');
   assert.ok(!live.markdown.includes('Resultados simulados'), 'live sem marca de simulação');
+  assert.match(live.markdown, /^- Modo e proveniência: `live` \/ `live`$/m);
 });
 
-test('verificadores de C50 e C51: evidência live com o template oficial adotado passa; fixture, template não adotado, quantização e coleta parcial não passam', async () => {
+test('verificadores de integração live: evidência live com o template oficial adotado passa; fixture, template não adotado, quantização e coleta parcial não passam', async () => {
   const sandbox = makeSandbox();
   await liveCollection(sandbox, 'v-live');
   const live = loadRun(sandbox.evidenceDir, 'v-live');
-  // Template confirmado só no teste: com o versionado da bancada, ainda não oficial, nada fecha C50/C51.
+  // Template confirmado só no teste: com o versionado da bancada, ainda não oficial, nenhuma integração real é dada como comprovada.
   const adopted = { officialTemplate: confirmedTemplate };
   assert.deepEqual(proveLiveTranslation(live, adopted), { proven: true, problems: [] });
   assert.deepEqual(proveLiveRelational(live, adopted).cases, corpus.relational_cases.map((c) => c.id));

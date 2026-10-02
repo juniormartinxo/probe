@@ -50,7 +50,7 @@ export const REPORT_TEXT = Object.freeze({
     reasonComparisonMissing: 'comparison.json ausente',
     reasonReviewPending: 'revisão semântica pendente em {items}',
 
-    // Provas live (C50/C51).
+    // Provas de integração live.
     templateNotConfirmed: 'template oficial não confirmado',
     templateNotAdopted: 'template gravado não é o template oficial adotado na bancada',
     liveFixtureTranslation: 'evidência fixture: simulação não comprova a integração local',

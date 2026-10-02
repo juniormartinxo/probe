@@ -34,7 +34,7 @@ function plannedCases(manifest, direction) {
 
 // Live real exige o template versionado do repositório, adotado como oficial (Decisão 1). Uma coleta
 // com serviços e template confirmados só num teste grava a mesma revisão, mas o template versionado não
-// é oficial: a evidência não fecha C50/C51 enquanto o oficial não for adotado na bancada.
+// é oficial: a evidência não comprova integração real enquanto o oficial não for adotado na bancada.
 function templateProblem(manifest, official) {
   const recorded = manifest.translation?.template;
   if (!recorded?.official) return text('templateNotConfirmed');
@@ -82,7 +82,7 @@ export function assessConclusion(loaded, reviews, simulated = isSimulated(loaded
   return { conclusion: reasons.length > 0 ? 'inconclusive' : 'evidence_complete', reasons };
 }
 
-// C50: integração local real com os casos T planejados (T01–T06). Fixture nunca supre esses registros.
+// Integração local real com os casos T planejados (T01–T06). Fixture nunca supre esses registros.
 export function proveLiveTranslation(loaded, { officialTemplate = TRANSLATION_TEMPLATE } = {}) {
   const { manifest, byItem } = loaded;
   const problems = [];
@@ -124,7 +124,7 @@ export function proveLiveTranslation(loaded, { officialTemplate = TRANSLATION_TE
   return { proven: problems.length === 0, problems };
 }
 
-// C51: ao menos um caso R com tradução PT→EN e dois braços Jev válidos da mesma versão. Prova integração,
+// Ao menos um caso R com tradução PT→EN e dois braços Jev válidos da mesma versão. Prova integração,
 // não concordância com o gabarito, que é contada à parte. Os problemas dos demais casos ficam visíveis.
 export function proveLiveRelational(loaded, { officialTemplate = TRANSLATION_TEMPLATE } = {}) {
   const { manifest, byItem } = loaded;
