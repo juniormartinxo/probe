@@ -166,13 +166,36 @@ function assertNoBareCodes(markdown) {
   assert.doesNotMatch(prose, EVIDENCE_CODES, 'código em inglês solto na prosa');
 }
 const withoutFences = (markdown) => markdown.replace(/^(`{3,})text\n[\s\S]*?\n\1$/gm, '');
-// Palavras funcionais e termos do relatório que só existem em inglês: a prosa gerada (fora de cercas e crases) não os usa.
-const ENGLISH_WORDS = /\b(the|and|of|to|is|are|was|with|without|not|none|for|from|by|this|that|items?|translations?|report|review|evaluated|evaluations?|missing|skipped|completed|incomplete|pending|errors?|hits?|misses|cases?|pairs?|judgments?|limitations?|configuration|provenance|completeness|conclusion|recommendation|reviewer|justification|status|state|run)\b/i;
+// Vocabulário fechado da prosa do relatório: toda palavra fora de cercas e crases é português conhecido ou um
+// termo técnico sem tradução. Palavra nova no relatório, em qualquer língua, falha até entrar aqui de propósito.
+const PORTUGUESE_VOCABULARY = new Set(`
+  acerto acertos acessa acurácia adaptação altera ambiguidades amostra ampliar as ausente ausência avaliados avaliação
+  avaliações braço cada calibração candidato caso casos chamada chamadas coleta com como comparação completos completude
+  comprova conclusão concluída concluídos concordância concreta condições confiança confianças configurado configuração
+  configurações confirmado considera conta contada contagem controladas convertido correção custo da de decidem decisão
+  denominador descritiva descritivas desta destino diferença dinheiro direção distribuição distribuições do dos duração
+  durações economia em entidades entrada erro erros escolha escolhas esperado esta estabelece estado estimada estudo
+  evidência evidências executados execução exemplos falsa formatada gabarito ganho gera geral humana humano há
+  identificada identificado incompletos indisponível individuais informada informado informou integração inválido início
+  itens julgamento justificativa latência limiares limitações limites literal locais local medida medição memória meta
+  modelo modo motivo máxima mínima nas negações nem nenhum nenhuma nesta nova não observada oficial originais original
+  outra pareado pares parte pela pelo pendente planejados por preservado problemas produto produção prova proveniência
+  quantização real recalculada recomendação rede referência registrada regressões relacionais relatório respostas
+  resultados retornado revisada revisor revisora revisão rubrica saída sem semântica semânticas servidor seção
+  significado simulado simulados simulação sobre solicitado somente sucesso são tamanho tarifa tem todas tradução
+  traduções técnico término uma usadas usado uso validação valores vêm válida válidas zero
+`.split(/\s+/).filter(Boolean));
+const TECHNICAL_TERMS = new Set(['corpus', 'download', 'en', 'fixture', 'hash', 'id', 'insufficient', 'jev', 'ms', 'no', 'pt', 'runtime', 'sha', 'template', 'timeouts', 'tokenizer', 'tokens', 'vram', 'yes']);
+// Dados gravados que a prosa cita sem crases: IDs de item, códigos snake_case e o JSON de uso e limites.
+const withoutRecordedData = (text) => text.replace(/\{.*\}/g, '').replace(/\b[RT]\d{2}(-[a-z]+)+\b/g, '').replace(/\b[a-z]+(?:_[a-z]+)+\b/g, '');
 function assertPortugueseProse(markdown) {
   assertNoBareCodes(markdown);
-  const prose = withoutFences(markdown).replace(/`[^`\n]*`/g, '');
-  const english = prose.split('\n').filter((line) => ENGLISH_WORDS.test(line));
-  assert.deepEqual(english, [], 'prosa do relatório em inglês');
+  const prose = withoutRecordedData(withoutFences(markdown).replace(/`[^`\n]*`/g, ''));
+  const unknown = prose.split('\n').flatMap((line) =>
+    (line.match(/\p{L}{2,}/gu) ?? [])
+      .filter((word) => !PORTUGUESE_VOCABULARY.has(word.toLowerCase()) && !TECHNICAL_TERMS.has(word.toLowerCase()))
+      .map((word) => `${word} — ${line}`));
+  assert.deepEqual(unknown, [], 'prosa do relatório fora do vocabulário em português');
 }
 
 test('C41: make ai-study-report gera Markdown só das evidências da execução, sem rede ou modelos; RUN_ID ausente ou inválido encerra com código 2', () => {
