@@ -202,7 +202,7 @@ Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, 
 
 **C42** - Markdown apresenta, nesta ordem, configuração/proveniência, completude, originais/traduções, revisão semântica, comparação Jev e limitações; prosa fica em português e originais não são reescritos (AC 33).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C42:'`
-Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, seis títulos `##` na ordem; originais e traduções literais em cercas mais longas que qualquer sequência de crases do texto).
+Status: prova executada em 01/10/2026 (S5, `tests/ai-study/s5-report.test.mjs`, seis títulos `##` na ordem; originais e traduções literais em cercas mais longas que qualquer sequência de crases do texto). Escopo do claim decidido pelo usuário em 02/10/2026: texto escrito de forma deliberadamente indireta para escapar da leitura estática do gerador (por exemplo, o nome de uma propriedade usado como texto, `Object.keys({ nothing: 1 })[0]`) fica fora do claim; a prova cobre o texto fixo que o gerador escreve diretamente.
 
 **C43** - Relatório mostra acertos, erros e ausências por julgamento em cada braço, mais contagens dos pares completos; um conjunto controlado com um par completo, um braço isolado e uma resposta inválida demonstra denominadores distintos (AC 34).
 Proof: `make check-proof TEST_FLAGS='--test-name-pattern=^C43:'`
@@ -299,7 +299,7 @@ Esta tabela aloca os membros a provas futuras. `-` significa nenhum membro sem c
 | Conclusão sem evidência completa (2) | coleta faltante C45 · revisão pendente C45 | - |
 | Proveniência no relatório (2) | fixture simulado C49 · live identificado C49 | - |
 
-Claims sobre códigos de saída e comandos (C1, C4–C7, C9–C10, C30, C34, C36, C41, C52–C55, C56–C58) exigem atravessar a fronteira do comando publicado. Pela fronteira `make`, o código 1 ou 2 de um claim é o código da CLI Node, lido na linha `make: *** [...] Error N`: quando o recipe falha, o próprio make sai com 2 (emenda de 01/10/2026 no plano, Observable). A exceção é o make encerrado por um sinal recebido por todo o grupo (Ctrl+C): ele termina pelo próprio sinal, sem linha `Error N`, e o término autoritativo é o do manifesto (C55). O código 0 é a saída do próprio make. Provas dos adaptadores inspecionam a requisição completa e o resultado persistido. C25, C27 e C28 devem cobrir cada linha das suas tabelas de decisão, além do caminho de integração. C50–C51 não exigem concordância perfeita do modelo com o gabarito: provam integração, enquanto C27/C43 medem a concordância observada.
+Claims sobre códigos de saída e comandos (C1, C4–C7, C9–C10, C30, C34, C36, C41, C52–C55, C56–C58) exigem atravessar a fronteira do comando publicado. Pela fronteira `make`, o código 1 ou 2 de um claim é o código da CLI Node, lido na linha `make: *** [...] Error N`: quando o recipe falha, o próprio make sai com 2 (emenda de 01/10/2026 no plano, Observable). A exceção é o make encerrado por um sinal recebido por todo o grupo (Ctrl+C): ele termina pelo próprio sinal, sem linha `Error N`, e o término autoritativo é o do manifesto (C55). O código 0 é a saída do próprio make. Provas dos adaptadores inspecionam a requisição completa e o resultado persistido. C25, C27 e C28 devem cobrir cada linha das suas tabelas de decisão, além do caminho de integração. C27/C43 medem a concordância observada do modelo com o gabarito, sem exigir concordância perfeita.
 
 ## Swept
 
