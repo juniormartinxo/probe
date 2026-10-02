@@ -41,8 +41,14 @@ Seen once or not yet corroborated. Tracked, not trusted.
 ### L-005 - Assert the language of generated text against the fixed labels the generator emits, since a closed list of foreign words lets a single foreign word through
 - signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `report` · harmful: 0
 - features: jev-translation-feasibility
-- evidence: M3 survived C42/C43 - src/ai-study/report.mjs:55; tests/ai-study/s5-report.test.mjs:170 (report)
-- last seen: 2026-10-02T10:28:19Z
+- evidence: M3 survived C42/C43 - src/ai-study/report.mjs:55; tests/ai-study/s5-report.test.mjs:170 (report) (+1 more)
+- last seen: 2026-10-02T10:40:11Z
+
+### L-006 - Exempt from a language allowlist only tokens that cannot spell prose, since technical terms and stripped data patterns that are also foreign words let a foreign label through
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `report` · harmful: 0
+- features: jev-translation-feasibility
+- evidence: M4/M5/M6 survived C42 - src/ai-study/report.mjs:227,55,246; tests/ai-study/s5-report.test.mjs:188,190 (report)
+- last seen: 2026-10-02T10:40:11Z
 
 ## Quarantined (failed when applied - ignore)
 

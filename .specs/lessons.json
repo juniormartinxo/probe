@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 6,
+  "next_id": 7,
   "lessons": [
     {
       "id": "L-001",
@@ -90,10 +90,29 @@
       "recurrence": 1,
       "harmful": 0,
       "evidence": [
-        "M3 survived C42/C43 - src/ai-study/report.mjs:55; tests/ai-study/s5-report.test.mjs:170 (report)"
+        "M3 survived C42/C43 - src/ai-study/report.mjs:55; tests/ai-study/s5-report.test.mjs:170 (report)",
+        "M8/M9/M10 survived C42 (branches not rendered) - src/ai-study/report.mjs:33,386,255 (report)"
       ],
       "created": "2026-10-02T10:28:19Z",
-      "last_seen": "2026-10-02T10:28:19Z"
+      "last_seen": "2026-10-02T10:40:11Z"
+    },
+    {
+      "id": "L-006",
+      "key": "surviving_mutant::exempt from a language allowlist only tokens that cannot spell prose since technical terms and stripped data patterns that are also foreign words let a foreign label through",
+      "text": "Exempt from a language allowlist only tokens that cannot spell prose, since technical terms and stripped data patterns that are also foreign words let a foreign label through",
+      "signal": "surviving_mutant",
+      "scope": "report",
+      "status": "candidate",
+      "features": [
+        "jev-translation-feasibility"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "M4/M5/M6 survived C42 - src/ai-study/report.mjs:227,55,246; tests/ai-study/s5-report.test.mjs:188,190 (report)"
+      ],
+      "created": "2026-10-02T10:40:11Z",
+      "last_seen": "2026-10-02T10:40:11Z"
     }
   ]
 }
