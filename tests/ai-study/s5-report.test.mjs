@@ -10,7 +10,7 @@ import { JUDGMENT_IDS, loadCorpus, sha256 } from '../../src/ai-study/corpus.mjs'
 import { createJevTransport } from '../../src/ai-study/jev.mjs';
 import { createLmStudioTransport } from '../../src/ai-study/lmstudio.mjs';
 import { proveLiveRelational, proveLiveTranslation, SECTIONS } from '../../src/ai-study/report.mjs';
-import { REPORT_TEXT } from '../../src/ai-study/report-text.mjs';
+import { REPORT_TEXT, text } from '../../src/ai-study/report-text.mjs';
 import { RECOMMENDATIONS } from '../../src/ai-study/review.mjs';
 import { loadRun } from '../../src/ai-study/run-reader.mjs';
 import { TRANSLATION_TEMPLATE } from '../../src/ai-study/template.mjs';
@@ -169,9 +169,18 @@ function assertNoBareCodes(markdown) {
 }
 const withoutFences = (markdown) => markdown.replace(/^(`{3,})text\n[\s\S]*?\n\1$/gm, '');
 // Prosa do relatório (AC 33): todo texto fixo vem do catálogo `report-text.mjs`, fixado pelo hash abaixo.
-// Português aprovado pelo usuário (revisão humana) em 02/10/2026, no PR #7 (PRB-7), para este hash. Mudar
-// qualquer texto do catálogo exige nova revisão e novo hash aqui.
-const APPROVED_REPORT_TEXT = 'sha256:e9a1e00ae3811fa4d02bbf761d83ad2db9652b7760db53f827f368a7c03b327b';
+// O Codex deu parecer editorial favorável no PR #7; a aprovação humana do português segue pendente.
+// Mudar o texto do catálogo exige nova revisão e novo hash aqui.
+const PINNED_REPORT_TEXT = 'sha256:e9a1e00ae3811fa4d02bbf761d83ad2db9652b7760db53f827f368a7c03b327b';
+const REVIEWED_TEXT_FUNCTION = 'sha256:b928aa8bc3b595b79ddf05ae5cdd07876f6e15c3996b86837bf3070ae0ada32c';
+const REVIEWED_CODE_CONTEXTS = 'sha256:46b94e7608fa1377fb2fc56fa5032f2160c7cde9bc9be6a77f2fa7074f1ad165';
+const REPORT_IMPORTS = [
+  "import { ARMS } from './comparison.mjs';",
+  "import { REPORT_TEXT, text } from './report-text.mjs';",
+  "import { MAX_INPUT_TOKENS, CANDIDATE_QUANTIZATION } from './translation.mjs';",
+  "import { outputHash, REVIEW_FILE } from './review.mjs';",
+  "import { templateRevision, TRANSLATION_TEMPLATE } from './template.mjs';",
+];
 // Literais com letras que `report.mjs` pode ter fora de `text('<chave>')`: códigos gravados nas
 // evidências (comparados ou mostrados entre crases), fragmentos de ID de item e o rótulo da cerca.
 const REPORT_CODE_LITERALS = new Set([
@@ -185,15 +194,19 @@ const REPORT_CODE_LITERALS = new Set([
 function assertReportTextFromCatalogue() {
   const source = readFileSync(join(repoRoot, 'src', 'ai-study', 'report.mjs'), 'utf8');
   const literals = sourceLiterals(source);
-  const keys = literals.filter((l) => l.before.endsWith('text(')).map((l) => l.value);
-  const prose = literals
-    .filter((l) => !l.before.endsWith('text(') && !l.before.endsWith('from ') && /\p{L}/u.test(l.value.replace(/\\./g, '')))
-    .map((l) => l.value)
-    .filter((value) => !REPORT_CODE_LITERALS.has(value));
+  const lineAt = (start) => source.slice(source.lastIndexOf('\n', start - 1) + 1, source.indexOf('\n', start) < 0 ? undefined : source.indexOf('\n', start)).trim();
+  const isTextCall = ({ start }) => /(?:^|[^\w])text\($/.test(source.slice(Math.max(0, start - 16), start));
+  const keys = literals.filter(isTextCall).map((l) => l.value);
+  const codeLiterals = literals.filter((l) => !isTextCall(l) && !lineAt(l.start).startsWith('import ') && /\p{L}/u.test(l.value.replace(/\\./g, '')));
+  const prose = codeLiterals.map((l) => l.value).filter((value) => !REPORT_CODE_LITERALS.has(value));
+  const codeContexts = [...new Set(codeLiterals.map((l) => lineAt(l.start)))];
+  assert.deepEqual(source.match(/^import .+;$/gm), REPORT_IMPORTS, 'imports do gerador fora do conjunto revisado');
   assert.deepEqual(prose, [], 'texto fora do catálogo em report.mjs');
+  assert.equal(sha256(JSON.stringify(codeContexts)), REVIEWED_CODE_CONTEXTS, 'uso de códigos do gerador fora dos contextos revisados');
   assert.deepEqual(keys.filter((key) => !(key in REPORT_TEXT.lines)), [], 'chave inexistente no catálogo');
   assert.deepEqual(Object.keys(REPORT_TEXT.lines).filter((key) => !keys.includes(key)), [], 'chave do catálogo sem uso');
-  assert.equal(sha256(JSON.stringify(REPORT_TEXT)), APPROVED_REPORT_TEXT, 'catálogo do relatório diferente do aprovado');
+  assert.equal(sha256(JSON.stringify(REPORT_TEXT)), PINNED_REPORT_TEXT, 'catálogo do relatório diferente do fixado');
+  assert.equal(sha256(text.toString()), REVIEWED_TEXT_FUNCTION, 'função de interpolação do catálogo diferente da revisada');
 }
 
 test('C41: make ai-study-report gera Markdown só das evidências da execução, sem rede ou modelos; RUN_ID ausente ou inválido encerra com código 2', () => {

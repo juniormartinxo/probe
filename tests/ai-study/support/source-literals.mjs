@@ -12,14 +12,14 @@ export function sourceLiterals(source) {
   const readQuoted = (quote) => {
     let j = i + 1;
     while (source[j] !== quote) j = skipEscaped(j);
-    found.push({ value: source.slice(i + 1, j), before: source.slice(Math.max(0, i - 5), i) });
+    found.push({ value: source.slice(i + 1, j), before: source.slice(Math.max(0, i - 5), i), start: i });
     i = j + 1;
   };
   // `i` aponta para o início de uma parte fixa de template; termina na crase ou no próximo `${`.
   const readTemplatePart = () => {
     let j = i;
     while (source[j] !== '`' && !(source[j] === '$' && source[j + 1] === '{')) j = skipEscaped(j);
-    found.push({ value: source.slice(i, j), before: '`' });
+    found.push({ value: source.slice(i, j), before: '`', start: i });
     if (source[j] === '`') {
       i = j + 1;
     } else {
