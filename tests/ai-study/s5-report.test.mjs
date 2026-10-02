@@ -161,8 +161,9 @@ function countsTable(markdown, heading) {
 }
 
 const header = (markdown) => markdown.slice(0, markdown.indexOf('\n## '));
-// Códigos gravados nas evidências só aparecem como código (entre crases), ao lado de um rótulo em português.
-const EVIDENCE_CODES = /\b(pt_missing|en_missing|pt_invalid|en_invalid|reference_mismatch|instructions_mismatch|criteria_mismatch|jev_model_mismatch|jev_model_unknown|invalid_translation|temporary|not_evidence|not_in_manifest)\b/;
+// Códigos gravados nas evidências só aparecem como código (entre crases), ao lado do rótulo em português
+// do catálogo: motivos, estados técnicos e resultados de julgamento nunca saem soltos no lugar do rótulo.
+const EVIDENCE_CODES = new RegExp(`\\b(${[...Object.keys(REPORT_TEXT.reasons), ...Object.keys(REPORT_TEXT.statuses), ...Object.keys(REPORT_TEXT.outcomes)].join('|')})\\b`);
 function assertNoBareCodes(markdown) {
   const prose = withoutFences(markdown).replace(/`[^`\n]*`/g, '');
   assert.doesNotMatch(prose, EVIDENCE_CODES, 'código em inglês solto na prosa');
@@ -196,12 +197,12 @@ function assertReportTextFromCatalogue() {
   const source = readFileSync(join(repoRoot, 'src', 'ai-study', 'report.mjs'), 'utf8');
   const literals = sourceLiterals(source);
   const lineAt = (start) => source.slice(source.lastIndexOf('\n', start - 1) + 1, source.indexOf('\n', start) < 0 ? undefined : source.indexOf('\n', start)).trim();
-  const isTextCall = ({ start }) => /(?:^|[^\w])text\($/.test(source.slice(Math.max(0, start - 16), start));
+  const isTextCall = ({ start }) => /(?:^|[^\w.$])text\($/.test(source.slice(Math.max(0, start - 16), start));
   const keys = literals.filter(isTextCall).map((l) => l.value);
   const codeLiterals = literals.filter((l) => !isTextCall(l) && !lineAt(l.start).startsWith('import ') && /\p{L}/u.test(l.value.replace(/\\./g, '')));
   const prose = codeLiterals.map((l) => l.value).filter((value) => !REPORT_CODE_LITERALS.has(value));
   const codeContexts = [...new Set(codeLiterals.map((l) => lineAt(l.start)))];
-  assert.deepEqual(source.match(/^import .+;$/gm), REPORT_IMPORTS, 'imports do gerador fora do conjunto revisado');
+  assert.deepEqual(source.match(/^\s*import\b.*$/gm), REPORT_IMPORTS, 'imports do gerador fora do conjunto revisado');
   assert.deepEqual(prose, [], 'texto fora do catálogo em report.mjs');
   assert.equal(sha256(JSON.stringify(codeContexts)), REVIEWED_CODE_CONTEXTS, 'uso de códigos do gerador fora dos contextos revisados');
   assert.deepEqual(keys.filter((key) => !(key in REPORT_TEXT.lines)), [], 'chave inexistente no catálogo');
@@ -272,6 +273,8 @@ test('C42: o Markdown apresenta as seis seções na ordem aprovada, em portuguê
   assertNoBareCodes(markdown);
   assert.deepEqual(SECTIONS, ['Configuração e proveniência', 'Completude', 'Originais e traduções', 'Revisão semântica', 'Comparação Jev', 'Limitações']);
   for (const label of ['Estado técnico', 'Conclusão', 'Recomendação humana']) assert.match(header(markdown), new RegExp(`^- ${label}: `, 'm'));
+  // Estado técnico com o rótulo do catálogo, não o código gravado no lugar dele.
+  assert.match(section(markdown, 'Completude'), /^- Estado técnico: `completed` — coleta concluída, motivo /m);
 
   const translations = section(markdown, 'Originais e traduções');
   const records = readRun(sandbox, 'c42').results.filter((r) => r.item.kind === 'translation');
