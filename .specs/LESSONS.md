@@ -38,6 +38,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C55 FAIL - src/ai-study/cli.mjs:61; tests/ai-study/s4-limits.test.mjs:917-925 (signals)
 - last seen: 2026-10-01T20:59:56Z
 
+### L-005 - Assert the language of generated text against the fixed labels the generator emits, since a closed list of foreign words lets a single foreign word through
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `report` · harmful: 0
+- features: jev-translation-feasibility
+- evidence: M3 survived C42/C43 - src/ai-study/report.mjs:55; tests/ai-study/s5-report.test.mjs:170 (report)
+- last seen: 2026-10-02T10:28:19Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 5,
+  "next_id": 6,
   "lessons": [
     {
       "id": "L-001",
@@ -76,6 +76,24 @@
       ],
       "created": "2026-10-01T20:59:56Z",
       "last_seen": "2026-10-01T20:59:56Z"
+    },
+    {
+      "id": "L-005",
+      "key": "surviving_mutant::assert the language of generated text against the fixed labels the generator emits since a closed list of foreign words lets a single foreign word through",
+      "text": "Assert the language of generated text against the fixed labels the generator emits, since a closed list of foreign words lets a single foreign word through",
+      "signal": "surviving_mutant",
+      "scope": "report",
+      "status": "candidate",
+      "features": [
+        "jev-translation-feasibility"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "M3 survived C42/C43 - src/ai-study/report.mjs:55; tests/ai-study/s5-report.test.mjs:170 (report)"
+      ],
+      "created": "2026-10-02T10:28:19Z",
+      "last_seen": "2026-10-02T10:28:19Z"
     }
   ]
 }
