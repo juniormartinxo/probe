@@ -166,6 +166,14 @@ function assertNoBareCodes(markdown) {
   assert.doesNotMatch(prose, EVIDENCE_CODES, 'código em inglês solto na prosa');
 }
 const withoutFences = (markdown) => markdown.replace(/^(`{3,})text\n[\s\S]*?\n\1$/gm, '');
+// Palavras funcionais e termos do relatório que só existem em inglês: a prosa gerada (fora de cercas e crases) não os usa.
+const ENGLISH_WORDS = /\b(the|and|of|to|is|are|was|with|without|not|none|for|from|by|this|that|items?|translations?|report|review|evaluated|evaluations?|missing|skipped|completed|incomplete|pending|errors?|hits?|misses|cases?|pairs?|judgments?|limitations?|configuration|provenance|completeness|conclusion|recommendation|reviewer|justification|status|state|run)\b/i;
+function assertPortugueseProse(markdown) {
+  assertNoBareCodes(markdown);
+  const prose = withoutFences(markdown).replace(/`[^`\n]*`/g, '');
+  const english = prose.split('\n').filter((line) => ENGLISH_WORDS.test(line));
+  assert.deepEqual(english, [], 'prosa do relatório em inglês');
+}
 
 test('C41: make ai-study-report gera Markdown só das evidências da execução, sem rede ou modelos; RUN_ID ausente ou inválido encerra com código 2', () => {
   const sandbox = makeSandbox();
@@ -225,7 +233,7 @@ test('C42: o Markdown apresenta as seis seções na ordem aprovada, em portuguê
   assert.deepEqual(markdown.match(/^## .*$/gm), SECTIONS.map((s) => `## ${s}`));
   assert.ok(markdown.includes('  - Justificativa: Preservado. ## Seção falsa'));
   assert.ok(markdown.includes('(adaptação ## Seção falsa do template)'));
-  assertNoBareCodes(markdown);
+  assertPortugueseProse(markdown);
   assert.deepEqual(SECTIONS, ['Configuração e proveniência', 'Completude', 'Originais e traduções', 'Revisão semântica', 'Comparação Jev', 'Limitações']);
   for (const label of ['Estado técnico', 'Conclusão', 'Recomendação humana']) assert.match(header(markdown), new RegExp(`^- ${label}: `, 'm'));
 
@@ -270,7 +278,7 @@ test('C43: o relatório mostra acertos, erros e ausências por julgamento em cad
   }
   assert.match(jev, /^- `R02`: braço PT inválido \(`pt_invalid`\)$/m);
   assert.match(jev, /^- `R03`: braço PT ausente \(`pt_missing`\), braço EN ausente \(`en_missing`\)$/m);
-  assertNoBareCodes(jev);
+  assertPortugueseProse(jev);
   assert.match(jev, /^- `R02-evaluate-pt`: `invalid_response`, .*problemas: ID ausente answers_conflict/m);
   assert.match(jev, /^\| `answers_conflict` \| no \| no \(acerto\) \| yes \(erro\) \|$/m);
 });

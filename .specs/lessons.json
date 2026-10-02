@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 6,
+  "next_id": 5,
   "lessons": [
     {
       "id": "L-001",
@@ -76,24 +76,6 @@
       ],
       "created": "2026-10-01T20:59:56Z",
       "last_seen": "2026-10-01T20:59:56Z"
-    },
-    {
-      "id": "L-005",
-      "key": "ac_gap::assign every check an amendment adds to a slice that builds its proof before the feature s last slice closes",
-      "text": "Assign every check an amendment adds to a slice that builds its proof before the feature's last slice closes",
-      "signal": "ac_gap",
-      "scope": "checks-allocation",
-      "status": "candidate",
-      "features": [
-        "jev-translation-feasibility"
-      ],
-      "recurrence": 1,
-      "harmful": 0,
-      "evidence": [
-        "C59 - no evidence; checks.md:199; src/ai-study/lmstudio.mjs:42-44 (checks-allocation)"
-      ],
-      "created": "2026-10-02T10:03:55Z",
-      "last_seen": "2026-10-02T10:03:55Z"
     }
   ]
 }

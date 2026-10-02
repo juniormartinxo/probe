@@ -38,12 +38,6 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C55 FAIL - src/ai-study/cli.mjs:61; tests/ai-study/s4-limits.test.mjs:917-925 (signals)
 - last seen: 2026-10-01T20:59:56Z
 
-### L-005 - Assign every check an amendment adds to a slice that builds its proof before the feature's last slice closes
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks-allocation` · harmful: 0
-- features: jev-translation-feasibility
-- evidence: C59 - no evidence; checks.md:199; src/ai-study/lmstudio.mjs:42-44 (checks-allocation)
-- last seen: 2026-10-02T10:03:55Z
-
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
