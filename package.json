@@ -7,6 +7,6 @@
   },
   "scripts": {
     "test": "node --test tests/ai-study/*.test.mjs",
-    "check": "node --check src/ai-study/*.mjs tests/ai-study/*.mjs tests/ai-study/support/*.mjs"
+    "check": "node --check src/ai-study/*.mjs tests/ai-study/*.mjs tests/ai-study/support/*.mjs tests/ai-study/live/*.mjs"
   }
 }

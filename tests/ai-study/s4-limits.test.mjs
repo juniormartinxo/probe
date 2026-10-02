@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import test from 'node:test';
 
@@ -36,6 +36,7 @@ import {
   startMake,
   supportDir,
   validLive,
+  variant,
   writeCorpusVariant,
 } from './helpers.mjs';
 
@@ -369,25 +370,6 @@ test('C35: interrupção antes e depois da troca de manifesto ou resultado deixa
   writeFileSync(manifestPath, readFileSync(manifestPath, 'utf8').slice(0, 40));
   assert.throws(() => loadRun(sandbox.evidenceDir, 'c35-parcial'), /manifest\.json: JSON inválido ou parcial/);
 });
-
-// Cópia de uma execução sob outro RUN_ID, com todos os vínculos reescritos; `mutate` estraga um deles.
-function variant(sandbox, sourceId, runId, mutate = () => {}) {
-  const dir = join(sandbox.evidenceDir, runId);
-  cpSync(join(sandbox.evidenceDir, sourceId), dir, { recursive: true });
-  const rewrite = (path, change = (x) => x) => {
-    const value = readJson(path);
-    value.run_id = runId;
-    if (value.config) value.config.run_id = runId;
-    if (value.translation) value.translation.run_id = runId;
-    if (value.evaluation) value.evaluation.run_id = runId;
-    writeFileSync(path, JSON.stringify(change(value), null, 2));
-  };
-  rewrite(join(dir, 'manifest.json'));
-  if (existsSync(join(dir, 'comparison.json'))) rewrite(join(dir, 'comparison.json'));
-  for (const f of readdirSync(join(dir, 'results'))) rewrite(join(dir, 'results', f));
-  mutate({ dir, edit: (file, change) => writeFileSync(join(dir, file), JSON.stringify(change(readJson(join(dir, file))), null, 2)) });
-  return runId;
-}
 
 test('C40: manifesto e registros schema_version 1 mantêm as relações da execução; o leitor recusa vínculo a outra execução, revisão ou versão de schema', async () => {
   const sandbox = makeSandbox();

@@ -185,3 +185,8 @@ export function redactValue(value, secrets) {
 export function evidenceDirFor(repoRoot) {
   return join(repoRoot, 'artifacts', 'ai-study');
 }
+
+// Relatórios são derivados, fora do diretório de evidências: gerá-los nunca toca uma execução.
+export function reportDirFor(repoRoot) {
+  return join(repoRoot, 'artifacts', 'ai-study-reports');
+}

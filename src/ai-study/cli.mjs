@@ -1,18 +1,24 @@
-// Fronteira dos comandos `make ai-study-dry-run` e `make ai-study-run`.
+// Fronteira dos comandos `make ai-study-dry-run`, `make ai-study-run` e `make ai-study-report`.
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { createCallBudget } from './calls.mjs';
 import { runCollection, planItems } from './collect.mjs';
-import { displayPath, evidenceDirFor, redact, resolveConfig } from './config.mjs';
+import { displayPath, evidenceDirFor, redact, redactValue, reportDirFor, resolveConfig, SECRET_NAMES } from './config.mjs';
 import { loadCorpus } from './corpus.mjs';
 import { IncompleteError, UsageError } from './errors.mjs';
+import { writeTextAtomic } from './evidence.mjs';
 import { createFixtureTransports } from './fixture.mjs';
 import { createJevTransport } from './jev.mjs';
 import { createLmStudioTransport } from './lmstudio.mjs';
 import { formatDryRun, formatRunSummary } from './manifest.mjs';
+import { buildReport, formatReportSummary, translationsOf } from './report.mjs';
+import { loadReview, REVIEW_FILE } from './review.mjs';
+import { loadRun } from './run-reader.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
-const COMMANDS = ['dry-run', 'run'];
+const COMMANDS = ['dry-run', 'run', 'report'];
 
 // Live usa somente o servidor local configurado e o endpoint oficial do Jev.
 function createLiveTransports(config, budget) {
@@ -29,13 +35,14 @@ export function selectTransports(config, { createLiveTransports: createLive = cr
 export async function main(argv, env, io, { signal } = {}) {
   try {
     const [command, ...rest] = argv;
-    if (!COMMANDS.includes(command)) throw new UsageError(`comando inválido: use ${COMMANDS.join(' ou ')}`);
+    if (!COMMANDS.includes(command)) throw new UsageError(`comando inválido: use ${COMMANDS.slice(0, -1).join(', ')} ou ${COMMANDS.at(-1)}`);
     if (rest.length > 0) {
       const name = rest[0].startsWith('-') ? rest[0].split('=')[0] : '(posicional)';
       throw new UsageError(`argumento desconhecido: ${name} (não há seleção parcial, retry ou paralelismo)`);
     }
     const commandLineNames = (env.AI_STUDY_MAKE_OVERRIDES ?? '').split(/\s+/).filter(Boolean);
     const config = resolveConfig(command, env, { repoRoot, commandLineNames });
+    if (command === 'report') return writeReport(config.runId, env, io);
     const corpusInfo = loadCorpus(config.corpusPath);
 
     if (command === 'dry-run') {
@@ -51,6 +58,22 @@ export async function main(argv, env, io, { signal } = {}) {
     io.stderr.write(`ai-study: ${known ? '' : 'erro interno: '}${redact(error.message, env)}\n`);
     return known ? error.exitCode : 1;
   }
+}
+
+// Relatório só das evidências da execução e da revisão humana: sem corpus atual, modelos ou rede. A
+// métrica usa o gabarito gravado na execução, nunca uma revisão posterior do corpus.
+function writeReport(runId, env, io) {
+  const loaded = loadRun(evidenceDirFor(repoRoot), runId);
+  const review = loadReview(loaded.runDir, runId, translationsOf(loaded).map((r) => r.translation));
+  const { markdown, summary } = buildReport(loaded, review, { reviewPath: displayPath(repoRoot, join(loaded.runDir, REVIEW_FILE)) });
+  // Evidências já omitem segredos; a revisão humana ou um arquivo editado podem não omitir.
+  const secrets = SECRET_NAMES.map((name) => env[name]);
+  const reportDir = reportDirFor(repoRoot);
+  mkdirSync(reportDir, { recursive: true });
+  const reportPath = join(reportDir, `${runId}.md`);
+  writeTextAtomic(reportPath, redactValue(markdown, secrets));
+  io.stdout.write(redactValue(formatReportSummary(summary, displayPath(repoRoot, reportPath)), secrets));
+  return 0;
 }
 
 // O primeiro SIGINT ou SIGTERM encerra a espera e a coleta como `interrupted`, liberando a trava;

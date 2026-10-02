@@ -221,7 +221,7 @@ test('C5: configuração inválida encerra com código 2 antes de coletar, nomea
   const shortUser = runMake(sandbox, 'ai-study-run', { vars: { MODE: 'xpto', LOCAL_BASE_URL: 'http://MODE:pw@127.0.0.1/' } });
   assertUsageFailure(shortUser, /MODE inválido: use fixture ou live/, 'usuário igual ao nome da configuração');
   const oneLetter = runCli(sandbox, ['collect'], { env: { LOCAL_BASE_URL: 'http://u:e@127.0.0.1/' } });
-  assertUsageFailure(oneLetter, /^ai-study: comando inválido: use dry-run ou run$/m, 'credencial de uma letra');
+  assertUsageFailure(oneLetter, /^ai-study: comando inválido: use dry-run, run ou report$/m, 'credencial de uma letra');
 
   // Rede de segurança: URLs com credenciais em mensagens perdem usuário, senha e query.
   const env = { TYPESAFE_API_KEY: SECRET, LOCAL_BASE_URL: `http://op:${SECRET}-pw@127.0.0.1:1234/v1?token=${SECRET}-q` };
