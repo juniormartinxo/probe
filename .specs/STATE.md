@@ -28,7 +28,7 @@ S5 implementada em `src/ai-study/report.mjs` (relatório derivado só de `loadRu
 6. **Dados gravados, não constantes**: casos, julgamentos e denominadores do relatório e dos verificadores vêm de `manifest.planned_items`, `comparison.json` e `request.judgments` da execução, não de `RELATIONAL_IDS`/`TRANSLATION_IDS`/`JUDGMENT_IDS`. `loadRun` recusa com código 2 uma `comparison.json` malformada (contagens, avaliações alheias ou par completo sem os dois braços).
 7. **Segredos no relatório**: além das evidências, já redigidas na coleta, o relatório omite os segredos presentes no ambiente quando é gerado. Um segredo que o revisor copie para `review.json` sem estar no ambiente não é detectável.
 
-**Next step**: verificação independente da feature (PRB-7) e coleta live real para fechar C50/C51. O template oficial (Decisão 1) e a contagem de tokens (Decisão 2) continuam pendentes e bloqueiam a coleta live real. Pendência opcional mantida: guardar em `manifest.blocked` o texto devolvido pelo runtime nos bloqueios `model_mismatch`.
+**Next step**: a verificação independente da feature inteira (PRB-7, Round 1 - full em `b2520fe`, `verification.md`) deu FAIL: 56 de 59 checks provados, gate com código 1. Faltam C59 (orçamento de contagem de tokens, sem teste nem implementação; mantém a AC 27 aberta) e C50/C51 (sem coleta live real). Próximo passo: implementar a contagem de tokens com C59 e fazer a coleta live real autorizada para fechar C50/C51; depois, reverificar (Round 2 - scoped). O template oficial (Decisão 1) e a contagem de tokens (Decisão 2) continuam pendentes e bloqueiam a coleta live real. Pendência opcional mantida: guardar em `manifest.blocked` o texto devolvido pelo runtime nos bloqueios `model_mismatch`.
 
 **Blockers**: nenhum para S1 e S2 por transportes controlados. Para a coleta live (C50): (a) o template versionado é a adaptação, reconstruída sem cópia byte a byte e marcada `official: false`, então o live para em `template_unverified` até o template oficial ser obtido e adotado (ver Decisões de 01/10/2026); (b) o REST do LM Studio não expõe contagem de tokens antes do envio, então o adaptador devolve contagem indisponível e o live para em `token_count_unavailable` até a contagem pelo LM Studio ser implementada (ver Decisões de 01/10/2026). Servidor/modelo local, configuração Jev e confirmação do template continuam como pré-requisitos da coleta real. O código 1 (incompleto) na fronteira `make` é lido na linha `Error 1`, e o término autoritativo é o do manifesto (ver Decisões da S4).
 
@@ -71,4 +71,4 @@ S5 implementada em `src/ai-study/report.mjs` (relatório derivado só de `loadRu
 
 **Uncommitted**: conferir `git status`. Evidências ficam em `artifacts/`, ignorado pelo Git.
 
-**Branch**: `prb-6`.
+**Branch**: `prb-7`.
