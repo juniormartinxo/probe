@@ -193,13 +193,18 @@ const REPORT_CODE_LITERALS = new Set([
 ]);
 // O gerador não tem prosa própria: cada literal com letras é chave existente do catálogo, código listado
 // acima ou caminho de import. Toda chave do catálogo é usada.
+// Letras de um literal depois de resolver os escapes: `'\x70'` conta como `p`; `\n` e `\s` não contam.
+const literalLetters = (value) =>
+  value
+    .replace(/\\u\{([0-9a-fA-F]+)\}|\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})/g, (_, a, b, c) => String.fromCodePoint(parseInt(a ?? b ?? c, 16)))
+    .replace(/\\./g, '');
 function assertReportTextFromCatalogue() {
   const source = readFileSync(join(repoRoot, 'src', 'ai-study', 'report.mjs'), 'utf8');
   const literals = sourceLiterals(source);
   const lineAt = (start) => source.slice(source.lastIndexOf('\n', start - 1) + 1, source.indexOf('\n', start) < 0 ? undefined : source.indexOf('\n', start)).trim();
   const isTextCall = ({ start }) => /(?:^|[^\w.$])text\($/.test(source.slice(Math.max(0, start - 16), start));
   const keys = literals.filter(isTextCall).map((l) => l.value);
-  const codeLiterals = literals.filter((l) => !isTextCall(l) && !lineAt(l.start).startsWith('import ') && /\p{L}/u.test(l.value.replace(/\\./g, '')));
+  const codeLiterals = literals.filter((l) => !isTextCall(l) && !lineAt(l.start).startsWith('import ') && /\p{L}/u.test(literalLetters(l.value)));
   const prose = codeLiterals.map((l) => l.value).filter((value) => !REPORT_CODE_LITERALS.has(value));
   const codeContexts = [...new Set(codeLiterals.map((l) => lineAt(l.start)))];
   assert.deepEqual(source.match(/^\s*import\b.*$/gm), REPORT_IMPORTS, 'imports do gerador fora do conjunto revisado');
@@ -308,6 +313,8 @@ test('C43: o relatório mostra acertos, erros e ausências por julgamento em cad
   assert.match(jev, /^- Pares completos: 1 de 12 \(`R01`\)$/m);
 
   // Colunas: PT acertos, erros, sem avaliação; EN acertos, erros, sem avaliação.
+  const tableHeader = '| Julgamento | PT (original) acertos | PT (original) erros | PT (original) sem avaliação | EN (tradução) acertos | EN (tradução) erros | EN (tradução) sem avaliação |';
+  assert.equal(jev.split('\n').filter((line) => line === tableHeader).length, 2, 'cabeçalho das duas tabelas com os rótulos dos braços');
   const individual = countsTable(jev, 'Por braço e julgamento');
   const paired = countsTable(jev, 'Pares completos (denominador 1)');
   for (const j of JUDGMENT_IDS) {
@@ -398,6 +405,9 @@ test('C45: coleta com item faltante ou tradução pendente é inconclusive mesmo
     markdown = report(sandbox, runId).markdown;
     assert.equal(conclusion(markdown), 'inconclusive', runId);
     assert.deepEqual(reasons(markdown), ['collection_incomplete', 'items_not_executed'], runId);
+    // Coleta com falha também mostra o estado pelo rótulo do catálogo, sem código solto.
+    assert.match(section(markdown, 'Completude'), /^- Estado técnico: `incomplete` — coleta incompleta, motivo /m, runId);
+    assertNoBareCodes(markdown);
     const paired = countsTable(markdown, 'Pares completos');
     for (const j of JUDGMENT_IDS) assert.deepEqual([paired[j][1], paired[j][4]], [0, 0], `${runId} ${j}: nenhum erro`);
   }

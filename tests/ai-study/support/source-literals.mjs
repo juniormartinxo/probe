@@ -1,5 +1,5 @@
-// Literais de um módulo JS sem dependências: cada string entre aspas e cada parte fixa de template
-// (fora de `${}`), ignorando comentários e expressões regulares. `before` guarda os caracteres que
+// Literais de um módulo JS sem dependências: cada string entre aspas, cada parte fixa de template
+// (fora de `${}`) e o corpo de cada expressão regular (`before: '/'`), ignorando comentários. `before` guarda os caracteres que
 // antecedem o literal, para distinguir uma chave em `text('...')` de texto que chega à saída.
 // Basta para o código deste repositório; não é um parser JavaScript geral.
 export function sourceLiterals(source) {
@@ -27,7 +27,7 @@ export function sourceLiterals(source) {
       i = j + 2;
     }
   };
-  const skipRegex = () => {
+  const readRegex = () => {
     let j = i + 1;
     let inClass = false;
     while (inClass || source[j] !== '/') {
@@ -35,6 +35,7 @@ export function sourceLiterals(source) {
       if (source[j] === ']') inClass = false;
       j = skipEscaped(j);
     }
+    found.push({ value: source.slice(i + 1, j), before: '/', start: i });
     i = j + 1;
     while (/[a-z]/.test(source[i])) i += 1;
   };
@@ -54,7 +55,7 @@ export function sourceLiterals(source) {
       readTemplatePart();
       last = c;
     } else if (c === '/' && (last === '' || '(,=:[!&|?{};'.includes(last))) {
-      skipRegex();
+      readRegex();
       last = c;
     } else if (c === '}' && templateDepths.at(-1) === 0) {
       templateDepths.pop();
