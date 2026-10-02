@@ -2,99 +2,100 @@
 
 **Verdict**: FAIL
 **Profile**: light
-**Diff range**: 3416c78..0893f6f (`0893f6f test(ai-study): catch codes printed instead of catalogue labels in C42`; HEAD = `0893f6f`, confirmado com `git rev-parse HEAD` → `0893f6f7d507e24a0f533b87d7258917c046b779`). A feature inteira é `4a1acfe..0893f6f`. A Round 1 cobriu `4a1acfe..b2520fe`, a Round 2 `42f101e..c23dddc`, a Round 3 `838012d..5f310f9`, a Round 4 `4dacc6b..b5f0668` e a Round 5 `d6440be..580258d`.
-**Round**: 6 - scoped (terceira rodada além do limite de três do harness, **autorizada explicitamente pelo usuário em 02/10/2026**, para reavaliar C42 depois de `0893f6f`)
-**Verifier**: independent sub-agent (author != verifier) - sub-agente novo, sem contexto da implementação nem das correções; os relatórios das Rounds 1–5 serviram só para delimitar o escopo e para a lista de mutações (E1–E6, N1–N6), nunca como prova
+**Diff range**: f7f8ee4..1d46c87 (`e659efa` `.env.local` no `.gitignore`; `f5d5829` remoção da tradução local do estudo; `1d46c87` limitação das rubricas no plano). HEAD = `1d46c87`, confirmado com `git rev-parse HEAD` → `1d46c878c7917d289c722636db8f3ed49f87252f`. A feature inteira é `4a1acfe..1d46c87`. As Rounds 1–6 cobriram `4a1acfe..b2520fe`, `42f101e..c23dddc`, `838012d..5f310f9`, `4dacc6b..b5f0668`, `d6440be..580258d` e `3416c78..0893f6f`.
+**Round**: 7 - scoped (autorizada pelo usuário em 02/10/2026 ao escolher a opção "registrar o experimento", que previa "a PRB-7 fecha numa reverificação")
+**Verifier**: independent sub-agent (author != verifier) - sub-agente novo, sem contexto da implementação, das correções nem da emenda; os relatórios anteriores serviram só para delimitar o escopo e para a lista de mutações, nunca como prova
 
-Escopo desta rodada: o diff `git diff --stat 3416c78..0893f6f` (só `tests/ai-study/s5-report.test.mjs`, +7/-4), todo veredicto que não foi PASS na Round 5 (**C42, C50, C51, C59**) e, como o diff mexe no arquivo de teste da S5, os checks desse arquivo: **C41, C43–C49, C54 e C56–C58**. Nesses checks as provas rodaram de novo e as citações foram atualizadas. `src/` não mudou no diff (`git diff --stat 3416c78..0893f6f -- src` vazio), então o julgamento das asserções de C41 e C43–C58 é **carregado** (de `b2520fe`/`b5f0668`); só os números de linha se deslocaram. C42 foi julgado de novo. Os outros 41 checks (C1–C40, C52, C53, C55) têm o julgamento **carregado** de `b2520fe`: os arquivos deles não mudaram. As provas dos 59 checks rodaram de novo em `0893f6f`.
+Escopo desta rodada: o diff `f7f8ee4..1d46c87` inteiro e **todos os 56 checks** de `checks.md` como estão agora. As provas dos 56 rodaram de novo em `1d46c87`. O diff tocou `tests/ai-study/s5-report.test.mjs` (C49 ganhou `:517`; o teste de apoio dos verificadores foi renomeado) e só comentários em `src/ai-study/report.mjs` e `report-text.mjs` (`git diff f7f8ee4..1d46c87 -- src`: 4 linhas, todas de comentário). Por isso C49 foi julgado de novo, e as citações de C41–C58 foram conferidas no arquivo atual. Os julgamentos de C1–C40, C52, C53 e C55 são **carregados** de `b2520fe`: os arquivos `s1-*`, `s2-*`, `s3-*` e `s4-*` não mudaram.
 
-Ambiente: Node v24.21.0. A árvore real ficou somente leitura: `git status --porcelain` estava vazio antes das provas e continuou vazio depois delas, das mutações e da remoção do worktree. As mutações rodaram num `git worktree add --detach` descartável em `0893f6f`, no scratchpad, removido ao final (`git worktree list` mostra só o checkout principal e `prb-7`). Não chamei LM Studio, Jev, nenhum modelo nem a rede de serviço e não procurei segredos. Consulta externa, só de leitura: os cards PRB-8 e PRB-11 no tracker (sem mudança desde a criação, `updatedAt` 2026-10-02T13:30–13:31Z).
+Ambiente: Node v24.21.0. A árvore real ficou somente leitura: `git status --porcelain` estava vazio antes das provas e continuou vazio depois delas e das mutações. As mutações rodaram em dois worktrees `git worktree add --detach` descartáveis em `1d46c87`, no scratchpad, ambos removidos ao final (`git worktree list` mostra só o checkout principal e `prb-7`). Não chamei Jev, LM Studio, nenhum modelo nem nenhum serviço real. Não procurei nem imprimi a chave real. Consulta externa, só de leitura: os cards PRB-8 e PRB-11 no tracker.
 
-**Resultado em uma linha:** 56 de 59 checks provados, com teste nomeado executado em `0893f6f` e asserção localizada. **C42 passa a PASS:** `0893f6f` mata N5 por duas asserções independentes (`:277` e `:273`), e a mesma rota (código no lugar do rótulo) morre também em `OUTCOME_LABELS` (N7), `REASON_LABELS` (N6, via C43), `ARM_LABELS` da linha de avaliações válidas (N8, via C43) e na troca da chave de `STATUS_LABELS` (N10). N1, N2 e N4 da Round 5 também morrem agora. Sobrevivem E2, E4 e N3 (ofuscação deliberada, já aceitas nas rodadas anteriores) e duas novas, N9 e N12, que julgo não bloqueantes (ver "Julgamento de C42"). **C50 e C51** continuam sem evidência live real (PRB-11, bloqueado por PRB-8, PRB-9 e PRB-10) e **C59** continua sem teste nem implementação (PRB-8). O veredicto segue FAIL.
+**Resultado em uma linha:** 56 de 56 checks provados, com teste nomeado executado em `1d46c87` e asserção localizada, e sem lacuna de cobertura deixada pela remoção de C50, C51 e C59. A emenda tem decisão do usuário registrada, e os números do experimento batem com `results.json` e com o gabarito. A nova asserção de C49 mata três mutações da linha de proveniência. **O veredicto é FAIL por um único motivo:** os cinco mutantes sobreviventes da Round 6 na superfície de C42/C43 (N9, N12, E2, E4, N3) **continuam vivos em `1d46c87`**, reconfirmados nesta rodada. As Rounds 4–6 os julgaram não bloqueantes, mas o harness classifica mutante sobrevivente como falha da feature (`verify.md`, "What fails the feature"), e o gate recusa um PASS com uma linha `Killed: no`. Não reclassifico nem omito essas linhas para caber num PASS. Ver "Lacunas".
 
-## Julgamento de C42 (Round 6)
+## Emenda de 02/10/2026 (remoção de C50, C51 e C59)
 
-Verified at 0893f6f. O que `0893f6f` muda em `tests/ai-study/s5-report.test.mjs`:
+Verified at 1d46c87.
 
-- `:166` - `EVIDENCE_CODES` passa a ser montado a partir das chaves de `REPORT_TEXT.reasons`, `statuses` e `outcomes` (20 códigos, antes 13). `assertNoBareCodes` (`:167-170`) remove cercas e trechos entre crases e assere `assert.doesNotMatch(prose, EVIDENCE_CODES, 'código em inglês solto na prosa')` (`:169`). C42 chama sobre o Markdown inteiro (`:273`); C43 sobre a seção Comparação Jev (`:320`).
-- `:277` - `assert.match(section(markdown, 'Completude'), /^- Estado técnico: \`completed\` — coleta concluída, motivo /m)`: o rótulo do catálogo, não o código.
-- `:205` - `assert.deepEqual(source.match(/^\s*import\b.*$/gm), REPORT_IMPORTS, ...)`: toda linha `import`, com ou sem `;`.
-- `:200` - `isTextCall` exige `/(?:^|[^\w.$])text\($/`: `.text(` e `$text(` não contam como chave.
+### Decisão registrada
 
-### (a) A correção mata N5 de verdade?
+A remoção tem decisão do usuário registrada nos três artefatos, com data, motivo e consequências. Não é afrouxamento silencioso.
 
-Sim, e não depende de um caso isolado. Mutações aplicadas uma de cada vez no worktree descartável e desfeitas com `git checkout -- src tests` (porcelain do worktree vazio antes de cada uma). Prova mais estreita: `node --test --test-reporter=tap --test-name-pattern='^(C42|C43):' tests/ai-study/s5-report.test.mjs`. Linha de base: `ok 1 - C42`, `ok 2 - C43`, exit 0. Para cada sobrevivente rodei também a suíte `s5-report.test.mjs` inteira e `npm test`. **Sonda:** `make ai-study-run RUN_ID=probe` + `make ai-study-report RUN_ID=probe` (fixture, dentro do worktree descartável), lendo a linha afetada do Markdown. Na linha de base: `- Estado técnico: \`completed\` — coleta concluída`, `- Não executados: nenhum`, cabeçalho de tabela `| Julgamento | PT (original) acertos | … |`.
+- `plan.md:5` - "**Decisão de 02/10/2026 (usuário): a tradução local saiu do estudo.**", com o experimento, os números e a evidência. `plan.md:7` lista as consequências: C50, C51 e C59 removidos, emenda à AC 27 revogada, *Independent tests* reais de S2/S3 cumpridos pelo experimento, e "**o modo live não foi validado contra serviços reais**".
+- `plan.md:138` (S2) e `plan.md:160` (S3): os *Independent tests* ganharam emenda explícita. `plan.md:178`: a emenda à AC 27 está marcada "Revogada em 02/10/2026"; `plan.md:170` (AC 27) ficou idêntica ao texto anterior (`git show f7f8ee4:…/plan.md`, linha 166). `plan.md:220`: linha nova em Fora de escopo. `plan.md:239`: os pré-requisitos 1–3 foram atualizados.
+- `checks.md:6` e `checks.md:8`: contagem 56 e a frase "Em 02/10/2026, por decisão do usuário, a tradução local saiu do estudo: C50, C51 e C59 foram removidos".
+- `.specs/STATE.md:31-33`: Next step e Blockers com a decisão e "Cards PRB-8 a PRB-11 cancelados".
+- Tracker, só leitura: PRB-8 e PRB-11 estão na coluna 65, com `statusSince` 2026-10-02T15:23:42Z, o mesmo instante para os dois. Isso é consistente com o cancelamento, mas não consultei o `stateType` da coluna.
+- Atribuição: os três commits saem de `Junior Martins`, a mesma conta usada por agentes (mesma ressalva da Observação 4). A autoria humana da decisão vem da declaração registrada, não da conta.
 
-- **Independência das duas guardas sobre N5.** N5b (N5 com `assertNoBareCodes(markdown)` removido do teste) morre em `:277`. N5c (N5 com `:277` removido) morre em `:273`/`:169`. Cada guarda sozinha mata N5.
-- **Outros pontos do mesmo padrão em `report.mjs`.** As consultas a rótulo são cinco: `REASON_LABELS` (`report.mjs:27`), `ARM_LABELS` (`:183`, cabeçalhos das tabelas, e `:348`, avaliações válidas), `STATUS_LABELS` (`:229`) e `OUTCOME_LABELS` (`:376`). Testei todas (N5–N9, N12) e uma troca de chave (N10).
+### Cobertura: o que dependia de C50, C51 e C59
 
-| Mutação | Local | Rota de fuga tentada | Resultado | Evidência |
-| --- | --- | --- | --- | --- |
-| N1 import novo sem `;` de `review.mjs` + `empty = NOTHING` | `src/ai-study/report.mjs:6,26`, `src/ai-study/review.mjs` | pino de imports | **morta (C42) - fechada** | `imports do gerador fora do conjunto revisado` (`:205`), exit 1 |
-| N2 `raw.text('none')` com `raw = { text: (k) => k }` | `src/ai-study/report.mjs:25-26` | `text` membro conta como chave | **morta (C42) - fechada** | `texto fora do catálogo em report.mjs` (`:206`, `isTextCall` em `:200`), exit 1 |
-| N3 `empty = /nothing/.source` | `src/ai-study/report.mjs:26` | texto em regex | sobrevive (ofuscação) | exit 0; `s5-report` 14/14; `npm test` 59/59; sonda `- Não executados: nothing` |
-| N4 `empty = Object.keys(OUTCOME_LABELS)[2]` | `src/ai-study/report.mjs:26` | chave do catálogo emitida sem literal | **morta (C42) - fechada** | `código em inglês solto na prosa` (`:169`), exit 1. Controle N4b (N4 sem `:273`): sobrevive, sonda `… absent` - só a guarda renderizada a pega |
-| N5 `STATUS_LABELS[manifest.status]` → `manifest.status` | `src/ai-study/report.mjs:229` | código no lugar do rótulo do estado técnico | **morta (C42) - fechada** | `código em inglês solto na prosa` (`:169`), exit 1 |
-| N5b N5 + remover `assertNoBareCodes(markdown)` do teste | idem + `tests/ai-study/s5-report.test.mjs:273` | só a asserção dirigida | morta (C42) | `The input did not match the regular expression /^- Estado técnico: \`completed\` — coleta concluída, motivo /m` (`:277`) |
-| N5c N5 + remover a asserção `:277` do teste | idem + `tests/ai-study/s5-report.test.mjs:277` | só a guarda geral | morta (C42) | `código em inglês solto na prosa` (`:169`) |
-| N6 `` `${REASON_LABELS[reason]} (…)` `` → `` `${reason} (…)` `` | `src/ai-study/report.mjs:27` | mesma rota, motivos | morta (C43) | `/^- \`R02\`: braço PT inválido \(\`pt_invalid\`\)$/m` (`:318`) não casa; C42 verde (o relatório de C42 não tem motivo do catálogo) |
-| N7 `OUTCOME_LABELS[j.outcome]` → `j.outcome` (os dois braços) | `src/ai-study/report.mjs:376` | mesma rota, resultados | morta (C42 e C43) | `código em inglês solto na prosa` nos dois testes (`:273`, `:320`) |
-| N8 `ARM_LABELS[arm]` → `arm` em `jevValid` | `src/ai-study/report.mjs:348` | mesma rota, braços | morta (C43) | `/^- Avaliações válidas PT \(original\): 1 de 12$/m` (`:306`) não casa; `npm test` 58/59; sonda `- Avaliações válidas pt: 12 de 12` |
-| N9 (nova) `ARM_LABELS[arm]` → `arm` nos cabeçalhos das tabelas | `src/ai-study/report.mjs:183` | mesma rota, cabeçalho de tabela | **sobrevive** | exit 0; `s5-report` 14/14; `npm test` 59/59; sonda `\| Julgamento \| pt acertos \| pt erros \| pt sem avaliação \| en acertos \| …` |
-| N10 (nova) `STATUS_LABELS[manifest.status]` → `STATUS_LABELS[manifest.reason]` | `src/ai-study/report.mjs:229` | chave errada na consulta, cai no rótulo genérico | morta (C42) | `:277` não casa |
-| N11 (nova) `empty = '\x68\x69\x74'` (`hit`) | `src/ai-study/report.mjs:26` | escape que o leitor não decodifica, soletrando um código | morta (C42) | `código em inglês solto na prosa` (`:169`): o leitor estático não vê, a guarda renderizada vê |
-| N12 (nova) `label: (manifest.failure ? manifest.status : STATUS_LABELS[manifest.status]) ?? …` | `src/ai-study/report.mjs:229` | omitir o rótulo só em coletas com falha | **sobrevive** | exit 0; `s5-report` 14/14; `npm test` 59/59. Nenhum teste aplica `assertNoBareCodes` a um relatório com `failure` (C45 em `:388-402` gera um, mas não chama a guarda) |
-| E2 `empty = '\x70\x61\x73\x73\x65\x64'` (`passed`) | `src/ai-study/report.mjs:26` | escape com palavra fora dos códigos | sobrevive (ofuscação) | exit 0; 14/14; 59/59; sonda `… passed` |
-| E4 `empty = Object.keys({ nothing: text('none') })[0]` | `src/ai-study/report.mjs:26` | texto por nome de propriedade | sobrevive (ofuscação) | exit 0; 14/14; 59/59; sonda `… nothing` |
+Comparei a tabela Coverage, o Swept e as ACs antes e depois (`git diff f7f8ee4..1d46c87 -- …/checks.md`). Nenhum membro ficou sem check.
 
-### (b) A ampliação de `EVIDENCE_CODES` gera falso positivo em texto legítimo?
+| Onde | Antes | Agora (`checks.md`) | Situação |
+| --- | --- | --- | --- |
+| AC 27 | C31 C59 | `:260` C31 | AC 27 voltou ao texto original (`plan.md:170`: 20 locais, 24 Jev, falhas, sem retry), que C31 cobre por inteiro (`checks.md:153`). A parte de C59 era a emenda, que foi revogada |
+| Comandos publicados: `ai-study-run MODE=live` | C34 C50 C51 C52 C53 | `:264` C34 C52 C53 | coberto por serviços controlados |
+| Modos: `live` | C4 C50 C51 | `:268` C4 | C4 prova a aceitação do modo |
+| Corpus T (6) | C6 C50 | `:274` C6 | coberto |
+| Direções de tradução (2) | C13 C50/C51 | `:277` C13 | coberto por transportes controlados |
+| Chamadas (6 edges) | +18/19 contagens (C59) | `:288` 4 edges, C31 | os dois edges saíram junto com o orçamento revogado; o tamanho declarado caiu de 6 para 4 |
+| Proveniência no relatório: live identificado | C50 C51 | `:300` C49 | **nova prova**: `s5-report.test.mjs:517` (ver abaixo). Ressalva de precisão na Observação 9 |
+| Swept validation / authorization | …C59 | `:306`, `:309` | os outros checks da linha continuam |
+| Swept dependency failure | "simulação não fecha C50 C51" | `:312` | a frase saiu, e os checks continuam |
+| *Independent tests* S2 e S3 | C50 / C51 | `plan.md:138`, `:161` | remoção registrada como emenda: a parte real fica no experimento, e a parte controlada continua nos checks |
 
-Não no texto que o gerador produz. Conferi os 20 códigos contra todo o catálogo (`REPORT_TEXT.lines` e os mapas), com o conteúdo entre crases removido: o único acerto é o marcador `{completed}` de `completenessItems` (`- Itens planejados: {planned}; concluídos: {completed}`), que é interpolado com um número e nunca chega ao Markdown. Os rótulos dos mapas não contêm nenhum código. Na linha de base, C42 e C43 passam (`ok 45`, `ok 46` no lote) com a guarda nova sobre o Markdown inteiro de C42.
+`make checks-validate` → `0 error(s), 0 warning(s)`, e `make plan-validate` → `0 error(s), 0 warning(s)`. Os dois validam estrutura: o tamanho declarado de cada linha bate com os membros.
 
-Dois limites, não bloqueantes (Observação 7): o `\b` do JavaScript é ASCII, então `\bmiss\b` casa em "missão" e `\bhit\b` em "hitória"; e a guarda também varre o texto livre das evidências (justificativas, `problems`, mensagens). Uma fixture futura com uma dessas palavras quebraria o teste sem defeito no gerador. Hoje nenhuma fixture faz isso.
+Resíduos de texto que ainda citam os checks removidos, sem efeito na cobertura (Observação 10): `checks.md:302` ("C50–C51 não exigem concordância perfeita…") e `STATE.md:17`, `:19` e `:70` (ainda dizem que C50/C51/C59 estão pendentes). O `STATE.md:33` declara histórico só para as Decisões 1–4 e para as condições de entrada.
 
-### (c) As sobreviventes impedem o PASS?
+### Nova asserção de C49 (proveniência live)
 
-Mesmo critério das Rounds 4 e 5: um mutante plausível (o erro simples de quem escreve o gerador) que viola o claim impede o PASS. Uma rota que exige escrever o texto de forma deliberadamente indireta é lacuna de precisão de prioridade baixa.
+`s5-report.test.mjs:517` - `assert.match(live.markdown, /^- Modo e proveniência: \`live\` \/ \`live\`$/m)`, sobre o relatório de uma coleta live com serviços controlados (`:514-515`). A linha vem de `src/ai-study/report.mjs:198` (`text('configMode', …)`).
 
-- **E2, E4, N3:** ofuscação deliberada, como antes. Não impedem.
-- **N9:** é a mesma omissão plausível de N5, mas o que ela imprime são os códigos `pt` e `en`, que não são prosa em inglês. O cabeçalho continua em português (`pt acertos`, `en sem avaliação`) e o braço continua identificado. Não viola "prosa em português" (C42) nem "por julgamento e braço" (C43). É uma regressão de apresentação que nenhum teste vê: lacuna de precisão, (a) 1. Não impede.
-- **N12:** viola o claim (um relatório de coleta com falha mostraria `incomplete — incomplete`), mas só com um desvio condicional escrito de propósito: não é a omissão de uma consulta, e sim um ramo novo que ignora o rótulo. Uma omissão simples na única linha de consulta (`report.mjs:229`) morre (N5, N10). É a mesma classe de E2/E4/N3. Não impede, mas a amostragem da guarda renderizada (só o estado `completed`) fica registrada em "Nível e amostragem" e em (a) 2.
+Mutações em worktree descartável, uma de cada vez, desfeitas com `git checkout -- src tests` (porcelain do worktree vazio antes de cada uma). Prova mais estreita: `node --test --test-isolation=none --test-reporter=tap --test-name-pattern='^C49:' tests/ai-study/s5-report.test.mjs`. Linha de base: `ok 1 - C49`, exit 0.
 
-**Veredicto sobre C42: PASS em `0893f6f`.** O que prova cada parte do claim:
+| Mutação | Local | Resultado |
+| --- | --- | --- |
+| P1 `provenance: code(manifest.provenance)` → `code('fixture')` | `report.mjs:198` | morta: `not ok 1 - C49`, exit 1, em `:517`: "did not match … Input: '- Modo e proveniência: \`live\` / \`fixture\`'" |
+| P2 sufixo `(simulado)` sempre, mesmo no live | `report.mjs:198` | morta: exit 1 |
+| P2b P2 + remover `:517` do teste (controle) | idem + `s5-report.test.mjs:517` | sobrevive: exit 0. Sem `:517`, nada no teste pega a mutação, então a linha nova é o que mata |
+| P3 `mode: code(manifest.mode)` → `code('fixture')` | `report.mjs:198` | morta: exit 1 |
+| P3b P3 + remover `:517` (controle) | idem | sobrevive: exit 0 |
 
-- "seis seções na ordem": `:269` - `assert.deepEqual(markdown.match(/^## .*$/gm), SECTIONS.map((s) => \`## ${s}\`))` + `:274`;
-- "originais literais": `:287-288`, `:290`;
-- "todo texto fixo vem do catálogo com hash fixado": `:205-211`;
-- "prosa renderizada sem código no lugar do rótulo": `:273` (guarda geral, regex em `:166`) e `:277` (rótulo do estado técnico);
-- "português do catálogo aprovado por humano": comentário `issuecomment-5954258912` do PR #7 com o hash `sha256:e9a1e00a…327b` = `PINNED_REPORT_TEXT` (`:176`), aceito na Round 5 com a ressalva de atribuição (conta compartilhada com agentes, Observação 4). O catálogo não mudou (`git diff --stat 3416c78..0893f6f -- src` vazio).
+A asserção nova pega o que diz pegar. Antes dela, o relatório live só era checado pela ausência da faixa "Resultados simulados" (`:516`).
 
-### (d) Citações de `s5-report.test.mjs`
+### Evidência do experimento
 
-`0893f6f` acrescentou 1 linha líquida antes de `:172` (comentário de 2 linhas no lugar de 1) e 2 linhas em C42 (`:276-277`). Conferi mecanicamente, com `difflib` entre `3416c78` e `0893f6f`, as 96 linhas desse arquivo citadas nas linhas de C41–C58 da Round 5: `:121` não mudou; as linhas de `:205` a `:273` andaram +1; as de `:284` em diante andaram +3; `:199` e `:204` são as linhas alteradas pela correção (agora `:200` e `:205`). Nenhuma outra diferença de texto.
+`evidence/2026-10-02-jev-pt-en/run.mjs` e `results.json`:
+
+- **Segredos.** `run.mjs` lê a chave de `process.env.TYPESAFE_API_KEY` (`run.mjs:13`) e só a interpola no cabeçalho (`run.mjs:107`, `` authorization: `Bearer ${apiKey}` ``). Não grava nem imprime a chave. Em `results.json`, a busca por `bearer\s+\S+`, `sk-[A-Za-z0-9]{8,}`, `api[_-]?key\s*[:=]` e qualquer sequência alfanumérica de 32+ caracteres não achou nada. Os únicos acertos de `token` são `input_tokens`/`output_tokens` de `usage`. Cada resposta tem só `answers`, `model`, `ms` e `usage`.
+- **Números, recalculados por mim** a partir de `results.json` e de `src/ai-study/corpus/revision-1.json`. As `expectations` gravadas nos 12 casos são idênticas ao gabarito da revisão 1.
+  - 12 casos (R01–R12), 24 respostas, nenhuma com `error`, todas com `model` = `jev-1.13.0`.
+  - Escolhas iguais: **68/72**. Acertos PT **63/72**, EN **66/72**. Sem R08: PT **63/66**, EN **64/66**. Todos batem com `plan.md:5` e `STATE.md:33`.
+  - As quatro divergências: R08 `a_depends_on_b` (PT `yes` 0,18; EN `no` 0,16), R08 `complements` (PT `yes` 0,48; EN `no` 0,11), R08 `answers_conflict` (PT `yes` 0,50; EN `insufficient` 0,27) e R11 `same_block` (PT `no` 0,32; EN `yes` 0,41). A faixa de confiança é 0,11–0,50, e três das quatro são de R08, como diz o plano.
+  - Ressalva: o plano diz que o modelo solicitado foi `jev-latest`, mas `results.json` só registra o modelo devolvido. O pedido não está na evidência (Observação 11).
+- `run.mjs` usa `buildJevBody` da bancada (`run.mjs:8`, `:108`) e alterna a ordem dos braços por caso (`run.mjs:122-133`). Não rodei o script.
 
 ## Binding sources
 
-Carried from b2520fe. O passo 1 só roda no perfil `ui` e **não foi executado** sob `light`. O diff não tocou interface. A feature não tem tela (`plan.md`, Observable: "Tela ... n/a"). Não alego contradição nem ausência de contradição.
+Carried from b2520fe. O passo 1 só roda no perfil `ui` e **não foi executado** sob `light`. O diff não tocou interface, e a feature não tem tela (`plan.md`, Observable: "Tela ... n/a").
 
 ## Provas executadas
 
-Verified at 0893f6f. Todas as provas rodaram numa única invocação:
+Verified at 1d46c87. Os 56 checks rodaram numa única invocação, com o padrão montado a partir dos IDs de `checks.md`:
 
-`make check-proof TEST_FLAGS='--test-name-pattern=^(C[1-9]|C[1-4][0-9]|C5[0-9]):'` → exit 0. TAP: `# tests 56 # pass 56 # fail 0 # cancelled 0 # skipped 0 # todo 0`, com `grep -cE '# (SKIP|TODO)'` = 0. Cada nome aparece uma vez, como `ok N - C<n>`: C1–C5 (`ok 1`–`5`), C9 (`6`), C10 (`7`), C11 (`8`), C12 (`9`), C6–C8 (`10`–`12`), C13–C28 (`13`–`28`), C52 (`29`), C53 (`30`), C31 (`31`), C32 (`32`), C33 (`33`), C35 (`34`), C40 (`35`), C29 (`36`), C30 (`37`), C34 (`38`), C36 (`39`), C37 (`40`), C38 (`41`), C39 (`42`), C55 (`43`), C41–C49 (`44`–`52`), C54 (`53`), C56–C58 (`54`–`56`).
+`make check-proof TEST_FLAGS='--test-name-pattern=^(C1|C2|…|C49|C52|C53|C54|C55|C56|C57|C58):'` → exit 0. TAP: `1..56`, `# tests 56 # pass 56 # fail 0 # cancelled 0 # skipped 0 # todo 0`, e `grep -cE '# (SKIP|TODO)'` = 0. Cada nome aparece uma vez como `ok N - C<n>`: C1–C5 (`ok 1`–`5`), C9 (`6`), C10 (`7`), C11 (`8`), C12 (`9`), C6–C8 (`10`–`12`), C13–C28 (`13`–`28`), C52 (`29`), C53 (`30`), C31 (`31`), C32 (`32`), C33 (`33`), C35 (`34`), C40 (`35`), C29 (`36`), C30 (`37`), C34 (`38`), C36 (`39`), C37 (`40`), C38 (`41`), C39 (`42`), C55 (`43`), C41–C49 (`44`–`52`), C54 (`53`), C56–C58 (`54`–`56`).
 
-C50, C51 e C59 não entram nesse lote. Rodei cada um separadamente:
-
-- Sem `RUN_ID`: `make check-proof TEST_FLAGS='--test-name-pattern=^C50:'`, e o mesmo com `^C51:` e `^C59:`. Os três deram `# tests 0`, `Erro: nenhuma prova C<n>: executou com sucesso.`, `make: *** [Makefile:43: check-proof] Error 1` e exit 2.
-- Com `RUN_ID`: `make check-proof TEST_FLAGS='--test-name-pattern=^(C50|C51):' RUN_ID=verifier-r6-no-evidence`. Os testes **existem e executam**, mas falham: `not ok 1 - C50:` e `not ok 2 - C51:`, os dois com `error: 'RUN_ID verifier-r6-no-evidence não tem evidências em .../prb-7/artifacts/ai-study/verifier-r6-no-evidence'`. Resultado: `# tests 2 # pass 0 # fail 2`, exit 2. Nenhum arquivo foi criado (`ls artifacts` → inexistente).
-- `npm test` → exit 0, `tests 59, pass 59, fail 0, cancelled 0, skipped 0, todo 0`: os 56 checks e três testes de apoio.
-- `npm run check` → exit 0.
-
-**Existência.** Verified at 0893f6f. `rg -n "^test\('" tests/ai-study/s5-report.test.mjs tests/ai-study/live/s5-live.test.mjs` mostra C41–C49, C54 e C56–C58 em `s5-report.test.mjs` (`:214,248,293,325,368,406,442,471,496,560,572,603,625`) e C50/C51 em `live/s5-live.test.mjs` (`:17,26`). `rg -n "C59|local_token_count" src tests` → nenhum resultado (exit 1), e `@lmstudio/sdk` não está em `package.json` (`grep -c` = 0): C59 continua sem teste.
+- **Sem órfãos e sem check sem teste.** A lista de `C<n>` dos `ok` no TAP é igual à lista de `**C<n>**` de `checks.md` (`diff` vazio, 56 de cada lado). `rg -n "^test\('C[0-9]+:" tests` dá exatamente os mesmos 56 IDs, um teste por ID. `rg -nE 'C5[019]\b' src tests Makefile package.json` não acha nada, e `tests/ai-study/live/` não existe. Os testes sem prefixo `C<n>:` são de apoio: `s1-corpus.test.mjs:40`, `s3-jev.test.mjs:600` e `s5-report.test.mjs:520` (os verificadores de integração live).
+- `npm test` → exit 0, `tests 59, pass 59, fail 0, cancelled 0, skipped 0, todo 0`: os 56 checks e os três testes de apoio.
+- `npm run check` → exit 0 (o glob de `tests/ai-study/live/*.mjs` saiu de `package.json`).
+- `make plan-validate` → exit 0, `0 error(s), 0 warning(s)`. `make checks-validate` → exit 0, `0 error(s), 0 warning(s) [profile: light]`.
 
 ## Checks
 
-Todos os caminhos são relativos a `tests/ai-study/`, salvo indicação. A coluna `Origem` diz de onde vem o julgamento da asserção de cada linha. Em todas as linhas, o `Proof run` é a execução desta rodada em `0893f6f`.
+Todos os caminhos são relativos a `tests/ai-study/`, salvo indicação. A coluna `Origem` diz de onde vem o julgamento da asserção. Em todas as linhas, o `Proof run` é a execução desta rodada em `1d46c87`.
+
+**C50, C51 e C59 não são mais checks.** Foram removidos de `checks.md` em `f5d5829` por decisão do usuário de 02/10/2026 (`plan.md:5-7`, `checks.md:6,8`, `STATE.md:33`), por isso não aparecem como linha. A cobertura que dependia deles foi conferida em "Emenda de 02/10/2026".
 
 | Check | Claim | Proof run | Evidence | Result | Origem |
 | --- | --- | --- | --- | --- | --- |
@@ -128,7 +129,7 @@ Todos os caminhos são relativos a `tests/ai-study/`, salvo indicação. A colun
 | C28 | par incompleto fora do denominador; individual visível | `ok 28 - C28:` | `s3-jev.test.mjs:477-490` - `assert.deepEqual(pair.reasons, reasons, label)`; `:499`; `:503`; `:531` | PASS | carried from b2520fe |
 | C29 | duas coletas simultâneas: só uma; a segunda recusada antes de chamar modelos | `ok 36 - C29:` | `s4-limits.test.mjs:481-483`; `:485` - `assert.equal(started().length, 1, ...)`; `:488` | PASS | carried from b2520fe |
 | C30 | RUN_ID existente → 2; bytes anteriores mantidos | `ok 37 - C30:` | `s4-limits.test.mjs:554-556`; `:559` - `assert.deepEqual(snapshotFiles(sandbox.evidenceDir), before, ...)` | PASS | carried from b2520fe |
-| C31 | máx. 20 locais / 24 Jev, falhas contadas, 21ª/25ª bloqueadas, zero retries | `ok 31 - C31:` | `s4-limits.test.mjs:141`; `:143-144`; `:162` - `assert.equal(retryingLocal.svc.count('local'), 20, ...)`; `:175`; `:190` | PASS | carried from b2520fe |
+| C31 | máx. 20 locais / 24 Jev, falhas contadas, 21ª/25ª bloqueadas, zero retries | `ok 31 - C31:` | `s4-limits.test.mjs:141`; `:143-144`; `:162` - `assert.equal(retryingLocal.svc.count('local'), 20, ...)`; `:175`; `:190` | PASS | carried from b2520fe; agora prova sozinho a AC 27 (emenda revogada) |
 | C32 | no máximo uma chamada em andamento | `ok 32 - C32:` | `s4-limits.test.mjs:231`; `:242` - `assert.equal(svc.maxInFlight(), 1)`; `:244` | PASS | carried from b2520fe |
 | C33 | timeout encerra no limite; `incomplete`; restantes não executados | `ok 33 - C33:` | `s4-limits.test.mjs:274`; `:279` - `reason 'timeout'`; `:280-288`; `:290`; `:293` | PASS | carried from b2520fe |
 | C34 | falha de transporte/HTTP/resposta inválida após dois resultados → 1 | `ok 38 - C34:` | `s4-limits.test.mjs:587-588` - `run.status` 2 (make) e `run.nodeStatus` 1; `:595`; `:598`; `:615` | PASS | carried from b2520fe |
@@ -138,46 +139,43 @@ Todos os caminhos são relativos a `tests/ai-study/`, salvo indicação. A colun
 | C38 | zero leituras de chats/perfis Cloak/credenciais; tráfego só aos destinos configurados | `ok 41 - C38:` | `s4-limits.test.mjs:757` - `assert.deepEqual(outside, [], 'nenhuma leitura fora da bancada')`; `:759`; `:765` | PASS | carried from b2520fe |
 | C39 | evidências fora do Git; sobrevivem byte a byte | `ok 42 - C39:` | `s4-limits.test.mjs:781` - `git check-ignore` status 0; `:783`; `:797` - `assert.equal(after[file], content, ...)` | PASS | carried from b2520fe |
 | C40 | relações `schema_version: 1`; `loadRun` recusa outra execução/revisão/schema | `ok 35 - C40:` | `s4-limits.test.mjs:388-413`; `:437` - `assert.throws(() => loadRun(...), (e) => e instanceof UsageError && pattern.test(e.message), runId)`; `:440` | PASS | carried from b2520fe |
-| C41 | `make ai-study-report` só das evidências, zero rede/modelos; RUN_ID ausente/inválido → 2 | `ok 44 - C41:` | `s5-report.test.mjs:223` - `assert.deepEqual(done.guard.attempts, [], 'zero rede e zero processos')`; `:230-231` - nenhuma leitura fora da execução, corpus atual não lido; `:233-241` + `:121` - `assert.equal(result.nodeStatus, expect, ...)` com `expect: 2` | PASS | carried from b2520fe; prova e citações verified at 0893f6f |
-| C42 | seis seções na ordem; prosa em português; originais literais | `ok 45 - C42:` | ordem: `s5-report.test.mjs:269` - `assert.deepEqual(markdown.match(/^## .*$/gm), SECTIONS.map((s) => \`## ${s}\`))` + `:274`; literais: `:287-288`, `:290`; texto fixo só do catálogo: `:205-211` (imports, prosa, contextos, chaves, `PINNED_REPORT_TEXT`, `REVIEWED_TEXT_FUNCTION`); prosa renderizada sem código no lugar do rótulo: `:273` - `assertNoBareCodes(markdown)` → `:169` `assert.doesNotMatch(prose, EVIDENCE_CODES, ...)` (códigos de `reasons`/`statuses`/`outcomes`, `:166`) e `:277` - `assert.match(section(markdown, 'Completude'), /^- Estado técnico: \`completed\` — coleta concluída, motivo /m)`; aprovação humana localizada: PR #7 `issuecomment-5954258912` (ressalva de atribuição, Observação 4). N5 morta por `:273` e `:277` independentemente; sobreviventes E2/E4/N3/N12 exigem escrita deliberada, N9 não produz prosa em inglês ("Julgamento de C42" (c)) | PASS | verified at 0893f6f |
-| C43 | acertos/erros/ausências por julgamento e braço; pares completos; denominadores distintos | `ok 46 - C43:` | `s5-report.test.mjs:306-308` - PT `1 de 12`, EN `2 de 12`, pares `1 de 12`; `:315-316` - `assert.deepEqual(individual[j], ...)` / `assert.deepEqual(paired[j], ...)`; `:320` - `assertNoBareCodes(jev)` (reforço fora do claim) | PASS | carried from b5f0668; prova e citações verified at 0893f6f |
-| C44 | revisão só `pending`/`faithful`/`meaning_changed`; revisor, justificativa e saída concreta | `ok 47 - C44:` | `s5-report.test.mjs:338-340` - contagens e entradas com `output_sha256`, revisor e justificativa; `:344-356` - recusas com código 2; `:357` - relatório anterior intacto | PASS | carried from b2520fe; prova e citações verified at 0893f6f |
-| C45 | item faltante ou tradução pendente → `inconclusive` | `ok 48 - C45:` | `s5-report.test.mjs:378` - `'evidence_complete'`; `:384-385` - `'inconclusive'` + `['review_pending']`; `:399-402` - falha e `interrupted` → `inconclusive`, sem erro pareado | PASS | carried from b2520fe; prova e citações verified at 0893f6f |
-| C46 | estado técnico e recomendação humana separados; produto intacto | `ok 49 - C46:` | `s5-report.test.mjs:414-416` - `não registrada` e nenhuma decisão no texto; `:421-422` - estado técnico inalterado + `Recomendação humana`; `:439` - `assert.deepEqual(productAfter, productBefore)` | PASS | carried from b2520fe; prova e citações verified at 0893f6f |
-| C47 | correção de gabarito gera revisão identificada; evidência anterior inalterada | `ok 50 - C47:` | `s5-report.test.mjs:460-461` - `revisão 2` + `Gabarito usado: revisão 2, hash ...`; `:467` - `assert.equal(again, first, 'relatório da execução anterior idêntico')` | PASS | carried from b2520fe; prova e citações verified at 0893f6f |
-| C48 | amostra de 12 sem acurácia geral; uso indisponível ≠ custo zero; sem moeda | `ok 51 - C48:` | `s5-report.test.mjs:478-479` - textos das limitações; `:481` - `acurácia` uma vez; `:482` - `assert.doesNotMatch(prose, /R\$\|US\$\|USD\|BRL\|€\|custo: 0\|economia de/, ...)` | PASS | carried from b2520fe; prova e citações verified at 0893f6f |
-| C49 | relatório fixture marcado como simulado, sem validação real, VRAM ou ganho | `ok 52 - C49:` | `s5-report.test.mjs:504-505` - marca de simulação na saída e nas limitações; `:510` - `Conclusão: \`inconclusive\``; `:512` - `assert.doesNotMatch(fixture.markdown, /comprovada\|VRAM medida\|ganho de tradução de/)`; `:516` - live sem a marca | PASS | carried from b2520fe; prova e citações verified at 0893f6f |
-| C50 | evidência **live real** T01–T06: servidor/modelo Q6_K, template confirmado, contagem, seis EN→PT, durações | sem `RUN_ID`: 0 testes, exit 2; com `RUN_ID=verifier-r6-no-evidence`: `not ok 1 - C50:`, exit 2 | no evidence: não há coleta live real (`artifacts/ai-study/` não existe). Asserções que a fechariam: `live/s5-live.test.mjs:20-21` - `assert.deepEqual(proof.problems, [])` + `assert.equal(proof.proven, true)`. Bloqueios inalterados: `src/ai-study/template.mjs:14` `official: false` (Decisão 1, PRB-9) e `src/ai-study/lmstudio.mjs:43-44` `countTokens` → `{ count: null, ... }` (Decisão 2, PRB-8). Card da coleta: PRB-11 | NÃO PROVADO - bloqueado (PRB-11 ← PRB-8, PRB-9, PRB-10) | verified at 0893f6f |
-| C51 | evidência **live real** de ≥1 caso R: PT→EN + duas respostas Jev da mesma versão, seis válidos cada | idem: 0 testes sem `RUN_ID`; `not ok 2 - C51:` com `RUN_ID` | no evidence: mesma ausência de coleta. Asserções que a fechariam: `live/s5-live.test.mjs:29` - `assert.equal(proof.proven, true, ...)`; `:31` - seis resultados por braço. Bloqueios: os de C50, mais as rubricas revisadas e o campo `model` do Jev (PRB-10) | NÃO PROVADO - bloqueado (PRB-11 ← PRB-8, PRB-9, PRB-10) | verified at 0893f6f |
+| C41 | `make ai-study-report` só das evidências, zero rede/modelos; RUN_ID ausente/inválido → 2 | `ok 44 - C41:` | `s5-report.test.mjs:223` - `assert.deepEqual(done.guard.attempts, [], 'zero rede e zero processos')`; `:230-231` - nenhuma leitura fora da execução, corpus atual não lido; `:241-242` + `:121` - `assert.equal(result.nodeStatus, expect, ...)` com `expect: 2` | PASS | carried from b2520fe; prova e citações verified at 1d46c87 |
+| C42 | seis seções na ordem; prosa em português; originais literais | `ok 45 - C42:` | ordem: `s5-report.test.mjs:269` - `assert.deepEqual(markdown.match(/^## .*$/gm), SECTIONS.map((s) => \`## ${s}\`))` + `:274`; literais: `:287-288`, `:290`; texto fixo só do catálogo: `:205-211`; prosa renderizada sem código no lugar do rótulo: `:273` - `assertNoBareCodes(markdown)` → `:169` `assert.doesNotMatch(prose, EVIDENCE_CODES, ...)` e `:277` - rótulo do estado técnico; aprovação humana: PR #7 `issuecomment-5954258912` (Observação 4). Sobreviventes E2/E4/N3/N9/N12 em "Faults injected" | PASS | carried from 0893f6f (linhas `< :517`, inalteradas); prova verified at 1d46c87 |
+| C43 | acertos/erros/ausências por julgamento e braço; pares completos; denominadores distintos | `ok 46 - C43:` | `s5-report.test.mjs:306-308` - PT `1 de 12`, EN `2 de 12`, pares `1 de 12`; `:315-316` - `assert.deepEqual(individual[j], ...)` / `assert.deepEqual(paired[j], ...)`; `:320` - `assertNoBareCodes(jev)` | PASS | carried from b5f0668; prova verified at 1d46c87 |
+| C44 | revisão só `pending`/`faithful`/`meaning_changed`; revisor, justificativa e saída concreta | `ok 47 - C44:` | `s5-report.test.mjs:338-340` - contagens e entradas com `output_sha256`, revisor e justificativa; `:355-356` - recusas com código 2; `:357` - relatório anterior intacto | PASS | carried from b2520fe; prova verified at 1d46c87 |
+| C45 | item faltante ou tradução pendente → `inconclusive` | `ok 48 - C45:` | `s5-report.test.mjs:378` - `'evidence_complete'`; `:384-385` - `'inconclusive'` + `['review_pending']`; `:399-402` - falha e `interrupted` → `inconclusive` | PASS | carried from b2520fe; prova verified at 1d46c87 |
+| C46 | estado técnico e recomendação humana separados; produto intacto | `ok 49 - C46:` | `s5-report.test.mjs:414-416` - `não registrada`; `:421-422` - estado técnico inalterado + `Recomendação humana`; `:439` - `assert.deepEqual(productAfter, productBefore)` | PASS | carried from b2520fe; prova verified at 1d46c87 |
+| C47 | correção de gabarito gera revisão identificada; evidência anterior inalterada | `ok 50 - C47:` | `s5-report.test.mjs:460-461` - `revisão 2` + `Gabarito usado: revisão 2, hash ...`; `:467` - `assert.equal(again, first, 'relatório da execução anterior idêntico')` | PASS | carried from b2520fe; prova verified at 1d46c87 |
+| C48 | amostra de 12 sem acurácia geral; uso indisponível ≠ custo zero; sem moeda | `ok 51 - C48:` | `s5-report.test.mjs:478-479` - limitações; `:481` - `acurácia` uma vez; `:482` - `assert.doesNotMatch(prose, /R\$\|US\$\|USD\|BRL\|€\|custo: 0\|economia de/, ...)` | PASS | carried from b2520fe; prova verified at 1d46c87 |
+| C49 | relatório fixture marcado como simulado, sem validação real, VRAM ou ganho (e, pela Coverage, live identificado) | `ok 52 - C49:` | `s5-report.test.mjs:503` - faixa no cabeçalho; `:504-505` - marca na saída e nas limitações; `:506` - `/^- Modo e proveniência: \`fixture\` \/ \`fixture\` \(simulado\)$/m`; `:510` - `Conclusão: \`inconclusive\``; `:512` - `assert.doesNotMatch(fixture.markdown, /comprovada\|VRAM medida\|ganho de tradução de/)`; `:516` - live sem a faixa; **`:517`** - `assert.match(live.markdown, /^- Modo e proveniência: \`live\` \/ \`live\`$/m)` (P1, P2 e P3 mortas; controles P2b e P3b sobrevivem sem `:517`) | PASS | verified at 1d46c87 |
 | C52 | `make ai-study-run MODE=live` com serviços controlados: zero CLIs excluídas | `ok 29 - C52:` | `s3-jev.test.mjs:548`; `:557` - `assert.equal(run.shimCalls, '', 'nenhuma CLI excluída executada')`; `:558` | PASS | carried from b2520fe |
 | C53 | fronteira live: transporte/resposta fixture → 2, evidências preservadas | `ok 30 - C53:` | `s3-jev.test.mjs:580-582`; `:595-596` - `assert.deepEqual(after.rawResults, before.rawResults)` + manifesto | PASS | carried from b2520fe |
-| C54 | `make ai-study-report`: zero CLIs excluídas | `ok 53 - C54:` | `s5-report.test.mjs:566` - `assert.equal(result.shimCalls, '', ...)`; `:568` - `assert.deepEqual(result.guard.attempts.filter((a) => a.kind === 'process'), [], ...)` | PASS | carried from b2520fe; prova e citações verified at 0893f6f |
+| C54 | `make ai-study-report`: zero CLIs excluídas | `ok 53 - C54:` | `s5-report.test.mjs:567` - `assert.equal(result.shimCalls, '', ...)`; `:569` - `assert.deepEqual(result.guard.attempts.filter((a) => a.kind === 'process'), [], ...)` | PASS | carried from b2520fe; citações verified at 1d46c87 (+1 linha) |
 | C55 | 1º SIGINT/SIGTERM → `interrupted`, código 1, trava liberada; 2º sinal segue o padrão | `ok 43 - C55:` | `s4-limits.test.mjs:838` - `assert.equal(result.nodeStatus, 1, ...)`; `:840-844`; `:817-819`; `:894`; `:915-917` | PASS | carried from b2520fe |
-| C56 | relatório e saída sem segredos sentinela | `ok 54 - C56:` | `s5-report.test.mjs:599` - `assert.ok(!text.includes(secret), \`${name} em ${where}\`)`; `:595-597` - `[omitido]` presente | PASS | carried from b2520fe; prova e citações verified at 0893f6f |
-| C57 | `make ai-study-report` preserva byte a byte as evidências | `ok 55 - C57:` | `s5-report.test.mjs:621` - `assert.deepEqual(snapshotFiles(sandbox.evidenceDir), before)`; `:622` - nenhuma execução removida | PASS | carried from b2520fe; prova e citações verified at 0893f6f |
-| C58 | relatório recusa com 2 vínculo a outra execução, outra revisão ou `schema_version` ≠ 1 | `ok 56 - C58:` | `s5-report.test.mjs:632-644` (13 variantes) + `:647` `report(..., { expect: 2 })` → `:121` `assert.equal(result.nodeStatus, expect, ...)`; `:648` - `assert.match(refused.stderr, pattern, runId)`; `:649` - nenhum relatório | PASS | carried from b2520fe; prova e citações verified at 0893f6f |
-| C59 | até 18 contagens de tokens em orçamento próprio `local_token_count`; 19ª bloqueada; falhas contadas; uma chamada por vez; sem retry do `@lmstudio/sdk` | `^C59:` → `# tests 0`, `Erro: nenhuma prova C<n>: executou com sucesso.`, exit 2 | no evidence: `rg -n "C59\|local_token_count" src tests` sem resultados; `@lmstudio/sdk` ausente de `package.json`; `src/ai-study/lmstudio.mjs:42-44` - "Sem pedido HTTP: não consome chamada do orçamento", `countTokens` devolve `count: null`; `checks.md:199` - "pendente, não construído". Card: PRB-8 | NÃO PROVADO - não construído (PRB-8) | verified at 0893f6f |
+| C56 | relatório e saída sem segredos sentinela | `ok 54 - C56:` | `s5-report.test.mjs:600` - `assert.ok(!text.includes(secret), \`${name} em ${where}\`)`; `:596-598` - `[omitido]` presente | PASS | carried from b2520fe; citações verified at 1d46c87 (+1 linha) |
+| C57 | `make ai-study-report` preserva byte a byte as evidências | `ok 55 - C57:` | `s5-report.test.mjs:622` - `assert.deepEqual(snapshotFiles(sandbox.evidenceDir), before)`; `:623` - nenhuma execução removida | PASS | carried from b2520fe; citações verified at 1d46c87 (+1 linha) |
+| C58 | relatório recusa com 2 vínculo a outra execução, outra revisão ou `schema_version` ≠ 1 | `ok 56 - C58:` | `s5-report.test.mjs:633-645` (13 variantes) + `:648` `report(..., { expect: 2 })` → `:121` `assert.equal(result.nodeStatus, expect, ...)`; `:649` - `assert.match(refused.stderr, pattern, runId)`; `:650` - nenhum relatório | PASS | carried from b2520fe; citações verified at 1d46c87 (+1 linha) |
 
 ### Cobertura das ACs (alocação de `checks.md`, sem recompute)
 
-Verified at 0893f6f, a partir da alocação em `checks.md:269-273` e dos veredictos acima:
+Verified at 1d46c87, a partir de `checks.md:257-261` e dos veredictos acima:
 
-- **AC 1–26, 28–37:** fechadas. Todos os checks alocados são PASS. AC 3 inclui C3 + C52 + C54, e AC 10 inclui C10 + C53. **AC 33 fecha nesta rodada** (C42 PASS).
-- **AC 27:** **aberta.** C31 é PASS, mas C59 (emenda de 01/10/2026, orçamento de contagem de tokens) não tem prova (PRB-8).
-- **Fora da tabela de ACs:** os "Independent test" da S2 (C50) e da S3 (C51) continuam abertos (PRB-11). Nenhuma tradução real e nenhuma avaliação Jev real foram observadas.
+- **AC 1–37:** todas fechadas, e todos os checks alocados são PASS. AC 3 é coberta por C3 + C52 + C54, e AC 10 por C10 + C53. **AC 27 fecha com C31**, porque a emenda que trazia C59 foi revogada (`plan.md:178`), e o texto da AC (`plan.md:170`) é o original, que C31 cobre.
+- **Fora da tabela de ACs:** os *Independent tests* reais de S2 e S3 saíram dos checks por emenda registrada (`plan.md:138`, `:161`). A observação real do Jev ficou com o experimento de 02/10/2026, que roda fora da bancada. Nenhuma tradução local real foi observada, e o plano declara que o modo live não foi validado contra serviços reais (`plan.md:7`).
 
 ### Nível e amostragem
 
-- **C42, "prosa fica em português"** (verified at 0893f6f): a prova combina três níveis. Estático sobre a fonte do gerador e do catálogo (`:205-211`), que cobre o texto **fixo** em todos os ramos, inclusive os não renderizados. Renderizado sobre o Markdown inteiro de uma coleta fixture concluída (`:273`, `:277`), que cobre o caminho dos dados: rótulos consultados a partir de códigos. E a aprovação humana do catálogo. A amostra renderizada tem um estado técnico (`completed`), sem motivos do catálogo; os motivos e os braços são cobertos pela seção Jev de C43 (`:318-320`, `:306-307`). Como `report.mjs:229` é a única linha que consulta `STATUS_LABELS`, uma omissão simples vale para todos os estados e morre (N5, N10). Um desvio só para coletas com falha (N12) não morre: a guarda renderizada não roda sobre nenhum relatório com `failure`.
-- Os demais itens são carried from b2520fe. Claims de código de saída passam pela fronteira `make` (`assertUsageFailure`, `s1-commands.test.mjs:39-41`; `report`, `s5-report.test.mjs:121`). C25, C27 e C28 cobrem cada linha das tabelas de decisão. C31 prova a borda 20/21 no orçamento e na coleta (`s4-limits.test.mjs:141-169`).
+- **C49, proveniência live** (verified at 1d46c87): a asserção roda sobre o relatório de uma coleta live com **serviços controlados**, não reais. Ela prova que o relatório identifica a proveniência gravada, e não que alguma integração real aconteceu. Essa leitura é coerente com `plan.md:7`.
+- **C42** (carried from 0893f6f): o texto fixo é verificado de forma estática em todos os ramos e no Markdown renderizado de uma coleta concluída. A amostra renderizada não inclui relatório com `failure` (N12).
+- Os demais itens são carried from b2520fe: claims de código de saída passam pela fronteira `make`, C25/C27/C28 cobrem cada linha das tabelas de decisão, e C31 prova a borda 20/21.
 
 ## Swept existing re-read
 
-Carried from b2520fe. O diff não tocou `checks.md` nem `plan.md`. A seção `Swept` (`checks.md:316-326`) só aponta para checks. A única decisão `existing` do plano, Observable/Harness (tlc-spec-lean instalada, perfil `light`), continua no código (`checks.md:3`).
+Verified at 1d46c87. O diff tocou o Swept (`checks.md:304-313`): as linhas validation e authorization perderam C59, e dependency failure perdeu a frase sobre C50/C51. Todas as linhas continuam apontando só para checks existentes. A única decisão `existing` do plano, Observable/Harness (`plan.md:254`: tlc-spec-lean instalada, perfil `light`), continua no código: `checks.md:3` traz `Profile: light`, e `.claude/skills/tlc-spec-lean/` existe.
 
 ## Coverage
 
-Carried from b2520fe. Perfil `light`: o recompute do join de Coverage **não foi executado**.
+Carried from b2520fe. Perfil `light`: o recompute do join de Coverage **não foi executado**. Nesta rodada conferi só as linhas que o diff mudou, comparando antes e depois (tabela em "Emenda de 02/10/2026"). Nenhuma ficou com membro sem check.
 
 ## Test policy rows
 
@@ -185,90 +183,94 @@ Carried from b2520fe. `checks.md` não tem seção `Test policy`.
 
 ## Faults injected
 
-Verified at 0893f6f. Perfil `light`: a injeção formal de falhas **não é exigida**, e não alego cobertura de mutação da feature. A pedido desta rodada, injetei 16 mutantes na superfície de idioma de C42 e C43 (detalhes em "Julgamento de C42" (a)), mais 2 controles que removem uma asserção do teste (N5b, N5c) e 1 controle de N4 (N4b). Dos 16: 11 mortos e **5 sobreviventes** (E2, E4, N3, N9, N12). Nenhum sobrevivente é uma omissão plausível que viole o claim (julgamento em (c)), mas cada um fica registrado aqui como `no`.
+Perfil `light`: a injeção formal de falhas **não é exigida**, e não alego cobertura de mutação da feature. As linhas abaixo existem porque foram injetadas (Rounds 5–7) e cada resultado é um fato sobre os testes.
+
+Verified at 1d46c87, nesta rodada:
+
+- P1–P3 sobre a nova asserção de C49 (com os controles P2b e P3b).
+- Os cinco sobreviventes da Round 6, reaplicados num segundo worktree descartável em `1d46c87`. Rodei `s5-report.test.mjs` inteiro: linha de base `# pass 14 # fail 0`, e com cada mutante, exit 0, `# pass 14 # fail 0`.
+
+Os mortos de N1, N2, N4–N8, N10 e N11 são carried from 0893f6f: `src/` só mudou em comentários, e as linhas das asserções que os mataram (`:166-211`, `:273-320`) não mudaram.
 
 | Mutação | Location | Killed |
 | --- | --- | --- |
-| N1 import novo sem `;` de `review.mjs` | `src/ai-study/report.mjs:6`, `tests/ai-study/s5-report.test.mjs:205` | yes (C42, `:205`) - fechada por `0893f6f` |
-| N2 `raw.text('none')` | `src/ai-study/report.mjs:25-26`, `tests/ai-study/s5-report.test.mjs:200` | yes (C42, `:206`) - fechada por `0893f6f` |
-| N3 `empty = /nothing/.source` | `src/ai-study/report.mjs:26` | no - sobrevive (regex pulada pelo leitor; ofuscação) |
-| N4 `empty = Object.keys(OUTCOME_LABELS)[2]` | `src/ai-study/report.mjs:26` | yes (C42, `:273`) - fechada por `0893f6f` |
-| N5 `STATUS_LABELS[manifest.status]` → `manifest.status` | `src/ai-study/report.mjs:229` | yes (C42, `:273` e `:277`, cada uma sozinha: N5b, N5c) - fechada por `0893f6f` |
-| N6 `REASON_LABELS[reason]` → `reason` | `src/ai-study/report.mjs:27` | yes (C43, `:318`) |
-| N7 `OUTCOME_LABELS[…]` → código | `src/ai-study/report.mjs:376` | yes (C42 `:273`, C43 `:320`) |
-| N8 `ARM_LABELS[arm]` → `arm` em `jevValid` | `src/ai-study/report.mjs:348` | yes (C43, `:306`) |
-| N9 `ARM_LABELS[arm]` → `arm` nos cabeçalhos das tabelas | `src/ai-study/report.mjs:183` | no - sobrevive em `npm test` (59/59); cabeçalho `pt acertos`, sem prosa em inglês |
-| N10 `STATUS_LABELS[manifest.reason]` | `src/ai-study/report.mjs:229` | yes (C42, `:277`) |
-| N11 `empty = '\x68\x69\x74'` (`hit`) | `src/ai-study/report.mjs:26` | yes (C42, `:273`) |
-| N12 rótulo omitido só com `manifest.failure` | `src/ai-study/report.mjs:229` | no - sobrevive em `npm test` (59/59); desvio condicional deliberado |
-| E2 `empty = '\x70\x61\x73\x73\x65\x64'` (`passed`) | `src/ai-study/report.mjs:26` | no - sobrevive (escape não decodificado, `tests/ai-study/s5-report.test.mjs:202`; palavra fora de `EVIDENCE_CODES`) |
-| E4 `Object.keys({ nothing: … })[0]` | `src/ai-study/report.mjs:26` | no - sobrevive (sem literal) |
+| P1 proveniência live impressa como `fixture` | `src/ai-study/report.mjs:198` | yes (C49, `tests/ai-study/s5-report.test.mjs:517`) - verified at 1d46c87 |
+| P2 sufixo `(simulado)` também no live | `src/ai-study/report.mjs:198` | yes (C49, `:517`) - verified at 1d46c87 |
+| P3 modo live impresso como `fixture` | `src/ai-study/report.mjs:198` | yes (C49, `:517`) - verified at 1d46c87 |
+| N9 `ARM_LABELS[arm]` → `arm` nos cabeçalhos das tabelas | `src/ai-study/report.mjs:183` | no - sobrevive em 1d46c87 (`s5-report` 14/14) |
+| N12 rótulo do estado omitido só com `manifest.failure` | `src/ai-study/report.mjs:229` | no - sobrevive em 1d46c87 (`s5-report` 14/14) |
+| E2 `empty = '\x70\x61\x73\x73\x65\x64'` (`passed`) | `src/ai-study/report.mjs:26` | no - sobrevive em 1d46c87 (`s5-report` 14/14) |
+| E4 `empty = Object.keys({ nothing: text('none') })[0]` | `src/ai-study/report.mjs:26` | no - sobrevive em 1d46c87 (`s5-report` 14/14) |
+| N3 `empty = /nothing/.source` | `src/ai-study/report.mjs:26` | no - sobrevive em 1d46c87 (`s5-report` 14/14) |
+| N1, N2, N4, N5, N6, N7, N8, N10, N11 | `src/ai-study/report.mjs` (ver Round 6) | yes - carried from 0893f6f |
 
 ## Observations (non-blocking)
 
-Carried from b2520fe e reconfirmadas:
+Carried from b2520fe:
 
 1. C55: a espera fixa de 300 ms entre os sinais (`s4-limits.test.mjs:908`) traz risco de flakiness, sem risco de falso verde.
-2. C50/C51: o `RUN_ID` que os fechar precisa vir de uma coleta live autorizada. O verificador da rodada seguinte deve conferir a proveniência real, não só o teste verde (STATE.md, escolha 5 da S5; critério de aceite de PRB-11).
 
 Carried from b5f0668:
 
-3. O texto livre gravado nas evidências pelo próprio sistema (`problems` do Jev, `failure.message`, `comparison_error`, justificativas) entra no relatório como dado, fora do catálogo, e continua fora do claim de C42.
+3. O texto livre gravado nas evidências entra no relatório como dado, fora do catálogo, e fica fora do claim de C42.
 
-Carried from 580258d (`src/` e os pinos não mudaram):
+Carried from 580258d / 0893f6f:
 
-4. **Atribuição da aprovação.** O comentário `issuecomment-5954258912` sai da mesma conta usada por agentes. Aceito o registro, mas a autoria humana vem da declaração, não da conta.
-5. **Pinos opacos.** `REVIEWED_CODE_CONTEXTS` e `REVIEWED_TEXT_FUNCTION` (`tests/ai-study/s5-report.test.mjs:177-178`) se chamam "reviewed", mas não têm lista legível nem registro de revisão.
-6. `codeContexts` é um conjunto de linhas (`:204`). Um literal de código novo, numa linha idêntica a uma já revisada, não muda o hash.
+4. **Atribuição.** O comentário de aprovação do catálogo e os commits da emenda saem da mesma conta usada por agentes. A autoria humana vem da declaração registrada, não da conta.
+5. **Pinos opacos.** `REVIEWED_CODE_CONTEXTS` e `REVIEWED_TEXT_FUNCTION` (`tests/ai-study/s5-report.test.mjs:177-178`) não têm lista legível.
+6. `codeContexts` é um conjunto de linhas (`:204`).
+7. **Limites de `EVIDENCE_CODES`** (`:166`): `\b` ASCII casa dentro de palavras acentuadas.
+8. `formatReportSummary` imprime o estado técnico como código no stdout, fora do claim de C42.
 
-Novas nesta rodada (verified at 0893f6f):
+A Observação 2 (proveniência do `RUN_ID` de C50/C51) saiu com os checks.
 
-7. **Limites de `EVIDENCE_CODES`** (`:166`). O `\b` do JavaScript é ASCII: `\bmiss\b` casa em "missão" e `\bhit\b` em "hitória". Como a guarda varre também o texto livre das evidências (Observação 3), uma fixture futura com essas palavras quebraria o teste sem defeito no gerador. Hoje nenhuma faz isso. Sugestão: usar `(?<![\p{L}\p{N}_])…(?![\p{L}\p{N}_])` com a flag `u`.
-8. **Sumário no stdout.** `formatReportSummary` (`src/ai-study/report.mjs:461`) imprime o estado técnico como código, sem rótulo, por desenho. Fica fora do claim de C42, que é sobre o Markdown.
+Novas nesta rodada (verified at 1d46c87):
+
+9. **C49 e o membro "live identificado".** O claim de C49 (`checks.md:231`) fala só de relatório fixture. A Coverage (`checks.md:300`) atribui a ele também "live identificado", que a asserção nova `:517` prova. O membro tem prova executada e localizada, mas o texto do claim não o nomeia: é uma lacuna de precisão no artefato, e não de cobertura. Sugestão: uma nota na linha de Coverage ou no Status de C49.
+10. **Resíduos de C50/C51/C59.** `checks.md:302` ("C50–C51 não exigem concordância perfeita…"), `STATE.md:17`, `:19` e `:70` ainda descrevem C50/C51/C59 como pendentes, contra o `STATE.md:31-33`. O `Makefile` ainda passa `RUN_ID="$(RUN_ID)"` ao Node em `check-proof`, o que é inofensivo. O `STATE.md:33` registra `TYPETYPESAFE_API_KEY` em `.env.local`, um nome que a bancada não lê.
+11. **Modelo solicitado fora da evidência.** `plan.md:5` diz `jev-latest`, mas `results.json` só registra o modelo devolvido (`jev-1.13.0`) e não guarda a ordem efetiva dos braços, que só aparece no código (`run.mjs:122-133`).
 
 ## Lacunas
 
 Ranqueadas.
 
-**(a) Corrigíveis no código**
+**(a) Mutantes sobreviventes: o único motivo do FAIL**
 
-1. **C59: teste e implementação inexistentes** (`checks.md:199`; `src/ai-study/lmstudio.mjs:42-44`). É código, mas depende das confirmações de API da Decisão 2. Card **PRB-8** (também bloqueia PRB-11). É a única lacuna de código que mantém o FAIL.
-2. **C42/C43, cabeçalhos das tabelas (N9, não bloqueante)** - `src/ai-study/report.mjs:183`: nenhum teste lê a linha de cabeçalho das tabelas de contagem (`countsTable` em `tests/ai-study/s5-report.test.mjs:151-161` só lê linhas de julgamento). Correção: asserir em C43 a linha `| Julgamento | PT (original) acertos | … |`.
-3. **C42, guarda renderizada só sobre coleta concluída (N12, não bloqueante)** - aplicar `assertNoBareCodes` também aos relatórios com `failure` e `interrupted` de C45 (`tests/ai-study/s5-report.test.mjs:395-402`).
-4. **C42, leitor (E2, E4, N3, não bloqueantes)** - `tests/ai-study/s5-report.test.mjs:202`: decodificar escapes antes do teste de letras; tratar regex e nomes de propriedade como literais. Todos exigem ofuscação.
+O harness não aceita PASS com mutante vivo (`verify.md`: "A surviving mutant is a finding… What fails the feature: … a surviving mutant"). O gate lê a coluna `Killed`. As Rounds 4–6 julgaram estes cinco não bloqueantes porque exigem escrita deliberada ou não produzem prosa em inglês. Esse julgamento nunca passou pelo gate, porque aquelas rodadas eram FAIL por C50/C51/C59. Com esses checks removidos, os cinco são a única coisa entre a feature e um gate verde. Há duas saídas: corrigir, ou o usuário aceitar explicitamente o risco como fora do perfil `light`. A segunda é decisão dele, não do verificador.
 
-**(b) Bloqueadas por pré-requisitos externos**
+1. **N12 (C42)** - `src/ai-study/report.mjs:229`: um relatório de coleta com falha que imprimisse o código no lugar do rótulo passaria. É o único dos cinco que viola o claim no texto renderizado sem ofuscação. Correção barata: aplicar `assertNoBareCodes` e a asserção do rótulo do estado aos relatórios com `failure` e `interrupted` de C45 (`tests/ai-study/s5-report.test.mjs:395-402`).
+2. **N9 (C43)** - `src/ai-study/report.mjs:183`: nenhum teste lê a linha de cabeçalho das tabelas de contagem. Correção barata: asserir em C43 `| Julgamento | PT (original) acertos | … |`.
+3. **E2, E4, N3 (C42)** - `src/ai-study/report.mjs:26` e o leitor estático em `tests/ai-study/s5-report.test.mjs:202`: escapes, nomes de propriedade e regex escapam da varredura. Correção: decodificar escapes e tratar regex e chaves como literais no leitor. Também é possível uma decisão explícita do usuário de que ofuscação deliberada fica fora do claim.
 
-1. **C50:** coleta live real T01–T06. Card **PRB-11**, bloqueado por **PRB-8** (contagem de tokens, `src/ai-study/lmstudio.mjs:43-44`) e **PRB-9** (template oficial e conferência do GGUF, `src/ai-study/template.mjs:14`), mais a autorização explícita da coleta.
-2. **C51:** coleta live real de ≥1 caso R com Jev. Card **PRB-11**, bloqueado por PRB-8, PRB-9 e **PRB-10** (revisão humana das rubricas Jev e campo `model` da resposta).
-3. (Opcional, não bloqueia) **C42, atribuição da aprovação humana:** uma aprovação postada de uma conta usada só pelo usuário, ou um commit ou tag assinado, daria um registro que se sustenta sem a declaração dele (Observação 4).
+**(b) Não bloqueantes**
+
+4. Observações 9, 10 e 11 (precisão de C49 na Coverage, resíduos de texto, modelo solicitado ausente da evidência).
 
 ## Histórico (rodadas anteriores)
 
 Esta seção é histórico e não serve de prova nesta rodada.
 
-- **Round 5 - scoped** (`d6440be..580258d`, commit do relatório `3416c78`): FAIL, 55/59. **Correção de registro (Round 6):** o relatório da Round 5 dizia que a rodada foi "autorizada pelo usuário". Isso estava errado: a Round 5 foi **despachada pelo coordenador sem autorização explícita da rodada**. O usuário tinha aprovado o português do catálogo, não uma rodada extra. O coordenador informou o erro no brief da Round 6. A aprovação humana do hash do catálogo (PR #7, `issuecomment-5954258912`) foi aceita, com a ressalva da conta compartilhada com agentes. `e5fa347` fechou E1, E3, E5 e E6. C42 ficou NÃO PROVADO pela mutação plausível N5 (código `manifest.status` impresso no lugar do rótulo de `STATUS_LABELS`, `report.mjs:229`, verde em `npm test`). Outras sobreviventes: N1–N4, E2, E4. C50 e C51 sem evidência live real (PRB-11) e C59 não construído (PRB-8). Gate → exit 1. L-008 registrada. Relatório em `git show 3416c78:.specs/features/jev-translation-feasibility/verification.md`.
-- **Round 4 - scoped** (`4dacc6b..b5f0668`, commit do relatório `d6440be`): FAIL, 55/59. Primeira rodada além do limite, autorizada pelo usuário. C42 passou a ser provado por varredura estática de `report.mjs` e pelo hash do catálogo `REPORT_TEXT`, e as 12 mutações plausíveis (K1–K6, G1–G6) morreram. Seis rotas sobreviveram (E1–E6) e foram julgadas lacunas de precisão. C42 ficou NÃO PROVADO porque a aprovação humana do hash `sha256:e9a1e00a…327b` não estava no PR #7 citado. C50 e C51 sem evidência live real e C59 não construído. Gate → exit 1. L-006 atualizada e L-007 registrada. Relatório em `git show d6440be:.specs/features/jev-translation-feasibility/verification.md`.
-- **Round 3 - scoped** (`838012d..5f310f9`, commit do relatório `4dacc6b`): FAIL, 55/59. C42 perdeu o PASS: a lista de permissões sobre o Markdown renderizado deixava passar M4–M6, e M8–M10 estavam em ramos não renderizados. Gate → exit 1. L-006 registrada; L-005 atualizada. Relatório em `git show 4dacc6b:.specs/features/jev-translation-feasibility/verification.md`.
-- **Round 2 - scoped** (`42f101e..c23dddc`, commit do relatório `838012d`): FAIL, 56/59. C42 recebeu PASS com um mutante vivo (`'nenhum'` → `'nothing'`), erro de julgamento corrigido na Round 3. Gate → exit 1. L-005 registrada. Relatório em `git show 838012d:.specs/features/jev-translation-feasibility/verification.md`.
-- **Round 1 - full** (feature inteira, `4a1acfe..b2520fe`, commit do relatório `42f101e`): FAIL, 56/59. C42 recebeu PASS com uma asserção (`assertNoBareCodes`) que não provava "prosa fica em português", erro corrigido na Round 2. Gate → exit 1. Relatório em `git show 42f101e:.specs/features/jev-translation-feasibility/verification.md`.
-- Rodadas de escopo S1–S4, anteriores à Round 1 da feature inteira: Rodada 5 (S1–S4, `5417c97..7868a78`) PASS em 43/43 construídos, relatório em `git show b2520fe:.specs/features/jev-translation-feasibility/verification.md`. Rodada 4 (S4, `864b31b`) FAIL em C55, lição L-004. Rodada 3 (S4, `4470b14`) FAIL em C36/C39/C40, lições L-001 a L-003. Rodadas 2 (S3, `4eea13b`) e 1 (S1+S2, `166a2b9`) PASS nos checks então construídos.
+- **Round 6 - scoped** (`3416c78..0893f6f`, commit do relatório `f7f8ee4`): FAIL, 56/59. Rodada autorizada pelo usuário para reavaliar C42 depois de `0893f6f`. **C42 passou a PASS**: N5 morreu por duas asserções independentes (`:273`, `:277`), e N1, N2, N4, N6–N8, N10 e N11 também morreram. Sobreviveram E2, E4 e N3 (ofuscação) e N9 e N12 (novas), julgadas não bloqueantes. C50 e C51 ficaram sem evidência live real (PRB-11) e C59 sem teste nem implementação (PRB-8). Gate → exit 1. Nenhuma lição nova. Relatório em `git show f7f8ee4:.specs/features/jev-translation-feasibility/verification.md`.
+- **Round 5 - scoped** (`d6440be..580258d`, commit do relatório `3416c78`): FAIL, 55/59. Foi despachada pelo coordenador sem autorização explícita da rodada (correção registrada na Round 6). C42 ficou NÃO PROVADO por N5. Gate → exit 1. L-008 registrada.
+- **Round 4 - scoped** (`4dacc6b..b5f0668`, commit do relatório `d6440be`): FAIL, 55/59. C42 ficou NÃO PROVADO pela aprovação humana ausente do hash do catálogo. Gate → exit 1. L-006 atualizada, L-007 registrada.
+- **Round 3 - scoped** (`838012d..5f310f9`, commit do relatório `4dacc6b`): FAIL, 55/59. C42 perdeu o PASS (M4–M6, M8–M10). Gate → exit 1. L-006 registrada.
+- **Round 2 - scoped** (`42f101e..c23dddc`, commit do relatório `838012d`): FAIL, 56/59. C42 recebeu PASS com um mutante vivo, erro corrigido na Round 3. L-005 registrada.
+- **Round 1 - full** (`4a1acfe..b2520fe`, commit do relatório `42f101e`): FAIL, 56/59.
+- Rodadas de escopo S1–S4, anteriores à Round 1: Rodada 5 (S1–S4) PASS em 43/43; Rodada 4 (S4) FAIL em C55, L-004; Rodada 3 (S4) FAIL em C36/C39/C40, L-001 a L-003; Rodadas 2 (S3) e 1 (S1+S2) PASS nos checks então construídos.
 
 ## Gate
 
-Verified at 0893f6f:
+Verified at 1d46c87:
 
-- `make check-proof TEST_FLAGS='--test-name-pattern=^(C[1-9]|C[1-4][0-9]|C5[0-9]):'`: 56 passed, 0 failed, 0 skipped, 0 todo, exit 0. Faltam C50, C51 e C59.
-- `npm test`: 59 passed, 0 failed, exit 0. `npm run check`: exit 0.
-- C50/C51 sem `RUN_ID`: 0 testes, exit 2. Com `RUN_ID=verifier-r6-no-evidence`: 0 passed, 2 failed, exit 2. C59: 0 testes, exit 2.
+- `make check-proof TEST_FLAGS='--test-name-pattern=^(<os 56 IDs de checks.md>):'`: 56 passed, 0 failed, 0 skipped, 0 todo, exit 0.
+- `npm test`: 59 passed, 0 failed, exit 0. `npm run check`: exit 0. `make plan-validate`: exit 0. `make checks-validate`: exit 0.
 - `python3 .claude/skills/tlc-spec-lean/scripts/validate_verification.py jev-translation-feasibility` → exit 1: `ERROR jev-translation-feasibility: verdict is FAIL - route the ranked gaps back as fixes, then re-verify` (1 erro, 0 avisos).
-- `git status --porcelain`: vazio antes; vazio depois das provas, das mutações e da remoção do worktree; ao final, só ` M .specs/features/jev-translation-feasibility/verification.md`.
+- `git status --porcelain`: vazio antes; vazio depois das provas, das mutações e da remoção dos dois worktrees; ao final, só ` M .specs/features/jev-translation-feasibility/verification.md`.
 
 ## Lições
 
-Nenhuma lição nova registrada; `lessons.py` não foi chamado. As falhas fundamentadas desta rodada já estão cobertas:
+Nenhuma lição nova registrada, e `lessons.py` não foi chamado. Nesta rodada não houve falha nova de execução sobre o código:
 
-- N9 e N12 são rótulo do catálogo não asserido no Markdown renderizado, exatamente o caso da **L-008** ("Assert the rendered label wherever generated text maps a stored code to a catalogue label…"). N12 é a mesma lição aplicada a outra amostra (coleta com falha).
-- E2, E4 e N3 exigem ofuscação e ficam na família da **L-006**/**L-007**.
-- O falso positivo latente do `\b` ASCII (Observação 7) é uma fragilidade do teste, não uma falha observada.
-- C59, C50 e C51 têm causa em fluxo e pré-requisitos externos (PRB-8 a PRB-11), não em falha de execução neste código.
+- P1–P3 morreram.
+- Os sobreviventes N9 e N12 já estão cobertos pela **L-008** (asserir o rótulo renderizado onde o gerador mapeia código para rótulo do catálogo), e E2, E4 e N3 pela família **L-006**/**L-007**.
+- As observações 9–11 são de artefato e de evidência, não de execução do código.
