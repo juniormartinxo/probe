@@ -47,8 +47,14 @@ Seen once or not yet corroborated. Tracked, not trusted.
 ### L-006 - Exempt from a language allowlist only tokens that cannot spell prose, since technical terms and stripped data patterns that are also foreign words let a foreign label through
 - signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `report` · harmful: 0
 - features: jev-translation-feasibility
-- evidence: M4/M5/M6 survived C42 - src/ai-study/report.mjs:227,55,246; tests/ai-study/s5-report.test.mjs:188,190 (report)
-- last seen: 2026-10-02T10:40:11Z
+- evidence: M4/M5/M6 survived C42 - src/ai-study/report.mjs:227,55,246; tests/ai-study/s5-report.test.mjs:188,190 (report) (+1 more)
+- last seen: 2026-10-02T11:58:56Z
+
+### L-007 - Pin and scan every module whose code or values reach generated text, since a scan of the generator file and a hash of the text data miss fixed text from helper code or imports
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `report` · harmful: 0
+- features: jev-translation-feasibility
+- evidence: E3/E5 survived C42 - src/ai-study/report-text.mjs:211-217; src/ai-study/report.mjs:1-5; tests/ai-study/s5-report.test.mjs:186,196 (report)
+- last seen: 2026-10-02T11:58:56Z
 
 ## Quarantined (failed when applied - ignore)
 
