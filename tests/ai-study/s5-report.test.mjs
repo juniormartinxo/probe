@@ -169,8 +169,9 @@ function assertNoBareCodes(markdown) {
 }
 const withoutFences = (markdown) => markdown.replace(/^(`{3,})text\n[\s\S]*?\n\1$/gm, '');
 // Prosa do relatório (AC 33): todo texto fixo vem do catálogo `report-text.mjs`, fixado pelo hash abaixo.
-// O Codex deu parecer editorial favorável no PR #7; a aprovação humana do português segue pendente.
-// Mudar o texto do catálogo exige nova revisão e novo hash aqui.
+// Português aprovado por Junior Martins (revisão humana) em 02/10/2026 para este hash:
+// https://github.com/juniormartinxo/probe/pull/7#issuecomment-5954258912
+// Mudar o texto do catálogo exige nova revisão humana e novo hash aqui.
 const PINNED_REPORT_TEXT = 'sha256:e9a1e00ae3811fa4d02bbf761d83ad2db9652b7760db53f827f368a7c03b327b';
 const REVIEWED_TEXT_FUNCTION = 'sha256:b928aa8bc3b595b79ddf05ae5cdd07876f6e15c3996b86837bf3070ae0ada32c';
 const REVIEWED_CODE_CONTEXTS = 'sha256:46b94e7608fa1377fb2fc56fa5032f2160c7cde9bc9be6a77f2fa7074f1ad165';

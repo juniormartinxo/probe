@@ -1,7 +1,8 @@
 // Catálogo de todo texto fixo do relatório (AC 33: prosa em português). Só dados: strings com
 // lacunas `{nome}`, preenchidas por `text` com valores das evidências. `report.mjs` não tem prosa
-// própria; C42 prova isso e fixa o hash deste catálogo. O Codex deu parecer editorial favorável
-// no PR #7; a aprovação humana do português segue pendente. Mudar o texto exige nova revisão.
+// própria; C42 prova isso e fixa o hash deste catálogo. Português aprovado por Junior Martins (revisão
+// humana) em 02/10/2026 para o hash fixado: https://github.com/juniormartinxo/probe/pull/7#issuecomment-5954258912
+// Mudar o texto exige nova revisão humana e novo hash no teste.
 
 export const REPORT_TEXT = Object.freeze({
   sections: Object.freeze([
