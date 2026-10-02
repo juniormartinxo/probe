@@ -56,6 +56,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: E3/E5 survived C42 - src/ai-study/report-text.mjs:211-217; src/ai-study/report.mjs:1-5; tests/ai-study/s5-report.test.mjs:186,196 (report)
 - last seen: 2026-10-02T11:58:56Z
 
+### L-008 - Assert the rendered label wherever generated text maps a stored code to a catalogue label, since a source scan of fixed text stays clean when the lookup is dropped and the raw code is printed
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `report` · harmful: 0
+- features: jev-translation-feasibility
+- evidence: N5 survived C42 and npm test - src/ai-study/report.mjs:229; tests/ai-study/s5-report.test.mjs:195-211 (report)
+- last seen: 2026-10-02T14:18:04Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
