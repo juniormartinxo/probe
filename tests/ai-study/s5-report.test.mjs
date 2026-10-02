@@ -10,6 +10,7 @@ import { JUDGMENT_IDS, loadCorpus, sha256 } from '../../src/ai-study/corpus.mjs'
 import { createJevTransport } from '../../src/ai-study/jev.mjs';
 import { createLmStudioTransport } from '../../src/ai-study/lmstudio.mjs';
 import { proveLiveRelational, proveLiveTranslation, SECTIONS } from '../../src/ai-study/report.mjs';
+import { REPORT_TEXT } from '../../src/ai-study/report-text.mjs';
 import { RECOMMENDATIONS } from '../../src/ai-study/review.mjs';
 import { loadRun } from '../../src/ai-study/run-reader.mjs';
 import { TRANSLATION_TEMPLATE } from '../../src/ai-study/template.mjs';
@@ -29,6 +30,7 @@ import {
   variant,
   writeCorpusVariant,
 } from './helpers.mjs';
+import { sourceLiterals } from './support/source-literals.mjs';
 
 const KEY = 'sentinela-chave-jev-s5-4c1a';
 const LOCAL_MODEL = validLive.LOCAL_MODEL;
@@ -166,36 +168,32 @@ function assertNoBareCodes(markdown) {
   assert.doesNotMatch(prose, EVIDENCE_CODES, 'código em inglês solto na prosa');
 }
 const withoutFences = (markdown) => markdown.replace(/^(`{3,})text\n[\s\S]*?\n\1$/gm, '');
-// Vocabulário fechado da prosa do relatório: toda palavra fora de cercas e crases é português conhecido ou um
-// termo técnico sem tradução. Palavra nova no relatório, em qualquer língua, falha até entrar aqui de propósito.
-const PORTUGUESE_VOCABULARY = new Set(`
-  acerto acertos acessa acurácia adaptação altera ambiguidades amostra ampliar as ausente ausência avaliados avaliação
-  avaliações braço cada calibração candidato caso casos chamada chamadas coleta com como comparação completos completude
-  comprova conclusão concluída concluídos concordância concreta condições confiança confianças configurado configuração
-  configurações confirmado considera conta contada contagem controladas convertido correção custo da de decidem decisão
-  denominador descritiva descritivas desta destino diferença dinheiro direção distribuição distribuições do dos duração
-  durações economia em entidades entrada erro erros escolha escolhas esperado esta estabelece estado estimada estudo
-  evidência evidências executados execução exemplos falsa formatada gabarito ganho gera geral humana humano há
-  identificada identificado incompletos indisponível individuais informada informado informou integração inválido início
-  itens julgamento justificativa latência limiares limitações limites literal locais local medida medição memória meta
-  modelo modo motivo máxima mínima nas negações nem nenhum nenhuma nesta nova não observada oficial originais original
-  outra pareado pares parte pela pelo pendente planejados por preservado problemas produto produção prova proveniência
-  quantização real recalculada recomendação rede referência registrada regressões relacionais relatório respostas
-  resultados retornado revisada revisor revisora revisão rubrica saída sem semântica semânticas servidor seção
-  significado simulado simulados simulação sobre solicitado somente sucesso são tamanho tarifa tem todas tradução
-  traduções técnico término uma usadas usado uso validação valores vêm válida válidas zero
-`.split(/\s+/).filter(Boolean));
-const TECHNICAL_TERMS = new Set(['corpus', 'download', 'en', 'fixture', 'hash', 'id', 'insufficient', 'jev', 'ms', 'no', 'pt', 'runtime', 'sha', 'template', 'timeouts', 'tokenizer', 'tokens', 'vram', 'yes']);
-// Dados gravados que a prosa cita sem crases: IDs de item, códigos snake_case e o JSON de uso e limites.
-const withoutRecordedData = (text) => text.replace(/\{.*\}/g, '').replace(/\b[RT]\d{2}(-[a-z]+)+\b/g, '').replace(/\b[a-z]+(?:_[a-z]+)+\b/g, '');
-function assertPortugueseProse(markdown) {
-  assertNoBareCodes(markdown);
-  const prose = withoutRecordedData(withoutFences(markdown).replace(/`[^`\n]*`/g, ''));
-  const unknown = prose.split('\n').flatMap((line) =>
-    (line.match(/\p{L}{2,}/gu) ?? [])
-      .filter((word) => !PORTUGUESE_VOCABULARY.has(word.toLowerCase()) && !TECHNICAL_TERMS.has(word.toLowerCase()))
-      .map((word) => `${word} — ${line}`));
-  assert.deepEqual(unknown, [], 'prosa do relatório fora do vocabulário em português');
+// Prosa do relatório (AC 33): todo texto fixo vem do catálogo `report-text.mjs`, fixado pelo hash abaixo.
+// Revisão humana do português: pendente, no PR #7 (PRB-7). Mudar qualquer texto do catálogo exige nova
+// revisão e novo hash aqui.
+const APPROVED_REPORT_TEXT = 'sha256:e9a1e00ae3811fa4d02bbf761d83ad2db9652b7760db53f827f368a7c03b327b';
+// Literais com letras que `report.mjs` pode ter fora de `text('<chave>')`: códigos gravados nas
+// evidências (comparados ou mostrados entre crases), fragmentos de ID de item e o rótulo da cerca.
+const REPORT_CODE_LITERALS = new Set([
+  'translation', 'evaluation', 'live', 'valid', 'complete', 'completed', 'pending', 'faithful', 'meaning_changed',
+  'simulated', 'collection_incomplete', 'items_not_executed', 'items_skipped', 'comparison_missing', 'review_pending',
+  'inconclusive', 'evidence_complete', 'hit', 'miss', 'absent', 'recommendation',
+  'en-pt', 'pt-en', 'en->pt', '-translate-', '-translate-en-pt', '-translate-pt-en', '-evaluate-', 'text\\n',
+]);
+// O gerador não tem prosa própria: cada literal com letras é chave existente do catálogo, código listado
+// acima ou caminho de import. Toda chave do catálogo é usada.
+function assertReportTextFromCatalogue() {
+  const source = readFileSync(join(repoRoot, 'src', 'ai-study', 'report.mjs'), 'utf8');
+  const literals = sourceLiterals(source);
+  const keys = literals.filter((l) => l.before.endsWith('text(')).map((l) => l.value);
+  const prose = literals
+    .filter((l) => !l.before.endsWith('text(') && !l.before.endsWith('from ') && /\p{L}/u.test(l.value.replace(/\\./g, '')))
+    .map((l) => l.value)
+    .filter((value) => !REPORT_CODE_LITERALS.has(value));
+  assert.deepEqual(prose, [], 'texto fora do catálogo em report.mjs');
+  assert.deepEqual(keys.filter((key) => !(key in REPORT_TEXT.lines)), [], 'chave inexistente no catálogo');
+  assert.deepEqual(Object.keys(REPORT_TEXT.lines).filter((key) => !keys.includes(key)), [], 'chave do catálogo sem uso');
+  assert.equal(sha256(JSON.stringify(REPORT_TEXT)), APPROVED_REPORT_TEXT, 'catálogo do relatório diferente do aprovado');
 }
 
 test('C41: make ai-study-report gera Markdown só das evidências da execução, sem rede ou modelos; RUN_ID ausente ou inválido encerra com código 2', () => {
@@ -256,7 +254,8 @@ test('C42: o Markdown apresenta as seis seções na ordem aprovada, em portuguê
   assert.deepEqual(markdown.match(/^## .*$/gm), SECTIONS.map((s) => `## ${s}`));
   assert.ok(markdown.includes('  - Justificativa: Preservado. ## Seção falsa'));
   assert.ok(markdown.includes('(adaptação ## Seção falsa do template)'));
-  assertPortugueseProse(markdown);
+  assertReportTextFromCatalogue();
+  assertNoBareCodes(markdown);
   assert.deepEqual(SECTIONS, ['Configuração e proveniência', 'Completude', 'Originais e traduções', 'Revisão semântica', 'Comparação Jev', 'Limitações']);
   for (const label of ['Estado técnico', 'Conclusão', 'Recomendação humana']) assert.match(header(markdown), new RegExp(`^- ${label}: `, 'm'));
 
@@ -301,7 +300,7 @@ test('C43: o relatório mostra acertos, erros e ausências por julgamento em cad
   }
   assert.match(jev, /^- `R02`: braço PT inválido \(`pt_invalid`\)$/m);
   assert.match(jev, /^- `R03`: braço PT ausente \(`pt_missing`\), braço EN ausente \(`en_missing`\)$/m);
-  assertPortugueseProse(jev);
+  assertNoBareCodes(jev);
   assert.match(jev, /^- `R02-evaluate-pt`: `invalid_response`, .*problemas: ID ausente answers_conflict/m);
   assert.match(jev, /^\| `answers_conflict` \| no \| no \(acerto\) \| yes \(erro\) \|$/m);
 });
