@@ -38,6 +38,30 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C55 FAIL - src/ai-study/cli.mjs:61; tests/ai-study/s4-limits.test.mjs:917-925 (signals)
 - last seen: 2026-10-01T20:59:56Z
 
+### L-005 - Assert the language of generated text against the fixed labels the generator emits, since a closed list of foreign words lets a single foreign word through
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `report` · harmful: 0
+- features: jev-translation-feasibility
+- evidence: M3 survived C42/C43 - src/ai-study/report.mjs:55; tests/ai-study/s5-report.test.mjs:170 (report) (+1 more)
+- last seen: 2026-10-02T10:40:11Z
+
+### L-006 - Exempt from a language allowlist only tokens that cannot spell prose, since technical terms and stripped data patterns that are also foreign words let a foreign label through
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `report` · harmful: 0
+- features: jev-translation-feasibility
+- evidence: M4/M5/M6 survived C42 - src/ai-study/report.mjs:227,55,246; tests/ai-study/s5-report.test.mjs:188,190 (report) (+1 more)
+- last seen: 2026-10-02T11:58:56Z
+
+### L-007 - Pin and scan every module whose code or values reach generated text, since a scan of the generator file and a hash of the text data miss fixed text from helper code or imports
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `report` · harmful: 0
+- features: jev-translation-feasibility
+- evidence: E3/E5 survived C42 - src/ai-study/report-text.mjs:211-217; src/ai-study/report.mjs:1-5; tests/ai-study/s5-report.test.mjs:186,196 (report)
+- last seen: 2026-10-02T11:58:56Z
+
+### L-008 - Assert the rendered label wherever generated text maps a stored code to a catalogue label, since a source scan of fixed text stays clean when the lookup is dropped and the raw code is printed
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `report` · harmful: 0
+- features: jev-translation-feasibility
+- evidence: N5 survived C42 and npm test - src/ai-study/report.mjs:229; tests/ai-study/s5-report.test.mjs:195-211 (report)
+- last seen: 2026-10-02T14:18:04Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

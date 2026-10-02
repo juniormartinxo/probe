@@ -10,6 +10,7 @@ import { JUDGMENT_IDS, loadCorpus, sha256 } from '../../src/ai-study/corpus.mjs'
 import { createJevTransport } from '../../src/ai-study/jev.mjs';
 import { createLmStudioTransport } from '../../src/ai-study/lmstudio.mjs';
 import { proveLiveRelational, proveLiveTranslation, SECTIONS } from '../../src/ai-study/report.mjs';
+import { REPORT_TEXT, text } from '../../src/ai-study/report-text.mjs';
 import { RECOMMENDATIONS } from '../../src/ai-study/review.mjs';
 import { loadRun } from '../../src/ai-study/run-reader.mjs';
 import { TRANSLATION_TEMPLATE } from '../../src/ai-study/template.mjs';
@@ -29,6 +30,7 @@ import {
   variant,
   writeCorpusVariant,
 } from './helpers.mjs';
+import { sourceLiterals } from './support/source-literals.mjs';
 
 const KEY = 'sentinela-chave-jev-s5-4c1a';
 const LOCAL_MODEL = validLive.LOCAL_MODEL;
@@ -159,13 +161,60 @@ function countsTable(markdown, heading) {
 }
 
 const header = (markdown) => markdown.slice(0, markdown.indexOf('\n## '));
-// Códigos gravados nas evidências só aparecem como código (entre crases), ao lado de um rótulo em português.
-const EVIDENCE_CODES = /\b(pt_missing|en_missing|pt_invalid|en_invalid|reference_mismatch|instructions_mismatch|criteria_mismatch|jev_model_mismatch|jev_model_unknown|invalid_translation|temporary|not_evidence|not_in_manifest)\b/;
+// Códigos gravados nas evidências só aparecem como código (entre crases), ao lado do rótulo em português
+// do catálogo: motivos, estados técnicos e resultados de julgamento nunca saem soltos no lugar do rótulo.
+const EVIDENCE_CODES = new RegExp(`\\b(${[...Object.keys(REPORT_TEXT.reasons), ...Object.keys(REPORT_TEXT.statuses), ...Object.keys(REPORT_TEXT.outcomes)].join('|')})\\b`);
 function assertNoBareCodes(markdown) {
   const prose = withoutFences(markdown).replace(/`[^`\n]*`/g, '');
   assert.doesNotMatch(prose, EVIDENCE_CODES, 'código em inglês solto na prosa');
 }
 const withoutFences = (markdown) => markdown.replace(/^(`{3,})text\n[\s\S]*?\n\1$/gm, '');
+// Prosa do relatório (AC 33): todo texto fixo vem do catálogo `report-text.mjs`, fixado pelo hash abaixo.
+// Português aprovado por Junior Martins (revisão humana) em 02/10/2026 para este hash:
+// https://github.com/juniormartinxo/probe/pull/7#issuecomment-5954258912
+// Mudar o texto do catálogo exige nova revisão humana e novo hash aqui.
+const PINNED_REPORT_TEXT = 'sha256:e9a1e00ae3811fa4d02bbf761d83ad2db9652b7760db53f827f368a7c03b327b';
+const REVIEWED_TEXT_FUNCTION = 'sha256:b928aa8bc3b595b79ddf05ae5cdd07876f6e15c3996b86837bf3070ae0ada32c';
+const REVIEWED_CODE_CONTEXTS = 'sha256:46b94e7608fa1377fb2fc56fa5032f2160c7cde9bc9be6a77f2fa7074f1ad165';
+const REPORT_IMPORTS = [
+  "import { ARMS } from './comparison.mjs';",
+  "import { REPORT_TEXT, text } from './report-text.mjs';",
+  "import { MAX_INPUT_TOKENS, CANDIDATE_QUANTIZATION } from './translation.mjs';",
+  "import { outputHash, REVIEW_FILE } from './review.mjs';",
+  "import { templateRevision, TRANSLATION_TEMPLATE } from './template.mjs';",
+];
+// Literais com letras que `report.mjs` pode ter fora de `text('<chave>')`: códigos gravados nas
+// evidências (comparados ou mostrados entre crases), fragmentos de ID de item e o rótulo da cerca.
+const REPORT_CODE_LITERALS = new Set([
+  'translation', 'evaluation', 'live', 'valid', 'complete', 'completed', 'pending', 'faithful', 'meaning_changed',
+  'simulated', 'collection_incomplete', 'items_not_executed', 'items_skipped', 'comparison_missing', 'review_pending',
+  'inconclusive', 'evidence_complete', 'hit', 'miss', 'absent', 'recommendation',
+  'en-pt', 'pt-en', 'en->pt', '-translate-', '-translate-en-pt', '-translate-pt-en', '-evaluate-', 'text\\n',
+]);
+// O gerador não tem prosa própria: cada literal com letras é chave existente do catálogo, código listado
+// acima ou caminho de import. Toda chave do catálogo é usada.
+// Letras de um literal depois de resolver os escapes: `'\x70'` conta como `p`; `\n` e `\s` não contam.
+const literalLetters = (value) =>
+  value
+    .replace(/\\u\{([0-9a-fA-F]+)\}|\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})/g, (_, a, b, c) => String.fromCodePoint(parseInt(a ?? b ?? c, 16)))
+    .replace(/\\./g, '');
+function assertReportTextFromCatalogue() {
+  const source = readFileSync(join(repoRoot, 'src', 'ai-study', 'report.mjs'), 'utf8');
+  const literals = sourceLiterals(source);
+  const lineAt = (start) => source.slice(source.lastIndexOf('\n', start - 1) + 1, source.indexOf('\n', start) < 0 ? undefined : source.indexOf('\n', start)).trim();
+  const isTextCall = ({ start }) => /(?:^|[^\w.$])text\($/.test(source.slice(Math.max(0, start - 16), start));
+  const keys = literals.filter(isTextCall).map((l) => l.value);
+  const codeLiterals = literals.filter((l) => !isTextCall(l) && !lineAt(l.start).startsWith('import ') && /\p{L}/u.test(literalLetters(l.value)));
+  const prose = codeLiterals.map((l) => l.value).filter((value) => !REPORT_CODE_LITERALS.has(value));
+  const codeContexts = [...new Set(codeLiterals.map((l) => lineAt(l.start)))];
+  assert.deepEqual(source.match(/^\s*import\b.*$/gm), REPORT_IMPORTS, 'imports do gerador fora do conjunto revisado');
+  assert.deepEqual(prose, [], 'texto fora do catálogo em report.mjs');
+  assert.equal(sha256(JSON.stringify(codeContexts)), REVIEWED_CODE_CONTEXTS, 'uso de códigos do gerador fora dos contextos revisados');
+  assert.deepEqual(keys.filter((key) => !(key in REPORT_TEXT.lines)), [], 'chave inexistente no catálogo');
+  assert.deepEqual(Object.keys(REPORT_TEXT.lines).filter((key) => !keys.includes(key)), [], 'chave do catálogo sem uso');
+  assert.equal(sha256(JSON.stringify(REPORT_TEXT)), PINNED_REPORT_TEXT, 'catálogo do relatório diferente do fixado');
+  assert.equal(sha256(text.toString()), REVIEWED_TEXT_FUNCTION, 'função de interpolação do catálogo diferente da revisada');
+}
 
 test('C41: make ai-study-report gera Markdown só das evidências da execução, sem rede ou modelos; RUN_ID ausente ou inválido encerra com código 2', () => {
   const sandbox = makeSandbox();
@@ -225,9 +274,12 @@ test('C42: o Markdown apresenta as seis seções na ordem aprovada, em portuguê
   assert.deepEqual(markdown.match(/^## .*$/gm), SECTIONS.map((s) => `## ${s}`));
   assert.ok(markdown.includes('  - Justificativa: Preservado. ## Seção falsa'));
   assert.ok(markdown.includes('(adaptação ## Seção falsa do template)'));
+  assertReportTextFromCatalogue();
   assertNoBareCodes(markdown);
   assert.deepEqual(SECTIONS, ['Configuração e proveniência', 'Completude', 'Originais e traduções', 'Revisão semântica', 'Comparação Jev', 'Limitações']);
   for (const label of ['Estado técnico', 'Conclusão', 'Recomendação humana']) assert.match(header(markdown), new RegExp(`^- ${label}: `, 'm'));
+  // Estado técnico com o rótulo do catálogo, não o código gravado no lugar dele.
+  assert.match(section(markdown, 'Completude'), /^- Estado técnico: `completed` — coleta concluída, motivo /m);
 
   const translations = section(markdown, 'Originais e traduções');
   const records = readRun(sandbox, 'c42').results.filter((r) => r.item.kind === 'translation');
@@ -261,6 +313,8 @@ test('C43: o relatório mostra acertos, erros e ausências por julgamento em cad
   assert.match(jev, /^- Pares completos: 1 de 12 \(`R01`\)$/m);
 
   // Colunas: PT acertos, erros, sem avaliação; EN acertos, erros, sem avaliação.
+  const tableHeader = '| Julgamento | PT (original) acertos | PT (original) erros | PT (original) sem avaliação | EN (tradução) acertos | EN (tradução) erros | EN (tradução) sem avaliação |';
+  assert.equal(jev.split('\n').filter((line) => line === tableHeader).length, 2, 'cabeçalho das duas tabelas com os rótulos dos braços');
   const individual = countsTable(jev, 'Por braço e julgamento');
   const paired = countsTable(jev, 'Pares completos (denominador 1)');
   for (const j of JUDGMENT_IDS) {
@@ -351,6 +405,9 @@ test('C45: coleta com item faltante ou tradução pendente é inconclusive mesmo
     markdown = report(sandbox, runId).markdown;
     assert.equal(conclusion(markdown), 'inconclusive', runId);
     assert.deepEqual(reasons(markdown), ['collection_incomplete', 'items_not_executed'], runId);
+    // Coleta com falha também mostra o estado pelo rótulo do catálogo, sem código solto.
+    assert.match(section(markdown, 'Completude'), /^- Estado técnico: `incomplete` — coleta incompleta, motivo /m, runId);
+    assertNoBareCodes(markdown);
     const paired = countsTable(markdown, 'Pares completos');
     for (const j of JUDGMENT_IDS) assert.deepEqual([paired[j][1], paired[j][4]], [0, 0], `${runId} ${j}: nenhum erro`);
   }
@@ -467,13 +524,14 @@ test('C49: todo relatório fixture identifica os resultados como simulados, sem 
   await liveCollection(sandbox, 'c49-live');
   const live = report(sandbox, 'c49-live');
   assert.ok(!live.markdown.includes('Resultados simulados'), 'live sem marca de simulação');
+  assert.match(live.markdown, /^- Modo e proveniência: `live` \/ `live`$/m);
 });
 
-test('verificadores de C50 e C51: evidência live com o template oficial adotado passa; fixture, template não adotado, quantização e coleta parcial não passam', async () => {
+test('verificadores de integração live: evidência live com o template oficial adotado passa; fixture, template não adotado, quantização e coleta parcial não passam', async () => {
   const sandbox = makeSandbox();
   await liveCollection(sandbox, 'v-live');
   const live = loadRun(sandbox.evidenceDir, 'v-live');
-  // Template confirmado só no teste: com o versionado da bancada, ainda não oficial, nada fecha C50/C51.
+  // Template confirmado só no teste: com o versionado da bancada, ainda não oficial, nenhuma integração real é dada como comprovada.
   const adopted = { officialTemplate: confirmedTemplate };
   assert.deepEqual(proveLiveTranslation(live, adopted), { proven: true, problems: [] });
   assert.deepEqual(proveLiveRelational(live, adopted).cases, corpus.relational_cases.map((c) => c.id));

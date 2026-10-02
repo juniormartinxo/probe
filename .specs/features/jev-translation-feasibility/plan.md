@@ -2,6 +2,10 @@
 
 Status: plano e gabaritos do [corpus](corpus.md) aprovados pelo usuário em 22/09/2026; [checks](checks.md) derivados. O escopo autorizado permanece somente planejamento: estas aprovações não autorizam implementação ou ensaios. Nenhum ensaio real executado.
 
+**Decisão de 02/10/2026 (usuário): a tradução local saiu do estudo.** Um experimento com o Jev real (`jev-latest`, resolvido para `jev-1.13.0` em todas as chamadas) enviou os 12 casos relacionais da revisão 1 em PT-BR e em inglês, com as mesmas rubricas e o mesmo corpo de requisição da bancada. O inglês foi traduzido à mão pelo agente, sem o TranslateGemma, o que dá o melhor caso possível para a tradução. Resultado: escolhas iguais nos dois idiomas em 68 de 72 julgamentos; acertos contra o gabarito PT 63/72 e EN 66/72. As quatro divergências e a vantagem do inglês estão em escolhas de baixa confiança (0,11–0,50), concentradas em R08, o caso de informação insuficiente, que o Jev erra nos dois idiomas. Sem R08, PT 63/66 e EN 64/66. Traduzir localmente antes do Jev não compensa o custo do runtime, do template oficial e da contagem de tokens. Evidência: script e respostas brutas em [`evidence/2026-10-02-jev-pt-en/`](evidence/2026-10-02-jev-pt-en/).
+
+Consequências: C50, C51 e C59 foram removidos de [checks](checks.md); a emenda de 01/10/2026 à AC 27 foi revogada; os *Independent tests* reais de S2 e S3 passam a ser cumpridos, no que resta, pelo experimento acima. A bancada mantém o modo live e suas salvaguardas (`template_unverified`, `token_count_unavailable`), provadas com transportes controlados, mas **o modo live não foi validado contra serviços reais** e não deve ser apresentado como tal. Limitação do experimento: as rubricas em inglês (`JEV_RUBRIC`, escritas pelo agente) foram usadas nos dois idiomas sem revisão humana. Achados do experimento para o produto: o Jev quase nunca escolhe `insufficient`, e trata como dependentes duas perguntas sobre a mesma restrição (R11).
+
 ## Problem
 
 O agrupamento adaptativo do PROBE depende de reconhecer relações entre perguntas sem alterar o significado das respostas. Hoje não há evidência neste repositório de que o Jev reconhece nossos casos, de que traduzir para inglês melhora essas avaliações ou de que o TranslateGemma Q6_K preserva as restrições no equipamento disponível. Fixar a tradução e os limiares de confiança agora converteria hipóteses em regras sem uma comparação observável.
@@ -131,7 +135,7 @@ O caminho inicial usa LM Studio existente. Seu endpoint de completions não apli
 
 Revisar fidelidade por significado, entidades, valores, negações, condições e ambiguidades, sem exigir igualdade com uma única redação inglesa. O tradutor não deve preencher lacunas de informação.
 
-**Independent test:** coletar os seis casos T no servidor identificado; verificar tratamento de saídas vazias e truncadas com transporte controlado. Simulação não comprova execução real.
+**Independent test:** coletar os seis casos T no servidor identificado; verificar tratamento de saídas vazias e truncadas com transporte controlado. Simulação não comprova execução real. Emenda de 02/10/2026: a coleta real dos casos T saiu do estudo com a tradução local (Decisão de 02/10/2026); fica a parte com transporte controlado.
 
 ### S3: Comparação pareada no Jev (P1)
 
@@ -153,7 +157,7 @@ Em AC 21, válido significa: seis IDs esperados, tipo `choice`, escolha pertence
 
 O modelo solicitado é configuração explícita; se a versão resolvida mudar entre os braços, não contar o par como válido. Distribuições e confiança são evidências descritivas; não são limiares de produção nem probabilidade de uma decisão de negócio estar certa.
 
-**Independent test:** observar seis resultados por braço num caso conhecido e excluir pares inválidos com respostas controladas; separar a prova de integração da concordância do modelo com o gabarito.
+**Independent test:** observar seis resultados por braço num caso conhecido e excluir pares inválidos com respostas controladas; separar a prova de integração da concordância do modelo com o gabarito. Emenda de 02/10/2026: a observação real ficou com o experimento da Decisão de 02/10/2026 (seis resultados por braço nos 12 casos, mesma versão do Jev nos dois braços, concordância contada à parte), feito fora da bancada; a exclusão de pares inválidos segue provada com respostas controladas.
 
 ### S4: Coleta limitada com preservação na falha (P1)
 
@@ -171,7 +175,7 @@ O usuário sabe quanto pode ser chamado e conserva as evidências se a coleta pa
 
 Limites iniciais: uma chamada em andamento, timeout local de 120 segundos e Jev de 30 segundos, saída local até 2048 tokens. As 20 chamadas locais acomodam 18 traduções e até duas verificações de template. A contagem inclui retries de SDK, se existirem; a implementação deve desativá-los, não contar só as chamadas do código chamador.
 
-Emenda de 01/10/2026 à AC 27: além das 20 chamadas locais, a execução admite até 18 contagens de tokens (uma por tradução), num orçamento próprio, registrado em `manifest.calls` como serviço separado (`local_token_count`). Elas são contadas antes do envio, falhas inclusive, seguem a regra de uma chamada em andamento e o timeout local e não têm retry (reconexão e retry do `@lmstudio/sdk` desativados). Justificativa: a contagem não executa inferência; escondê-la nas 20 chamadas ou abrir mão dela violaria AC 13–14. A contagem ainda não está implementada e segue bloqueando a coleta live.
+Emenda de 01/10/2026 à AC 27: além das 20 chamadas locais, a execução admite até 18 contagens de tokens (uma por tradução), num orçamento próprio, registrado em `manifest.calls` como serviço separado (`local_token_count`). Elas são contadas antes do envio, falhas inclusive, seguem a regra de uma chamada em andamento e o timeout local e não têm retry (reconexão e retry do `@lmstudio/sdk` desativados). Justificativa: a contagem não executa inferência; escondê-la nas 20 chamadas ou abrir mão dela violaria AC 13–14. A contagem ainda não está implementada e segue bloqueando a coleta live. Revogada em 02/10/2026 com a tradução local (Decisão de 02/10/2026): a contagem não será implementada e C59 foi removido; a AC 27 volta ao texto original.
 
 Término por sinal (01/10/2026): o primeiro SIGINT ou SIGTERM encerra a espera e a coleta como `incomplete` com motivo `interrupted` (código 1, resultado remoto desconhecido, sem alegar cancelamento) e libera a exclusão mútua; um segundo sinal segue o comportamento padrão. A trava de uma coleta encerrada sem liberá-la não é tomada automaticamente: a coleta seguinte sai com código 2 e indica a remoção manual. O relatório (S5) trata `interrupted` como coleta incompleta.
 
@@ -213,6 +217,7 @@ Uso ausente não significa custo zero. Só converter tokens em dinheiro com tari
 | Imagens, dados pessoais e idiomas além de PT/EN | A hipótese atual diz respeito ao texto do PROBE. |
 | PDF do estudo técnico | Markdown atende ao ensaio; PDF permanece obrigatório para relatórios de decisão do MVP. |
 | Comparação automática de quantizações e runtime de produção | Q6_K é o primeiro candidato; ampliar exige os resultados do ensaio. |
+| Tradução local antes do Jev em coleta real | Decisão de 02/10/2026: o Jev responde igual em PT-BR e em inglês em 68 de 72 julgamentos; o ganho não paga o runtime local. |
 
 ## Assumptions
 
@@ -230,6 +235,8 @@ Uso ausente não significa custo zero. Só converter tokens em dinheiro com tari
 | 1 | blocks go-live | Q6_K num servidor LM Studio acessível pelo WSL, com identidade confirmada. | Implementar fixture; não declarar tradução real validada. |
 | 2 | blocks go-live | Chave Jev e modelo de avaliação disponíveis para a coleta. | Verificar integração simulada; não declarar avaliação real validada. |
 | 3 | blocks go-live | Corpus e gabaritos revisados antes da primeira geração. | Prepará-los em checks; manter ensaio real pendente da revisão. |
+
+Em 02/10/2026, com a tradução local fora do estudo, o pré-requisito 1 deixou de bloquear esta entrega. O 2 foi atendido no experimento da Decisão de 02/10/2026, e o 3 já estava atendido pelo corpus aprovado.
 
 ## Observable
 
