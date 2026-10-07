@@ -1,5 +1,7 @@
 # PROBE — desenho consolidado do MVP
 
+> **Substituído em 07/10/2026.** Este desenho foi revisto numa sessão de `/grill-with-docs` e não é mais a referência de escopo. Valem o spec publicado no It's a Plan (projeto `PRB`), o [glossário](../../../GLOSSARY.md) e os ADRs em [`docs/adr/`](../../adr/). Mudanças principais: sem tradução local ([ADR 0001](../../adr/0001-jev-recebe-portugues-sem-traducao.md)); Perguntas geradas pela IA com Pontos da etapa fixos ([ADR 0002](../../adr/0002-perguntas-geradas-pela-ia-com-pontos-fixos.md)); sem entrega de viabilidade; só o `claude`, sem Cloak, na primeira fatia; fluxo das skills do Matt no lugar do `tlc-spec-lean`. O texto abaixo fica como histórico.
+
 Data: 22 de setembro de 2026.
 
 Status: desenho aprovado pelo usuário em 22 de setembro de 2026. A aprovação permite avançar ao planejamento das entregas; não constitui aprovação de um plano de implementação nem autoriza iniciar código da aplicação, instalações, chamadas pagas ou deploy.

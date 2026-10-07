@@ -1,67 +1,9 @@
 .DEFAULT_GOAL := help
 
-PYTHON ?= python3
-NODE ?= node
-TEST_FILES ?= tests/ai-study/*.test.mjs
-TLC_SKILL_DIR ?= .claude/skills/tlc-spec-lean
-FEATURE ?= jev-translation-feasibility
-AI_STUDY_CLI ?= src/ai-study/cli.mjs
-# Nomes definidos na linha de comando do make; a bancada recusa os não publicados.
-AI_STUDY_COMMAND_LINE = $(strip $(foreach v,$(.VARIABLES),$(if $(filter command line,$(origin $(v))),$(v))))
-
-.PHONY: help plan-validate checks-validate check-proof commit-validate ai-study-dry-run ai-study-run ai-study-report
+.PHONY: help
 
 help:
 	@printf '%s\n' \
 	  'Comandos disponíveis:' \
-	  '  make ai-study-dry-run [MODE=fixture|live]  Imprime o manifesto da coleta, sem executar nada.' \
-	  '  make ai-study-run [MODE=fixture|live] [RUN_ID=id]  Coleta fixture (simulada) ou live (LM Studio e Jev).' \
-	  '  make ai-study-report RUN_ID=id  Gera artifacts/ai-study-reports/<id>.md só das evidências, sem modelos ou rede.' \
-	  '    Revisão humana em artifacts/ai-study/<id>/review.json: {"schema_version": 1, "run_id": "<id>", "translations": [...], "recommendation": ...}' \
-	  '      translations[]: item (ex. T01-translate-en-pt), output_sha256 (impresso no relatório), status pending|faithful|meaning_changed,' \
-	  '        reviewer e justification (obrigatórios em faithful e meaning_changed); tradução ausente da lista fica pending.' \
-	  '      recommendation: null ou {decision: keep_candidate|reject_candidate|expand_study, reviewer, justification}.' \
-	  '  make plan-validate [FEATURE=nome]  Valida um plano tlc-spec-lean.' \
-	  '  make checks-validate [FEATURE=nome]  Valida a estrutura dos checks.' \
-	  '  make check-proof TEST_FLAGS="--test-name-pattern=^C1:"  Executa uma prova.' \
-	  '  make commit-validate MESSAGE="docs: descricao"  Valida a mensagem de commit.' \
-	  'Configuração pelo ambiente ou pela linha de comando; segredos (TYPESAFE_API_KEY, LOCAL_API_TOKEN) só pelo ambiente.' \
-	  'Uma coleta por vez em artifacts/ai-study; após uma queda, confira que nenhuma coleta roda e remova artifacts/ai-study/.collection.lock.'
-
-plan-validate:
-	$(PYTHON) "$(TLC_SKILL_DIR)/scripts/validate_plan.py" "$(FEATURE)" --strict
-
-checks-validate:
-	$(PYTHON) "$(TLC_SKILL_DIR)/scripts/validate_checks.py" "$(FEATURE)" --strict
-
-# Ausência de arquivos de prova é erro, não sucesso.
-# Exige um teste nomeado C<n>: executado, sem aceitar zero testes, skip ou TODO.
-# TEST_FLAGS chega pelo ambiente e é expandido sem glob: padrões como ^(C1|C2): não viram sintaxe do shell.
-check-proof: export AI_STUDY_TEST_FLAGS = $(TEST_FLAGS)
-check-proof:
-	@set -eu; \
-	set -- $(TEST_FILES); \
-	proof_output=$$(mktemp); \
-	trap 'rm -f "$$proof_output"' EXIT; \
-	set -f; \
-	if RUN_ID="$(RUN_ID)" $(NODE) --test --test-isolation=none --test-reporter=tap $$AI_STUDY_TEST_FLAGS "$$@" >"$$proof_output" 2>&1; then \
-	  proof_status=0; \
-	else proof_status=$$?; fi; \
-	cat "$$proof_output"; \
-	test "$$proof_status" -eq 0 || exit "$$proof_status"; \
-	awk '/^ok [0-9]+ - C[0-9]+:/ && !/ # (SKIP|TODO)/ { proved=1 } END { exit !proved }' "$$proof_output" || \
-	  { printf '%s\n' 'Erro: nenhuma prova C<n>: executou com sucesso.' >&2; exit 1; }
-
-commit-validate:
-	$(PYTHON) "$(TLC_SKILL_DIR)/scripts/check_commit.py" --message "$(MESSAGE)"
-
-# Códigos do Node: 0 concluído, 1 incompleto, 2 uso/configuração inválida. Em falha, o make
-# sai com 2 e informa o código original na linha "Error N".
-ai-study-dry-run:
-	@AI_STUDY_MAKE_OVERRIDES='$(AI_STUDY_COMMAND_LINE)' $(NODE) $(AI_STUDY_CLI) dry-run
-
-ai-study-run:
-	@AI_STUDY_MAKE_OVERRIDES='$(AI_STUDY_COMMAND_LINE)' $(NODE) $(AI_STUDY_CLI) run
-
-ai-study-report:
-	@AI_STUDY_MAKE_OVERRIDES='$(AI_STUDY_COMMAND_LINE)' $(NODE) $(AI_STUDY_CLI) report
+	  '  make help  Lista as operações disponíveis.' \
+	  'Os alvos da aplicação (up, down, frontend, executor, dev) chegam com a primeira fatia.'
