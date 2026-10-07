@@ -1,4 +1,4 @@
-import type { Stage } from "./api";
+import type { ProcessStatus, Stage } from "./api";
 
 export const stages: { stage: Stage; name: string }[] = [
   { stage: "P", name: "Problema" },
@@ -12,8 +12,6 @@ export function stageName(stage: Stage): string {
   return stages.find((s) => s.stage === stage)?.name ?? stage;
 }
 
-const dateFormat = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" });
-
-export function formatDate(iso: string): string {
-  return dateFormat.format(new Date(iso));
+export function statusName(status: ProcessStatus): string {
+  return status === "open" ? "aberto" : "finalizado";
 }

@@ -1,39 +1,19 @@
 import type { Db } from "../../db/database.ts";
 
-export interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: Date;
-}
-
+// As mensagens chegam com a primeira fatia que conversa com a IA; por ora a Conversa nasce vazia.
 export interface Conversation {
   id: string;
-  messages: Message[];
 }
 
 // Cada Processo tem exatamente uma Conversa, aberta junto com ele.
 export async function startConversation(db: Db, processId: string): Promise<Conversation> {
-  const { id } = await db
-    .insertInto("conversations")
-    .values({ processId })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  return { id, messages: [] };
+  return db.insertInto("conversations").values({ processId }).returning("id").executeTakeFirstOrThrow();
 }
 
 export async function findConversationOfProcess(db: Db, processId: string): Promise<Conversation> {
-  const { id } = await db
+  return db
     .selectFrom("conversations")
     .select("id")
     .where("processId", "=", processId)
     .executeTakeFirstOrThrow();
-  const messages = await db
-    .selectFrom("messages")
-    .select(["id", "role", "content", "createdAt"])
-    .where("conversationId", "=", id)
-    .orderBy("createdAt")
-    .orderBy("id")
-    .execute();
-  return { id, messages };
 }

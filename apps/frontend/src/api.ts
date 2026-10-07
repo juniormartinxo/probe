@@ -1,22 +1,17 @@
 export type Stage = "P" | "R" | "O" | "B" | "E";
 
+export type ProcessStatus = "open" | "finalized";
+
 export interface Process {
   id: string;
   originalDescription: string;
-  status: "open" | "finalized";
+  status: ProcessStatus;
   currentStage: Stage;
   createdAt: string;
 }
 
-export interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: string;
-}
-
 export interface ProcessWithConversation extends Process {
-  conversation: { id: string; messages: Message[] };
+  conversation: { id: string };
 }
 
 export class ApiError extends Error {

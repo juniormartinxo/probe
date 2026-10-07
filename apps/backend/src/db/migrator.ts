@@ -13,7 +13,7 @@ function migrator(db: Db): Migrator {
   return new Migrator({ db, provider: { getMigrations: async () => migrations } });
 }
 
-function unwrap({ error, results }: MigrationResultSet): void {
+function reportResults({ error, results }: MigrationResultSet): void {
   if (!error && results?.length === 0) console.log("Nenhuma migration a executar.");
   for (const result of results ?? []) {
     console.log(`${result.direction} ${result.migrationName}: ${result.status}`);
@@ -22,9 +22,9 @@ function unwrap({ error, results }: MigrationResultSet): void {
 }
 
 export async function migrateToLatest(db: Db): Promise<void> {
-  unwrap(await migrator(db).migrateToLatest());
+  reportResults(await migrator(db).migrateToLatest());
 }
 
 export async function migrateDown(db: Db): Promise<void> {
-  unwrap(await migrator(db).migrateDown());
+  reportResults(await migrator(db).migrateDown());
 }

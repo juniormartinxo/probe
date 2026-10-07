@@ -1,18 +1,14 @@
-import type { Db } from "../../db/database.ts";
+import type { Selectable } from "kysely";
+import type { Db, ProcessTable } from "../../db/database.ts";
 import {
   findConversationOfProcess,
   startConversation,
   type Conversation,
 } from "../conversation/conversation.ts";
-import type { Stage } from "./stage.ts";
 
-export interface Process {
-  id: string;
-  originalDescription: string;
-  status: "open" | "finalized";
-  currentStage: Stage;
-  createdAt: Date;
-}
+export type ProcessStatus = "open" | "finalized";
+
+export type Process = Selectable<ProcessTable>;
 
 export interface ProcessWithConversation extends Process {
   conversation: Conversation;

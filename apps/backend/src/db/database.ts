@@ -1,11 +1,12 @@
 import { CamelCasePlugin, Kysely, PostgresDialect, type Generated } from "kysely";
 import pg from "pg";
+import type { ProcessStatus } from "../modules/process/process.ts";
 import type { Stage } from "../modules/process/stage.ts";
 
 export interface ProcessTable {
   id: Generated<string>;
   originalDescription: string;
-  status: Generated<"open" | "finalized">;
+  status: Generated<ProcessStatus>;
   currentStage: Generated<Stage>;
   createdAt: Generated<Date>;
 }
@@ -16,18 +17,9 @@ export interface ConversationTable {
   createdAt: Generated<Date>;
 }
 
-export interface MessageTable {
-  id: Generated<string>;
-  conversationId: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: Generated<Date>;
-}
-
 export interface Database {
   processes: ProcessTable;
   conversations: ConversationTable;
-  messages: MessageTable;
 }
 
 export type Db = Kysely<Database>;

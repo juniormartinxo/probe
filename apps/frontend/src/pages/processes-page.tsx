@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { formatDate, stageName } from "@/stages";
+import { formatDate } from "@/lib/format";
+import { stageName, statusName } from "@/stages";
 
 export function ProcessesPage() {
   const navigate = useNavigate();
@@ -82,7 +83,9 @@ export function ProcessesPage() {
                   <Badge variant="secondary">
                     Etapa {process.currentStage} · {stageName(process.currentStage)}
                   </Badge>
-                  <span className="text-muted-foreground text-xs">{formatDate(process.createdAt)}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {statusName(process.status)} · {formatDate(process.createdAt)}
+                  </span>
                 </span>
               </Link>
             </li>

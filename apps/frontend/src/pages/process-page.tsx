@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import { ApiError, getProcess, type ProcessWithConversation } from "@/api";
+import { ApiError, getProcess, type ProcessWithConversation, type Stage } from "@/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { formatDate, stages } from "@/stages";
+import { formatDate } from "@/lib/format";
+import { stages, statusName } from "@/stages";
 
 type State =
   | { kind: "loading" }
@@ -44,7 +45,7 @@ function ProcessView({ process }: { process: ProcessWithConversation }) {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Processo</h1>
           <p className="text-muted-foreground text-xs">
-            Criado em {formatDate(process.createdAt)} · {process.status === "open" ? "aberto" : "finalizado"}
+            Criado em {formatDate(process.createdAt)} · {statusName(process.status)}
           </p>
         </div>
         <StageIndicator current={process.currentStage} />
@@ -61,23 +62,13 @@ function ProcessView({ process }: { process: ProcessWithConversation }) {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold">Conversa</h2>
-        {process.conversation.messages.length === 0 ? (
-          <p className="text-muted-foreground text-sm">A conversa ainda não começou.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {process.conversation.messages.map((message) => (
-              <li key={message.id} className="rounded-lg border p-3 text-sm whitespace-pre-wrap">
-                {message.content}
-              </li>
-            ))}
-          </ul>
-        )}
+        <p className="text-muted-foreground text-sm">A conversa ainda não começou.</p>
       </section>
     </>
   );
 }
 
-function StageIndicator({ current }: { current: ProcessWithConversation["currentStage"] }) {
+function StageIndicator({ current }: { current: Stage }) {
   return (
     <ol className="flex gap-1" aria-label="Etapas do PROBE">
       {stages.map(({ stage, name }) => (
