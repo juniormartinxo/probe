@@ -54,10 +54,10 @@ export function claudeResult(result: string, extra: Record<string, unknown> = {}
 
 // O PATH do executor tem só os diretórios dados e o do node (o `claude` falso é um script node),
 // para que nenhum teste alcance o `claude` real instalado na máquina.
-export function createTestExecutor(options: { pathDirs: string[]; defaultTimeoutMs?: number }): FastifyInstance {
+export function createTestExecutor(options: { pathDirs: string[]; timeoutMs?: number }): FastifyInstance {
   return buildApp({
     token: TOKEN,
-    defaultTimeoutMs: options.defaultTimeoutMs ?? 10_000,
+    timeoutMs: options.timeoutMs ?? 10_000,
     cliEnv: { ...process.env, PATH: [...options.pathDirs, path.dirname(process.execPath)].join(path.delimiter) },
   });
 }

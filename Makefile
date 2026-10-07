@@ -3,7 +3,8 @@
 # Configuração local opcional (veja .env.example). As portas seguem para o Docker Compose, o Vite,
 # o executor e os testes. Precedência, igual em todos eles: ambiente (ou linha de comando) >
 # .env.local > padrão.
-PROBE_SETTINGS := PROBE_BACKEND_PORT PROBE_DB_PORT PROBE_EXECUTOR_PORT PROBE_EXECUTOR_HOST PROBE_EXECUTOR_TOKEN
+PROBE_SETTINGS := PROBE_BACKEND_PORT PROBE_DB_PORT PROBE_EXECUTOR_PORT PROBE_EXECUTOR_HOST PROBE_EXECUTOR_TOKEN \
+  PROBE_EXECUTOR_TIMEOUT_MS
 $(foreach v,$(PROBE_SETTINGS),$(eval PROBE_FROM_ENV_$(v) := $(value $(v))))
 -include .env.local
 $(foreach v,$(PROBE_SETTINGS),$(if $(PROBE_FROM_ENV_$(v)),$(eval $(v) := $(PROBE_FROM_ENV_$(v)))))
@@ -11,6 +12,7 @@ export PROBE_BACKEND_PORT ?= 3210
 export PROBE_DB_PORT ?= 5434
 export PROBE_EXECUTOR_PORT ?= 3211
 export PROBE_EXECUTOR_HOST ?= 127.0.0.1
+export PROBE_EXECUTOR_TIMEOUT_MS ?= 300000
 # Sem padrão: o executor não sobe sem a credencial técnica, que o backend também recebe.
 export PROBE_EXECUTOR_TOKEN
 

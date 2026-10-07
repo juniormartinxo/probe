@@ -20,7 +20,7 @@ afterEach(async () => {
   removeTemporaryDirs();
 });
 
-function startExecutor(behavior: FakeClaudeBehavior, options: { defaultTimeoutMs?: number } = {}) {
+function startExecutor(behavior: FakeClaudeBehavior, options: { timeoutMs?: number } = {}) {
   const claude = installFakeClaude(behavior);
   executor = createTestExecutor({ pathDirs: [claude.dir], ...options });
   return claude;
@@ -75,6 +75,7 @@ describe("generation", () => {
       "--strict-mcp-config",
       "--disable-slash-commands",
       "--no-session-persistence",
+      "--safe-mode",
     ]);
     expect(existsSync(marker)).toBe(false);
   });
@@ -160,7 +161,7 @@ function isRunning(pid: number): boolean {
 
 describe("timeout", () => {
   it("stops claude and is reported as timed out, without partial output", async () => {
-    const claude = startExecutor({ stdout: claudeResult("tarde demais"), delayMs: 30_000 }, { defaultTimeoutMs: 300 });
+    const claude = startExecutor({ stdout: claudeResult("tarde demais"), delayMs: 30_000 }, { timeoutMs: 300 });
 
     const response = await generate(generationRequest());
 

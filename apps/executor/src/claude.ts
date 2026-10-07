@@ -31,8 +31,9 @@ export type GenerationOutcome =
   | { status: "canceled" };
 
 // Modo não interativo, saída JSON (traz o consumo) e nada além de gerar texto: sem ferramentas
-// embutidas, sem servidores MCP, sem skills e sem gravar a sessão em disco. O prompt vai pelo
-// stdin, nunca pela linha de comando.
+// embutidas, sem servidores MCP, sem skills e sem gravar a sessão em disco. O modo seguro deixa de
+// fora as personalizações do usuário (CLAUDE.md global, hooks, plugins), mantendo autenticação e
+// modelo. O prompt vai pelo stdin, nunca pela linha de comando.
 function claudeArgs(model: string): string[] {
   return [
     "-p",
@@ -45,6 +46,7 @@ function claudeArgs(model: string): string[] {
     "--strict-mcp-config",
     "--disable-slash-commands",
     "--no-session-persistence",
+    "--safe-mode",
   ];
 }
 

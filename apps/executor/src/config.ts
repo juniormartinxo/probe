@@ -25,10 +25,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   return {
     // 127.0.0.1 basta para o Docker Desktop alcançar o executor por host.docker.internal.
-    host: env.PROBE_EXECUTOR_HOST ?? "127.0.0.1",
-    port: positiveInteger("PROBE_EXECUTOR_PORT", env.PROBE_EXECUTOR_PORT ?? "3211"),
+    host: env.PROBE_EXECUTOR_HOST || "127.0.0.1",
+    port: positiveInteger("PROBE_EXECUTOR_PORT", env.PROBE_EXECUTOR_PORT || "3211"),
     token,
-    timeoutMs: positiveInteger("PROBE_EXECUTOR_TIMEOUT_MS", env.PROBE_EXECUTOR_TIMEOUT_MS ?? "300000"),
+    timeoutMs: positiveInteger("PROBE_EXECUTOR_TIMEOUT_MS", env.PROBE_EXECUTOR_TIMEOUT_MS || "300000"),
     cliEnv,
   };
 }

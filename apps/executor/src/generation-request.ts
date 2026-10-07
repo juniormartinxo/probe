@@ -10,7 +10,9 @@ export interface GenerationRequest {
   prompt: string;
 }
 
-export type ParseResult = { ok: true; request: GenerationRequest } | { ok: false; error: string };
+export type RequestError = "invalid_request" | "invalid_id" | "unknown_operation" | "invalid_model" | "invalid_prompt";
+
+export type ParseResult = { ok: true; request: GenerationRequest } | { ok: false; error: RequestError };
 
 const idPattern = /^[A-Za-z0-9_-]{1,100}$/;
 // Alias ("sonnet") ou nome completo ("claude-opus-5-5[1m]"); começa por letra ou dígito, então

@@ -3,14 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import { runClaude } from "./claude.ts";
+import type { Config } from "./config.ts";
 import { credentialChecker } from "./credential.ts";
 import { parseGenerationRequest } from "./generation-request.ts";
 
-export interface ExecutorOptions {
-  token: string;
-  defaultTimeoutMs: number;
-  cliEnv: NodeJS.ProcessEnv;
-}
+export type ExecutorOptions = Pick<Config, "token" | "timeoutMs" | "cliEnv">;
 
 export function buildApp(options: ExecutorOptions, appOptions: { logger?: boolean } = {}): FastifyInstance {
   const app = Fastify({ logger: appOptions.logger ?? false });
@@ -43,7 +40,7 @@ export function buildApp(options: ExecutorOptions, appOptions: { logger?: boolea
       reply.raw.on("close", () => {
         if (!reply.raw.writableFinished) cancellation.abort();
       });
-      // Diretório vazio por geração: a CLI não acha CLAUDE.md nem configuração de projeto.
+      // Diretório vazio por geração: a CLI não acha CLAUDE.md nem configuração de projeto por perto.
       const workDir = await mkdtemp(path.join(tmpdir(), "probe-claude-"));
       try {
         const outcome = await runClaude({
@@ -51,7 +48,7 @@ export function buildApp(options: ExecutorOptions, appOptions: { logger?: boolea
           prompt,
           env: options.cliEnv,
           cwd: workDir,
-          timeoutMs: options.defaultTimeoutMs,
+          timeoutMs: options.timeoutMs,
           signal: cancellation.signal,
         });
         return { id, ...outcome };
