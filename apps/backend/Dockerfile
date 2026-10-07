@@ -6,6 +6,7 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/backend/package.json apps/backend/
 COPY apps/frontend/package.json apps/frontend/
+COPY apps/executor/package.json apps/executor/
 RUN pnpm install --frozen-lockfile --filter @probe/backend
 
 COPY apps/backend apps/backend
