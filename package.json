@@ -2,7 +2,13 @@
   "name": "probe",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@12.8.1",
   "engines": {
     "node": ">=24"
+  },
+  "scripts": {
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build"
   }
 }
