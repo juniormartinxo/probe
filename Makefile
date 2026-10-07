@@ -1,7 +1,11 @@
 .DEFAULT_GOAL := help
 
-# Configuração local opcional (veja .env.example). As portas seguem para o Docker Compose e o Vite.
+# Configuração local opcional (veja .env.example). As portas seguem para o Docker Compose, o Vite
+# e os testes. Precedência, igual em todos eles: ambiente (ou linha de comando) > .env.local > padrão.
+PROBE_SETTINGS := PROBE_BACKEND_PORT PROBE_DB_PORT
+$(foreach v,$(PROBE_SETTINGS),$(eval PROBE_FROM_ENV_$(v) := $(value $(v))))
 -include .env.local
+$(foreach v,$(PROBE_SETTINGS),$(if $(PROBE_FROM_ENV_$(v)),$(eval $(v) := $(PROBE_FROM_ENV_$(v)))))
 export PROBE_BACKEND_PORT ?= 3210
 export PROBE_DB_PORT ?= 5434
 
@@ -19,13 +23,13 @@ help:
 	  '  make logs          Acompanha os logs do backend.' \
 	  '  make migrate       Aplica as migrations pendentes.' \
 	  '  make migrate-down  Desfaz a última migration aplicada.' \
-	  '  make frontend      Inicia o Vite em localhost (5173 ou a próxima porta livre).' \
+	  '  make frontend      Inicia o Vite e abre localhost (5173 ou a próxima porta livre) no navegador.' \
 	  '  make dev           Sobe backend e banco e inicia o frontend.' \
 	  '  make test          Roda os testes (o backend usa o banco probe_test do serviço db).' \
 	  '  make typecheck     Verifica os tipos de todos os pacotes.' \
 	  '  make build         Verifica os tipos, compila o frontend e constrói a imagem do backend.' \
-	  'Portas publicadas em 127.0.0.1: PROBE_BACKEND_PORT (padrão 3210) e PROBE_DB_PORT (padrão 5434),' \
-	  'pelo ambiente ou por .env.local.'
+	  'Portas publicadas em 127.0.0.1: PROBE_BACKEND_PORT (padrão 3210) e PROBE_DB_PORT (padrão 5434).' \
+	  'Precedência: ambiente ou linha de comando > .env.local > padrão (vale também para o Vite e os testes).'
 
 node_modules/.modules.yaml: package.json pnpm-lock.yaml pnpm-workspace.yaml $(wildcard apps/*/package.json)
 	$(PNPM) install --frozen-lockfile

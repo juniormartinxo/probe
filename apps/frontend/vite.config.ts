@@ -8,7 +8,7 @@ const repoRoot = path.resolve(import.meta.dirname, "../..");
 export default defineConfig(({ mode }) => {
   // O navegador só fala com /api no próprio Vite; o proxy leva à porta publicada do backend.
   // Assim a comunicação não depende da porta em que o Vite acabou subindo. A porta vem do
-  // ambiente ou do .env.local da raiz, as mesmas fontes que o Makefile repassa ao Compose.
+  // ambiente ou do .env.local da raiz, com a mesma precedência do Makefile: o ambiente vence.
   const env = { ...loadEnv(mode, repoRoot, "PROBE_"), ...process.env };
   const backendPort = env.PROBE_BACKEND_PORT ?? "3210";
 
@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
       host: "localhost",
       port: 5173,
       strictPort: false,
+      open: true,
       proxy: {
         "/api": `http://127.0.0.1:${backendPort}`,
       },

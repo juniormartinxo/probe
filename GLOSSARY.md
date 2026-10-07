@@ -11,6 +11,11 @@ Percurso completo de um problema pelo PROBE, da descrição inicial até a Final
 _Code_: `Process`
 _Avoid_: Chat, conversa, decisão, sessão
 
+**Descrição original**:
+Texto com que o usuário descreveu o problema ao criar o Processo, preservado exatamente como digitado.
+_Code_: `originalDescription`
+_Avoid_: Enunciado, prompt, descrição inicial
+
 **Conversa**:
 Registro das mensagens trocadas dentro de um Processo; cada Processo tem exatamente uma.
 _Code_: `Conversation`
@@ -34,6 +39,11 @@ _Code_: `FinalReview`
 Confirmação explícita do usuário que congela o Processo e produz a Decisão e o relatório.
 _Code_: `Finalization`
 _Avoid_: Conclusão, encerramento, fechamento
+
+**Aberto**:
+Estado de um Processo desde a criação até a Finalização; só um Processo aberto aceita mudanças.
+_Code_: `open`
+_Avoid_: Ativo, em andamento, pendente
 
 **Finalizado**:
 Estado terminal de um Processo após a Finalização; um Processo finalizado é somente leitura.
