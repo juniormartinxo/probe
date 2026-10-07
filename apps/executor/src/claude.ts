@@ -76,7 +76,12 @@ function parseResult(stdout: string): Record<string, unknown> | undefined {
 }
 
 // Só uma saída JSON de resultado, sem erro e com código 0, conta como conclusão.
-function outcomeOf(exitCode: number | null, stdout: string, stderr: string): GenerationOutcome {
+function outcomeOf(
+  exitCode: number | null,
+  signal: NodeJS.Signals | null,
+  stdout: string,
+  stderr: string,
+): GenerationOutcome {
   const result = parseResult(stdout);
   const usage = result ? usageFrom(result) : null;
   const failed = (reason: FailureReason, message: string): GenerationOutcome => ({
@@ -87,7 +92,8 @@ function outcomeOf(exitCode: number | null, stdout: string, stderr: string): Gen
   const resultText = typeof result?.result === "string" ? result.result : undefined;
 
   if (exitCode !== 0 || result?.is_error === true) {
-    return failed("cli_error", resultText || stderr.trim() || `claude terminou com código ${exitCode}.`);
+    const ending = signal ? `claude foi encerrado pelo sinal ${signal}.` : `claude terminou com código ${exitCode}.`;
+    return failed("cli_error", resultText || stderr.trim() || ending);
   }
   if (resultText === undefined) return failed("invalid_output", "claude não devolveu um resultado reconhecível.");
   return { status: "completed", output: resultText, usage };
@@ -128,7 +134,7 @@ export function runClaude({ model, prompt, env, cwd, timeoutMs, signal }: Claude
       const reason = error.code === "ENOENT" ? "cli_unavailable" : "cli_error";
       settle({ status: "failed", error: { reason, exitCode: null, message: error.message }, usage: null });
     });
-    child.on("close", (exitCode) => settle(stopped ?? outcomeOf(exitCode, stdout, stderr)));
+    child.on("close", (exitCode, exitSignal) => settle(stopped ?? outcomeOf(exitCode, exitSignal, stdout, stderr)));
     child.stdin.end(prompt);
   });
 }

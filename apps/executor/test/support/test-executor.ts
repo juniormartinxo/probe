@@ -11,6 +11,7 @@ export interface FakeClaudeBehavior {
   stderr?: string;
   exitCode?: number;
   delayMs?: number;
+  killSignal?: NodeJS.Signals;
 }
 
 export interface Invocation {

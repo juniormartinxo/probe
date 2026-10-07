@@ -40,9 +40,10 @@ export function buildApp(options: ExecutorOptions, appOptions: { logger?: boolea
       reply.raw.on("close", () => {
         if (!reply.raw.writableFinished) cancellation.abort();
       });
-      // Diretório vazio por geração: a CLI não acha CLAUDE.md nem configuração de projeto por perto.
-      const workDir = await mkdtemp(path.join(tmpdir(), "probe-claude-"));
+      let workDir: string | undefined;
       try {
+        // Diretório vazio por geração: a CLI não acha CLAUDE.md nem configuração de projeto por perto.
+        workDir = await mkdtemp(path.join(tmpdir(), "probe-claude-"));
         const outcome = await runClaude({
           model,
           prompt,
@@ -54,7 +55,7 @@ export function buildApp(options: ExecutorOptions, appOptions: { logger?: boolea
         return { id, ...outcome };
       } finally {
         running.delete(id);
-        await rm(workDir, { recursive: true, force: true });
+        if (workDir) await rm(workDir, { recursive: true, force: true });
       }
     });
 

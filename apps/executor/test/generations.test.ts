@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
@@ -141,6 +142,17 @@ describe("failure", () => {
     expect(response.json()).toMatchObject({ status: "failed", error: { reason: "invalid_output", exitCode: 0 } });
   });
 
+  it("is reported when claude is killed by a signal", async () => {
+    startExecutor({ killSignal: "SIGKILL" });
+
+    const response = await generate(generationRequest());
+
+    expect(response.json()).toMatchObject({
+      status: "failed",
+      error: { reason: "cli_error", exitCode: null, message: "claude foi encerrado pelo sinal SIGKILL." },
+    });
+  });
+
   it("is reported when claude is not installed", async () => {
     executor = createTestExecutor({ pathDirs: [] });
 
@@ -240,6 +252,24 @@ describe("request id", () => {
     expect(second.json()).toEqual({ error: "generation_in_progress" });
     expect((await first).json().status).toBe("completed");
     expect(claude.invocation()!.stdin).toBe(generationRequest().prompt);
+  });
+
+  it("is free again after a generation that could not even start", async () => {
+    startExecutor({ stdout: claudeResult("ok") });
+    const originalTmpdir = process.env.TMPDIR;
+    process.env.TMPDIR = path.join(tmpdir(), "probe-diretorio-que-nao-existe");
+    let failed;
+    try {
+      failed = await generate(generationRequest());
+    } finally {
+      if (originalTmpdir === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = originalTmpdir;
+    }
+
+    const retry = await generate(generationRequest());
+
+    expect(failed.statusCode).toBe(500);
+    expect(retry.json()).toMatchObject({ id: "solicitacao-1", status: "completed" });
   });
 });
 

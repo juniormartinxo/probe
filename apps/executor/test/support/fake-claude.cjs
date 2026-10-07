@@ -20,6 +20,7 @@ process.stdin.on("end", () => {
   };
   fs.writeFileSync(path.join(__dirname, "invocation.json"), JSON.stringify(invocation));
   setTimeout(() => {
+    if (behavior.killSignal) process.kill(process.pid, behavior.killSignal);
     process.stderr.write(behavior.stderr ?? "");
     process.stdout.write(behavior.stdout ?? "", () => process.exit(behavior.exitCode ?? 0));
   }, behavior.delayMs ?? 0);
