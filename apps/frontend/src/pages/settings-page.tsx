@@ -80,7 +80,8 @@ function ModelCard({ savedModel, onSaved }: { savedModel: string; onSaved: (mode
         <CardHeader>
           <CardTitle>Modelo do claude</CardTitle>
           <CardDescription>
-            Vale para as novas solicitações à IA. As solicitações anteriores mantêm a CLI e o modelo que usaram.
+            Vale para as próximas chamadas à IA, inclusive novas tentativas. Cada tentativa já feita mantém a CLI e o
+            modelo que usou.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">

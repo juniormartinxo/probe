@@ -171,7 +171,7 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       const prepared = await prepare(trx, process.blockInput);
       if (!prepared.ok) return prepared;
       // O modelo é o configurado no momento em que a tentativa abre; as já abertas guardam o seu.
-      const { claudeModel } = await settings.find();
+      const { claudeModel } = await settings.find(trx);
       const attempt = await runner.openAttempt(trx, prepared.aiRequestId, { cli: assistant.cli, model: claudeModel });
       return { ok: true, attempt, aiRequestId: prepared.aiRequestId, input: prepared.input } as const;
     });

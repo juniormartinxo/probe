@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "../../db/database.ts";
-import type { AttemptStatus } from "../ai/ai-requests.ts";
-import type { Assistant, Cli, FailureReason, Usage } from "../ai/assistant.ts";
+import type { Attempt, AttemptStatus } from "../ai/ai-requests.ts";
+import type { Assistant } from "../ai/assistant.ts";
 
 // Configurações não sensíveis, guardadas no banco. Segredos ficam no ambiente do backend e nunca
 // fazem parte delas.
@@ -13,17 +13,13 @@ export interface Settings {
 export type SettingsError = "invalid_model";
 
 // Desfecho de um teste de conexão: a CLI e o modelo usados e, se não concluiu, por quê.
-export interface ConnectionTest {
-  cli: Cli;
-  model: string;
+export interface ConnectionTest extends Pick<Attempt, "cli" | "model" | "failureReason" | "message" | "usage"> {
   status: Exclude<AttemptStatus, "running">;
-  failureReason: FailureReason | null;
-  message: string | null;
-  usage: Usage | null;
 }
 
 export interface SettingsModule {
-  find(): Promise<Settings>;
+  // Dentro de uma transação, passe-a: a leitura fica nela.
+  find(trx?: Db): Promise<Settings>;
   save(settings: { claudeModel: unknown }): Promise<{ ok: true; settings: Settings } | { ok: false; error: SettingsError }>;
   // Chamada paga à IA: só por ação explícita do usuário. Não pertence a nenhum Processo.
   testConnection(signal: AbortSignal): Promise<ConnectionTest>;
@@ -38,8 +34,8 @@ const isModel = (value: unknown): value is string => typeof value === "string" &
 export function settings(deps: { db: Db; assistant: Assistant; defaultAiModel: string }): SettingsModule {
   const { db, assistant, defaultAiModel } = deps;
 
-  async function find(): Promise<Settings> {
-    const row = await db.selectFrom("settings").select("claudeModel").executeTakeFirst();
+  async function find(trx: Db = db): Promise<Settings> {
+    const row = await trx.selectFrom("settings").select("claudeModel").executeTakeFirst();
     return { claudeModel: row?.claudeModel ?? defaultAiModel };
   }
 

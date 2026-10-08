@@ -150,13 +150,8 @@ export interface Settings {
 }
 
 // Desfecho de um teste de conexão com a CLI, pelo executor.
-export interface ConnectionTest {
-  cli: string;
-  model: string;
+export interface ConnectionTest extends Pick<Attempt, "cli" | "model" | "failureReason" | "message" | "usage"> {
   status: Exclude<AttemptStatus, "running">;
-  failureReason: FailureReason | null;
-  message: string | null;
-  usage: Usage | null;
 }
 
 export class ApiError extends Error {
