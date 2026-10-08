@@ -1,11 +1,15 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { Db } from "../../db/database.ts";
+import { stageAssessmentsOf, type StageAssessments } from "../assessments/stage-assessments.ts";
 import type { AnswerChange, AnswerValue, Answers } from "./answers.ts";
 import type { Blocks } from "./blocks.ts";
 import type { Pendencies } from "./pendencies.ts";
 import type { ProblemStatements, StatementConfirmation } from "./problem-statement.ts";
 import { createProcess, findProcess, listProcesses } from "./process.ts";
 import type { StagePointCoverage } from "./stage-point-coverage.ts";
+import { stageConfirmationsOf, type StageConfirmations, type StageConfirmationRequest } from "./stage-confirmations.ts";
+import { isStage } from "./stage-readiness.ts";
+import { stages } from "./stage.ts";
 import type { SynthesisConfirmation, Syntheses } from "./syntheses.ts";
 import { understandingOf } from "./understanding.ts";
 
@@ -64,6 +68,17 @@ function justificationFrom(body: unknown): string | undefined {
   return typeof justification === "string" && justification.trim() !== "" ? justification : undefined;
 }
 
+// A Avaliação que o usuário viu (a concluída ou a que falhou) e, se houver, a justificativa.
+function stageConfirmationFrom(body: unknown): StageConfirmationRequest | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { stageAssessmentId, justification = null } = body as Record<string, unknown>;
+  if (stageAssessmentId !== null && (typeof stageAssessmentId !== "string" || !uuidPattern.test(stageAssessmentId))) {
+    return undefined;
+  }
+  if (justification !== null && typeof justification !== "string") return undefined;
+  return { stageAssessmentId, justification: justification?.trim() ? justification.trim() : null };
+}
+
 const errorStatus = {
   process_not_found: 404,
   process_not_open: 409,
@@ -96,6 +111,15 @@ const errorStatus = {
   already_unknown: 409,
   stage_point_not_found: 404,
   stage_point_closed: 409,
+  stage_not_found: 404,
+  stage_not_current: 409,
+  open_stage_points: 409,
+  nothing_to_assess: 409,
+  blocking_pendencies: 409,
+  unknown_assessment: 422,
+  assessment_outdated: 409,
+  assessment_required: 409,
+  justification_required: 422,
 } as const;
 
 export const processRoutes =
@@ -107,6 +131,8 @@ export const processRoutes =
     syntheses,
     pendencies,
     stagePointCoverage,
+    stageAssessments,
+    stageConfirmations,
   }: {
     db: Db;
     problemStatements: ProblemStatements;
@@ -115,6 +141,8 @@ export const processRoutes =
     syntheses: Syntheses;
     pendencies: Pendencies;
     stagePointCoverage: StagePointCoverage;
+    stageAssessments: StageAssessments;
+    stageConfirmations: StageConfirmations;
   }): FastifyPluginAsync =>
   async (app) => {
     app.post("/processes", async (request, reply) => {
@@ -135,6 +163,13 @@ export const processRoutes =
         ...(await problemStatements.find(id)),
         ...(await blocks.find(process)),
         pendencies: await pendencies.list(process),
+        // As Avaliações de cada Etapa já aberta, da primeira à atual.
+        stageAssessments: (
+          await Promise.all(
+            stages.slice(0, stages.indexOf(process.currentStage) + 1).map((stage) => stageAssessmentsOf(db, process, stage)),
+          )
+        ).flat(),
+        stageConfirmations: await stageConfirmationsOf(db, process),
       };
     }
 
@@ -302,4 +337,27 @@ export const processRoutes =
         return reply.code(201).send({ stagePoint: result.stagePoint });
       },
     );
+
+    app.post<{ Params: { id: string; stage: string } }>("/processes/:id/stages/:stage/assessments", async (request, reply) => {
+      const { id, stage } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      if (!isStage(stage)) return reply.code(404).send({ error: "stage_not_found" });
+      const result = await stageAssessments.request(id, stage);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ stageAssessment: result.stageAssessment });
+    });
+
+    app.post<{ Params: { id: string; stage: string } }>("/processes/:id/stages/:stage/confirmation", async (request, reply) => {
+      const { id, stage } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      if (!isStage(stage)) return reply.code(404).send({ error: "stage_not_found" });
+      const confirmation = stageConfirmationFrom(request.body);
+      if (!confirmation) return reply.code(400).send({ error: "stage_assessment_required" });
+      const result = await stageConfirmations.confirm(id, stage, confirmation);
+      if (!result.ok) {
+        const { error } = result;
+        return reply.code(errorStatus[error]).send({ error, ...("pendencyIds" in result ? { pendencyIds: result.pendencyIds } : {}) });
+      }
+      return reply.code(201).send({ stageConfirmation: result.stageConfirmation });
+    });
   };

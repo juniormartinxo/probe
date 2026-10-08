@@ -1,6 +1,7 @@
 import type { Db } from "../../db/database.ts";
 import type { ProcessPoints } from "./stage-point-coverage.ts";
 import { namedStagePoint } from "./stage-points.ts";
+import type { Stage } from "./stage.ts";
 
 // Motivos de Pendência. Nesta fatia, só a de informação desconhecida; reavaliação e conflito
 // chegam com as Avaliações do Jev.
@@ -49,6 +50,23 @@ export async function resolveUnknownInformation(trx: Db, questionId: string, ans
     .where("reason", "=", "unknown_information")
     .where("resolvedAt", "is", null)
     .execute();
+}
+
+// As Pendências abertas nas Perguntas da Etapa: a Confirmação da Etapa depende dessas respostas,
+// então cada uma a bloqueia até ser resolvida.
+export async function pendenciesBlockingStage(db: Db, processId: string, stage: Stage): Promise<string[]> {
+  const rows = await db
+    .selectFrom("pendencies")
+    .innerJoin("questions", "questions.id", "pendencies.questionId")
+    .innerJoin("blocks", "blocks.id", "questions.blockId")
+    .select("pendencies.id")
+    .where("pendencies.processId", "=", processId)
+    .where("blocks.stage", "=", stage)
+    .where("pendencies.resolvedAt", "is", null)
+    .orderBy("pendencies.openedAt")
+    .orderBy("pendencies.id")
+    .execute();
+  return rows.map((row) => row.id);
 }
 
 async function listPendencies(db: Db, process: ProcessPoints, ids?: string[]): Promise<Pendency[]> {

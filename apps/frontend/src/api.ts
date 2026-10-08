@@ -207,6 +207,53 @@ export interface Understanding {
   openPendencies: { reason: Pendency["reason"]; wording: string }[];
 }
 
+export type AssessmentChoice = "yes" | "no" | "insufficient";
+
+export type AssessorFailureReason =
+  | "jev_not_configured"
+  | "jev_unavailable"
+  | "jev_unauthenticated"
+  | "jev_rate_limited"
+  | "jev_error"
+  | "invalid_output";
+
+// Avaliação do Jev sobre um Ponto coberto, bruta, ao lado da sugestão da IA. `disagrees`: o Jev não
+// confirma a cobertura que você deu ao Ponto.
+export interface Assessment {
+  type: "stage_point_coverage";
+  stagePoint: { key: string; name: string };
+  choice: AssessmentChoice;
+  probabilities: Record<AssessmentChoice, number>;
+  confidence: number;
+  aiSuggestion: { covered: boolean; reason: string } | null;
+  disagrees: boolean;
+}
+
+// Uma chamada ao Jev sobre os Pontos de uma Etapa; `outdated` quando as respostas confirmadas ou os
+// Pontos cobertos mudaram depois dela.
+export interface StageAssessment {
+  id: string;
+  stage: Stage;
+  status: "completed" | "failed";
+  requestedModel: string;
+  jevModel: string | null;
+  rubricRevision: string;
+  analyzedAnswerVersionIds: string[];
+  assessments: Assessment[];
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  createdAt: string;
+  outdated: boolean;
+}
+
+export interface StageConfirmation {
+  stage: Stage;
+  stageAssessmentId: string | null;
+  withoutAssessment: boolean;
+  justification: string | null;
+  confirmedAt: string;
+}
+
 export interface BlockRequest {
   id: string;
   status: AttemptStatus;
@@ -224,6 +271,9 @@ export interface ProcessDetail extends ProcessWithConversation {
   blockRequests: BlockRequest[];
   blocks: Block[];
   pendencies: Pendency[];
+  // Avaliações do Jev de cada Etapa já aberta, na ordem em que foram pedidas.
+  stageAssessments: StageAssessment[];
+  stageConfirmations: StageConfirmation[];
 }
 
 // Configurações não sensíveis; segredos ficam no ambiente do backend e nunca chegam aqui.
@@ -414,6 +464,26 @@ export async function declareInapplicable(processId: string, key: string, justif
     { method: "POST", body: JSON.stringify({ justification }) },
   );
   return stagePoint;
+}
+
+export async function requestStageAssessment(processId: string, stage: Stage): Promise<StageAssessment> {
+  const { stageAssessment } = await request<{ stageAssessment: StageAssessment }>(
+    `${processPath(processId)}/stages/${stage}/assessments`,
+    { method: "POST" },
+  );
+  return stageAssessment;
+}
+
+export async function confirmStage(
+  processId: string,
+  stage: Stage,
+  confirmation: { stageAssessmentId: string | null; justification: string | null },
+): Promise<StageConfirmation> {
+  const { stageConfirmation } = await request<{ stageConfirmation: StageConfirmation }>(
+    `${processPath(processId)}/stages/${stage}/confirmation`,
+    { method: "POST", body: JSON.stringify(confirmation) },
+  );
+  return stageConfirmation;
 }
 
 export async function getUnderstanding(processId: string): Promise<Understanding> {

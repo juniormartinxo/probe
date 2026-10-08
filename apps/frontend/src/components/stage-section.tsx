@@ -11,6 +11,7 @@ import {
 import { AttemptList } from "@/components/attempt-list";
 import { BlockSynthesis } from "@/components/block-synthesis";
 import { Questionnaire } from "@/components/questionnaire";
+import { ConfirmedStages, StageConfirmationPanel } from "@/components/stage-confirmation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -31,6 +32,7 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
     stageBlocks.every((block) => block.synthesis !== null) && process.openStagePoints.length > 0;
   return (
     <section className="flex flex-col gap-3">
+      <ConfirmedStages confirmations={process.stageConfirmations} />
       <h2 className="text-sm font-semibold">
         Etapa {process.currentStage} · {stageName(process.currentStage)}
       </h2>
@@ -56,6 +58,7 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
         />
       )}
       {blockRequest && <AttemptList attempts={blockRequest.attempts} />}
+      {process.openStagePoints.length === 0 && !pendingRequest && <StageConfirmationPanel process={process} onChange={onChange} />}
     </section>
   );
 }
