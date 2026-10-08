@@ -1,6 +1,6 @@
 import type { Db } from "../../db/database.ts";
 import { listAiRequests, type AiRequest, type AiRequestRunner, type Attempt, type AttemptStatus } from "../ai/ai-requests.ts";
-import type { Assistant, AssistantOutcome, AttemptContext, GeneratedSynthesis, SynthesisInput } from "../ai/assistant.ts";
+import type { Assistant, AssistantOutcome, AttemptContext, Cli, GeneratedSynthesis, SynthesisInput } from "../ai/assistant.ts";
 import { synthesisProblem } from "../ai/synthesize-block.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 import { openStagePointsOf, type ProcessPoints } from "./stage-point-coverage.ts";
@@ -55,14 +55,19 @@ export interface SynthesisConfirmation {
 
 type BlockClosed = "process_not_found" | "process_not_open" | "block_not_found" | "synthesis_confirmed";
 
-export type SynthesisRequestError = BlockClosed | "block_incomplete" | "synthesis_already_requested";
+export type SynthesisRequestError =
+  | BlockClosed
+  | "block_incomplete"
+  | "synthesis_already_requested"
+  | "cli_model_not_configured";
 
 export type NewSynthesisAttemptError =
   | BlockClosed
   | "block_incomplete"
   | "synthesis_request_not_found"
   | "attempt_in_progress"
-  | "synthesis_generated";
+  | "synthesis_generated"
+  | "cli_model_not_configured";
 
 export type SynthesisConfirmationError = BlockClosed | "unknown_synthesis" | "synthesis_outdated" | "invalid_coverage";
 
@@ -72,10 +77,13 @@ export interface Syntheses {
     processId: string,
     blockId: string,
   ): Promise<{ ok: true; synthesisRequest: SynthesisRequest } | { ok: false; error: SynthesisRequestError }>;
+  // Nova tentativa da mesma solicitação. Sem `cli`, com a CLI da tentativa anterior; com ela, com a
+  // que o usuário escolheu.
   newAttempt(
     processId: string,
     blockId: string,
     requestId: string,
+    cli?: Cli,
   ): Promise<{ ok: true; synthesisRequest: SynthesisRequest } | { ok: false; error: NewSynthesisAttemptError }>;
   confirm(
     processId: string,
@@ -294,20 +302,20 @@ export function syntheses(deps: { db: Db; assistant: Assistant; runner: AiReques
   async function startAttempt<E extends string>(
     processId: string,
     blockId: string,
-    prepare: (trx: Db, block: LockedBlock) => Promise<{ ok: true; aiRequestId: string } | { ok: false; error: E }>,
-  ): Promise<{ ok: true; synthesisRequest: SynthesisRequest } | { ok: false; error: E | BlockClosed | "block_incomplete" }> {
+    prepare: (trx: Db, block: LockedBlock) => Promise<{ ok: true; aiRequestId: string; cli?: Cli } | { ok: false; error: E }>,
+  ): Promise<
+    | { ok: true; synthesisRequest: SynthesisRequest }
+    | { ok: false; error: E | BlockClosed | "block_incomplete" | "cli_model_not_configured" }
+  > {
     const opened = await db.transaction().execute(async (trx) => {
       const locked = await lockBlock(trx, processId, blockId);
       if (!locked.ok) return locked;
       if (!locked.block.complete) return { ok: false, error: "block_incomplete" } as const;
       const prepared = await prepare(trx, locked.block);
       if (!prepared.ok) return prepared;
-      const attempt = await runner.openAttempt(
-        trx,
-        prepared.aiRequestId,
-        await settings.forNewAttempt(trx),
-        locked.block.currentVersionIds,
-      );
+      const attemptSettings = await settings.forNewAttempt(trx, prepared.cli);
+      if (!attemptSettings.ok) return attemptSettings;
+      const attempt = await runner.openAttempt(trx, prepared.aiRequestId, attemptSettings.settings, locked.block.currentVersionIds);
       return { ok: true, attempt, aiRequestId: prepared.aiRequestId, input: locked.block.input } as const;
     });
     if (!opened.ok) return opened;
@@ -345,13 +353,13 @@ export function syntheses(deps: { db: Db; assistant: Assistant; runner: AiReques
       });
     },
 
-    async newAttempt(processId, blockId, requestId) {
+    async newAttempt(processId, blockId, requestId, cli) {
       return startAttempt(processId, blockId, async (trx, block) => {
         const latest = await latestRequest(trx, processId, blockId, block);
         if (!latest || latest.request.id !== requestId) return { ok: false, error: "synthesis_request_not_found" } as const;
         if (latest.request.status === "running") return { ok: false, error: "attempt_in_progress" } as const;
         if (latest.request.status === "completed") return { ok: false, error: "synthesis_generated" } as const;
-        return { ok: true, aiRequestId: requestId } as const;
+        return { ok: true, aiRequestId: requestId, cli: cli ?? latest.request.attempts.at(-1)!.cli } as const;
       });
     },
 

@@ -23,12 +23,20 @@ async function getSettings(app = testApp) {
 
 const directoryProfile = { source: "directory" } as const;
 
-// Sem perfil do Cloak no pedido, salva o do diretório: a escolha é sempre explícita no corpo.
-function saveSettings(payload: Record<string, unknown>) {
+// Só o modelo do claude escolhido; as outras CLIs sem modelo.
+const claudeModel = (model: unknown) => ({ claude: model, codex: null, grok: null, agy: null });
+
+const claudeSettings = (model: string, cloakProfile: unknown = directoryProfile) => ({
+  settings: { cli: "claude", models: claudeModel(model), cloakProfile },
+});
+
+// Sem CLI ou perfil do Cloak no pedido, salva o claude e o perfil do diretório: a escolha é sempre
+// explícita no corpo.
+function saveSettings({ claudeModel: model, ...payload }: Record<string, unknown>) {
   return testApp.app.inject({
     method: "PUT",
     url: "/api/settings",
-    payload: { cloakProfile: directoryProfile, ...payload },
+    payload: { cli: "claude", models: claudeModel(model), cloakProfile: directoryProfile, ...payload },
   });
 }
 
@@ -63,19 +71,17 @@ async function refine(id: string, url = `/api/processes/${id}/problem-statement/
 
 describe("settings", () => {
   it("start with the backend's default model for the claude and the directory's Cloak profile", async () => {
-    expect(await getSettings()).toEqual({ settings: { claudeModel: TEST_MODEL, cloakProfile: directoryProfile } });
+    expect(await getSettings()).toEqual(claudeSettings(TEST_MODEL));
   });
 
   it("keep the chosen model in the database, across restarts of the backend", async () => {
     const response = await saveSettings({ claudeModel: "claude-opus-5-5" });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ settings: { claudeModel: "claude-opus-5-5", cloakProfile: directoryProfile } });
+    expect(response.json()).toEqual(claudeSettings("claude-opus-5-5"));
     const restarted = await createTestApp();
     try {
-      expect(await getSettings(restarted)).toEqual({
-        settings: { claudeModel: "claude-opus-5-5", cloakProfile: directoryProfile },
-      });
+      expect(await getSettings(restarted)).toEqual(claudeSettings("claude-opus-5-5"));
     } finally {
       await restarted.close();
     }
@@ -85,7 +91,7 @@ describe("settings", () => {
     await saveSettings({ claudeModel: "opus" });
     await saveSettings({ claudeModel: "haiku" });
 
-    expect(await getSettings()).toEqual({ settings: { claudeModel: "haiku", cloakProfile: directoryProfile } });
+    expect(await getSettings()).toEqual(claudeSettings("haiku"));
   });
 
   it.each([
@@ -101,19 +107,17 @@ describe("settings", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: "invalid_model" });
-    expect(await getSettings()).toEqual({ settings: { claudeModel: "opus", cloakProfile: directoryProfile } });
+    expect(await getSettings()).toEqual(claudeSettings("opus"));
   });
 
   it("keep a Cloak profile chosen explicitly, and go back to the directory's", async () => {
     const explicit = await saveSettings({ claudeModel: "opus", cloakProfile: { source: "explicit", name: "pessoal" } });
 
     expect(explicit.statusCode).toBe(200);
-    expect(await getSettings()).toEqual({
-      settings: { claudeModel: "opus", cloakProfile: { source: "explicit", name: "pessoal" } },
-    });
+    expect(await getSettings()).toEqual(claudeSettings("opus", { source: "explicit", name: "pessoal" }));
 
     await saveSettings({ claudeModel: "opus", cloakProfile: directoryProfile });
-    expect(await getSettings()).toEqual({ settings: { claudeModel: "opus", cloakProfile: directoryProfile } });
+    expect(await getSettings()).toEqual(claudeSettings("opus"));
   });
 
   it.each([
@@ -130,9 +134,7 @@ describe("settings", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: "invalid_cloak_profile" });
-    expect(await getSettings()).toEqual({
-      settings: { claudeModel: "opus", cloakProfile: { source: "explicit", name: "pessoal" } },
-    });
+    expect(await getSettings()).toEqual(claudeSettings("opus", { source: "explicit", name: "pessoal" }));
   });
 
   it("send the chosen Cloak profile only in new requests; earlier ones keep the profile they used", async () => {

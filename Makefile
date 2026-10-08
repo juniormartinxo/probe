@@ -38,7 +38,7 @@ help:
 	  '  make migrate       Aplica as migrations pendentes.' \
 	  '  make migrate-down  Desfaz a última migration aplicada.' \
 	  '  make frontend      Inicia o Vite e abre localhost (5173 ou a próxima porta livre) no navegador.' \
-	  '  make executor      Inicia o executor (chama o claude pelo Cloak) no WSL; exige PROBE_EXECUTOR_TOKEN.' \
+	  '  make executor      Inicia o executor (chama claude, codex, grok e agy pelo Cloak) no WSL; exige PROBE_EXECUTOR_TOKEN.' \
 	  '  make dev           Sobe backend e banco e inicia o executor e o frontend juntos.' \
 	  '  make test          Roda os testes (o backend usa o banco probe_test do serviço db).' \
 	  '  make typecheck     Verifica os tipos de todos os pacotes.' \
@@ -47,6 +47,7 @@ help:
 	  'Executor: PROBE_EXECUTOR_HOST (padrão 127.0.0.1) e PROBE_EXECUTOR_PORT (padrão 3211).' \
 	  'Perfil do diretório do Cloak: o ligado (cloak use) a PROBE_EXECUTOR_WORK_DIR (padrão: temporário do sistema).' \
 	  'Modelo do claude: PROBE_CLAUDE_MODEL (padrão sonnet) vale até ser escolhido outro na página de configuração.' \
+	  'CLI e modelos das outras CLIs (codex, grok, agy): escolhidos na página de configuração; cada CLI registrada no Cloak.' \
 	  'Jev: TYPESAFE_API_KEY (chave da API), JEV_MODEL (padrão jev-latest) e PROBE_JEV_TIMEOUT_MS (padrão 60000).' \
 	  'Precedência: ambiente ou linha de comando > .env.local > padrão (vale também para o Vite e os testes).'
 

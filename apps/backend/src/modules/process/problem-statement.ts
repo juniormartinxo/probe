@@ -1,6 +1,6 @@
 import type { Db } from "../../db/database.ts";
 import { findAiRequest, type AiRequestRunner, type Attempt, type AttemptStatus } from "../ai/ai-requests.ts";
-import type { Assistant, StatementProposal } from "../ai/assistant.ts";
+import type { Assistant, Cli, StatementProposal } from "../ai/assistant.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 
 // Como o enunciado confirmado nasceu: aceito como a IA propôs, corrigido a partir da proposta ou
@@ -31,9 +31,14 @@ export interface Refinement {
 // Por que o enunciado de um Processo não aceita mais mudanças.
 export type StatementClosed = "process_not_found" | "process_not_open" | "problem_statement_confirmed";
 
-export type RefinementError = StatementClosed | "refinement_already_requested";
+export type RefinementError = StatementClosed | "refinement_already_requested" | "cli_model_not_configured";
 
-export type NewAttemptError = StatementClosed | "refinement_not_requested" | "attempt_in_progress" | "refinement_completed";
+export type NewAttemptError =
+  | StatementClosed
+  | "refinement_not_requested"
+  | "attempt_in_progress"
+  | "refinement_completed"
+  | "cli_model_not_configured";
 
 export type ConfirmationError = StatementClosed | "unknown_proposal";
 
@@ -45,8 +50,12 @@ export interface StatementConfirmation {
 
 export interface ProblemStatements {
   requestRefinement(processId: string): Promise<{ ok: true; refinement: Refinement } | { ok: false; error: RefinementError }>;
-  // Nova tentativa da mesma solicitação, depois de uma tentativa que não trouxe proposta.
-  newRefinementAttempt(processId: string): Promise<{ ok: true; refinement: Refinement } | { ok: false; error: NewAttemptError }>;
+  // Nova tentativa da mesma solicitação, depois de uma tentativa que não trouxe proposta. Sem `cli`,
+  // com a CLI da tentativa anterior; com ela, com a que o usuário escolheu.
+  newRefinementAttempt(
+    processId: string,
+    cli?: Cli,
+  ): Promise<{ ok: true; refinement: Refinement } | { ok: false; error: NewAttemptError }>;
   confirm(
     processId: string,
     confirmation: StatementConfirmation,
@@ -103,17 +112,20 @@ export function problemStatements(deps: {
   }
 
   // Abre uma tentativa, com o Processo travado até a transação terminar, e só depois de gravá-la
-  // dispara a geração. `prepare` diz a que solicitação ela pertence, ou por que não pode abrir.
+  // dispara a geração. `prepare` diz a que solicitação ela pertence e, numa nova tentativa, com que
+  // CLI, ou por que não pode abrir.
   async function startAttempt<E extends string>(
     processId: string,
-    prepare: (trx: Db) => Promise<{ ok: true; aiRequestId: string } | { ok: false; error: E }>,
-  ): Promise<{ ok: true; refinement: Refinement } | { ok: false; error: E | StatementClosed }> {
+    prepare: (trx: Db) => Promise<{ ok: true; aiRequestId: string; cli?: Cli } | { ok: false; error: E }>,
+  ): Promise<{ ok: true; refinement: Refinement } | { ok: false; error: E | StatementClosed | "cli_model_not_configured" }> {
     const opened = await db.transaction().execute(async (trx) => {
       const process = await lockOpenProcess(trx, processId);
       if (!process.ok) return process;
       const prepared = await prepare(trx);
       if (!prepared.ok) return prepared;
-      const attempt = await runner.openAttempt(trx, prepared.aiRequestId, await settings.forNewAttempt(trx));
+      const attemptSettings = await settings.forNewAttempt(trx, prepared.cli);
+      if (!attemptSettings.ok) return attemptSettings;
+      const attempt = await runner.openAttempt(trx, prepared.aiRequestId, attemptSettings.settings);
       return { ok: true, attempt, originalDescription: process.originalDescription } as const;
     });
     if (!opened.ok) return opened;
@@ -141,13 +153,13 @@ export function problemStatements(deps: {
       });
     },
 
-    async newRefinementAttempt(processId) {
+    async newRefinementAttempt(processId, cli) {
       return startAttempt(processId, async (trx) => {
         const request = await findAiRequest<StatementProposal>(trx, processId, OPERATION);
         if (!request) return { ok: false, error: "refinement_not_requested" } as const;
         if (request.status === "running") return { ok: false, error: "attempt_in_progress" } as const;
         if (request.status === "completed") return { ok: false, error: "refinement_completed" } as const;
-        return { ok: true, aiRequestId: request.id } as const;
+        return { ok: true, aiRequestId: request.id, cli: cli ?? request.attempts.at(-1)!.cli } as const;
       });
     },
 

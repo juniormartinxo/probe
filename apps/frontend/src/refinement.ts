@@ -1,17 +1,31 @@
-import type { Attempt, AttemptStatus, CloakProfile, FailureReason, StatementOrigin, Usage } from "./api";
+import type { Attempt, AttemptStatus, Cli, CloakProfile, FailureReason, StatementOrigin, Usage } from "./api";
 
-const failureText: Record<FailureReason, string> = {
-  executor_unavailable: "O executor não está disponível.",
-  executor_error: "O executor recusou a solicitação.",
-  cloak_unavailable: "O Cloak não foi encontrado no executor.",
-  cloak_profile_not_found: "O perfil escolhido não existe no Cloak. Escolha outro na configuração.",
-  cloak_error: "O Cloak falhou antes de chamar o claude.",
-  cloak_unauthenticated: "O perfil do Cloak não está autenticado no claude. Rode cloak login claude no host.",
-  cli_unavailable: "O claude não foi encontrado no executor.",
-  cli_rate_limited: "O claude atingiu o limite de uso.",
-  cli_unauthenticated: "O claude não está autenticado.",
-  cli_error: "O claude falhou.",
-  invalid_output: "A resposta da IA veio incompleta ou fora do formato esperado.",
+const cliNames: Record<Cli, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  grok: "Grok",
+  agy: "Gemini (agy)",
+};
+
+export function cliName(cli: Cli): string {
+  return cliNames[cli];
+}
+
+// Por que a tentativa falhou, nos termos da CLI que ela usou.
+const failureText: Record<FailureReason, (cli: Cli) => string> = {
+  executor_unavailable: () => "O executor não está disponível.",
+  executor_error: () => "O executor recusou a solicitação.",
+  cloak_unavailable: () => "O Cloak não foi encontrado no executor.",
+  cloak_profile_not_found: () => "O perfil escolhido não existe no Cloak. Escolha outro na configuração.",
+  cloak_error: (cli) => `O Cloak falhou antes de chamar o ${cliName(cli)}.`,
+  cloak_unauthenticated: (cli) =>
+    `O perfil do Cloak não está autenticado no ${cliName(cli)}. Rode cloak login ${cli} no host.`,
+  cli_unavailable: (cli) =>
+    `O ${cliName(cli)} não foi encontrado no executor ou não está configurado no Cloak (cli.${cli} no config.toml).`,
+  cli_rate_limited: (cli) => `O ${cliName(cli)} atingiu o limite de uso. Você pode tentar com outra CLI.`,
+  cli_unauthenticated: (cli) => `O ${cliName(cli)} não está autenticado.`,
+  cli_error: (cli) => `O ${cliName(cli)} falhou.`,
+  invalid_output: () => "A resposta da IA veio incompleta ou fora do formato esperado.",
 };
 
 const statusText: Record<AttemptStatus, string> = {
@@ -28,10 +42,10 @@ export function attemptStatusName(status: AttemptStatus): string {
 }
 
 // Por que a tentativa não trouxe proposta, em uma frase.
-export function attemptProblem(attempt: Pick<Attempt, "status" | "failureReason">): string {
+export function attemptProblem(attempt: Pick<Attempt, "status" | "failureReason" | "cli">): string {
   switch (attempt.status) {
     case "failed":
-      return attempt.failureReason ? failureText[attempt.failureReason] : "A solicitação falhou.";
+      return attempt.failureReason ? failureText[attempt.failureReason](attempt.cli) : "A solicitação falhou.";
     case "timed_out":
       return "A IA demorou demais e a solicitação foi encerrada.";
     case "interrupted":

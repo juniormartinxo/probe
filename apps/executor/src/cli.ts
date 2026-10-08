@@ -1,6 +1,13 @@
 import { spawn } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import type { Cli } from "./generation-request.ts";
+import { providers } from "./providers/index.ts";
+import type { CliExit, GenerationOutcome } from "./providers/provider.ts";
 
-export interface ClaudeRun {
+export interface CliRun {
+  cli: Cli;
   model: string;
   // Perfil do Cloak; null deixa o Cloak resolver o perfil a partir de `cwd`.
   cloakProfile: string | null;
@@ -11,82 +18,10 @@ export interface ClaudeRun {
   signal: AbortSignal;
 }
 
-// Consumo como a CLI informou; o que ela não informou fica null, nunca zero.
-export interface Usage {
-  inputTokens: number | null;
-  outputTokens: number | null;
-  cacheCreationInputTokens: number | null;
-  cacheReadInputTokens: number | null;
-  costUsd: number | null;
-}
-
-// As falhas do Cloak vêm antes da CLI: ela nem chegou a rodar.
-export type FailureReason =
-  | "cloak_unavailable"
-  | "cloak_profile_not_found"
-  // Qualquer outro erro do próprio Cloak, como a configuração dele ilegível.
-  | "cloak_error"
-  | "cli_unavailable"
-  | "cli_error"
-  | "invalid_output";
-
-export type GenerationOutcome =
-  | { status: "completed"; output: string; usage: Usage | null }
-  | {
-      status: "failed";
-      error: { reason: FailureReason; exitCode: number | null; message: string };
-      usage: Usage | null;
-    }
-  | { status: "timed_out"; timeoutMs: number }
-  | { status: "canceled" };
-
-// A CLI roda pelo Cloak (`cloak exec`), que lhe dá a configuração e as credenciais do perfil.
-// Modo não interativo, saída JSON (traz o consumo) e nada além de gerar texto: sem ferramentas
-// embutidas, sem servidores MCP, sem skills e sem gravar a sessão em disco. O modo seguro deixa de
-// fora as personalizações do usuário (CLAUDE.md global, hooks, plugins), mantendo autenticação e
-// modelo. O prompt vai pelo stdin, nunca pela linha de comando.
-function cloakExecArgs(cloakProfile: string | null, model: string): string[] {
-  return [
-    "exec",
-    ...(cloakProfile === null ? [] : ["--profile", cloakProfile]),
-    "claude",
-    "-p",
-    "--output-format",
-    "json",
-    "--model",
-    model,
-    "--tools",
-    "",
-    "--strict-mcp-config",
-    "--disable-slash-commands",
-    "--no-session-persistence",
-    "--safe-mode",
-  ];
-}
-
-const numberOrNull = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-function usageFrom(result: Record<string, unknown>): Usage | null {
-  const usage = isRecord(result.usage) ? result.usage : undefined;
-  if (!usage && result.total_cost_usd === undefined) return null;
-  return {
-    inputTokens: numberOrNull(usage?.input_tokens),
-    outputTokens: numberOrNull(usage?.output_tokens),
-    cacheCreationInputTokens: numberOrNull(usage?.cache_creation_input_tokens),
-    cacheReadInputTokens: numberOrNull(usage?.cache_read_input_tokens),
-    costUsd: numberOrNull(result.total_cost_usd),
-  };
-}
-
-function parseResult(stdout: string): Record<string, unknown> | undefined {
-  try {
-    const parsed: unknown = JSON.parse(stdout);
-    return isRecord(parsed) && parsed.type === "result" ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
+// A CLI roda pelo Cloak (`cloak exec`), que lhe dá a configuração e as credenciais do perfil. Os
+// argumentos depois do nome da CLI são os do provedor.
+function cloakExecArgs(cli: Cli, cloakProfile: string | null, cliArgs: string[]): string[] {
+  return ["exec", ...(cloakProfile === null ? [] : ["--profile", cloakProfile]), cli, ...cliArgs];
 }
 
 const withoutColors = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
@@ -101,40 +36,24 @@ function cloakErrors(stderr: string): string {
   return errors.length > 0 ? errors.join("\n") : plain.trim();
 }
 
-// Só uma saída JSON de resultado, sem erro e com código 0, conta como conclusão.
-function outcomeOf(
-  exitCode: number | null,
-  signal: NodeJS.Signals | null,
-  stdout: string,
-  stderr: string,
-): GenerationOutcome {
-  const result = parseResult(stdout);
-  const usage = result ? usageFrom(result) : null;
-  const failed = (reason: FailureReason, message: string): GenerationOutcome => ({
+// O Cloak falhou antes de chamar a CLI (ela não escreveu nada); se foi por não achá-la ou por ela
+// não estar registrada na configuração dele, a CLI não está disponível.
+function cloakFailure(exit: CliExit): GenerationOutcome | undefined {
+  if (exit.exitCode === 0 || exit.stdout.trim() !== "" || !isCloakReport(exit.stderr)) return undefined;
+  const message = cloakErrors(exit.stderr);
+  const unavailable = /'[^']+' not found in PATH|CLI '[^']+' not configured/.test(message);
+  return {
     status: "failed",
-    error: { reason, exitCode, message },
-    usage,
-  });
-  const resultText = typeof result?.result === "string" ? result.result : undefined;
-
-  // O Cloak falhou antes de chamar o claude; se foi por não achá-lo, o claude não está instalado.
-  if (!result && exitCode !== 0 && isCloakReport(stderr)) {
-    const message = cloakErrors(stderr);
-    return failed(/'claude' not found in PATH/.test(message) ? "cli_unavailable" : "cloak_error", message);
-  }
-  if (exitCode !== 0 || result?.is_error === true) {
-    const ending = signal ? `claude foi encerrado pelo sinal ${signal}.` : `claude terminou com código ${exitCode}.`;
-    return failed("cli_error", resultText || stderr.trim() || ending);
-  }
-  if (resultText === undefined) return failed("invalid_output", "claude não devolveu um resultado reconhecível.");
-  return { status: "completed", output: resultText, usage };
+    error: { reason: unavailable ? "cli_unavailable" : "cloak_error", exitCode: exit.exitCode, message },
+    usage: null,
+  };
 }
 
 // Tempo que a CLI tem para sair depois do SIGTERM antes de receber SIGKILL.
 const KILL_GRACE_MS = 2_000;
 
 type ProcessEnd =
-  | { status: "exited"; exitCode: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }
+  | ({ status: "exited" } & CliExit)
   | { status: "not_found" }
   | { status: "spawn_failed"; message: string }
   | { status: "stopped" };
@@ -179,7 +98,6 @@ function runProcess(
   });
 }
 
-
 const cloakUnavailable: GenerationOutcome = {
   status: "failed",
   error: { reason: "cloak_unavailable", exitCode: null, message: "cloak não foi encontrado no PATH do executor." },
@@ -192,7 +110,8 @@ const cloakFailed = (message: string, exitCode: number | null = null): Generatio
   usage: null,
 });
 
-export async function runClaude({
+export async function runCli({
+  cli,
   model,
   cloakProfile,
   prompt,
@@ -200,7 +119,7 @@ export async function runClaude({
   cwd,
   timeoutMs,
   signal,
-}: ClaudeRun): Promise<GenerationOutcome> {
+}: CliRun): Promise<GenerationOutcome> {
   const stop = AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]);
   const stopped = (): GenerationOutcome => (signal.aborted ? { status: "canceled" } : { status: "timed_out", timeoutMs });
   // O Cloak resolve o perfil do diretório pelo PWD quando ele aponta para o diretório atual.
@@ -228,7 +147,18 @@ export async function runClaude({
     }
   }
 
-  const run = await runProcess("cloak", cloakExecArgs(cloakProfile, model), { ...options, input: prompt });
+  const provider = providers[cli];
+  // O prompt que vai por arquivo fica num diretório próprio, fora do diretório em que a CLI roda.
+  const promptDir = provider.delivery.via === "file" ? await mkdtemp(path.join(tmpdir(), "probe-prompt-")) : undefined;
+  let run: ProcessEnd;
+  try {
+    const promptFile = promptDir ? path.join(promptDir, "prompt.txt") : null;
+    if (promptFile) await writeFile(promptFile, prompt, { mode: 0o600 });
+    const input = provider.delivery.via === "stdin" ? provider.delivery.content(prompt) : "";
+    run = await runProcess("cloak", cloakExecArgs(cli, cloakProfile, provider.args(model, promptFile)), { ...options, input });
+  } finally {
+    if (promptDir) await rm(promptDir, { recursive: true, force: true });
+  }
   switch (run.status) {
     case "stopped":
       return stopped();
@@ -237,6 +167,6 @@ export async function runClaude({
     case "spawn_failed":
       return cloakFailed(run.message);
     case "exited":
-      return outcomeOf(run.exitCode, run.signal, run.stdout, run.stderr);
+      return cloakFailure(run) ?? provider.outcome(run);
   }
 }

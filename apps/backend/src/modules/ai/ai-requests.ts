@@ -163,6 +163,7 @@ export type OnCompleted<T> = (trx: Db, attemptId: string, result: T) => Promise<
 
 export interface OpenedAttempt {
   id: string;
+  cli: Cli;
   model: string;
   cloakProfile: CloakProfile;
 }
@@ -218,19 +219,19 @@ export class AiRequestRunner {
         .values(usedAnswerVersionIds.map((answerVersionId) => ({ attemptId: id, answerVersionId })))
         .execute();
     }
-    return { id, model: settings.model, cloakProfile: settings.cloakProfile };
+    return { id, cli: settings.cli, model: settings.model, cloakProfile: settings.cloakProfile };
   }
 
   // Dispara a geração de uma tentativa aberta, depois de a transação que a abriu ser gravada.
   // `onCompleted` grava o que o resultado produz na mesma transação que conclui a tentativa: ou os
   // dois ficam, ou a tentativa termina interrompida.
   run<T>(
-    { id: attemptId, model, cloakProfile }: OpenedAttempt,
+    { id: attemptId, cli, model, cloakProfile }: OpenedAttempt,
     generate: (context: AttemptContext) => Promise<AssistantOutcome<T>>,
     onCompleted?: OnCompleted<T>,
   ): void {
     const cancellation = new AbortController();
-    const done = generate({ id: attemptId, model, cloakProfile, signal: cancellation.signal })
+    const done = generate({ id: attemptId, cli, model, cloakProfile, signal: cancellation.signal })
       .catch((error: unknown): AssistantOutcome<T> => {
         this.log.error({ err: error, attemptId }, "Geração falhou sem desfecho reconhecível.");
         return { status: "interrupted", message: error instanceof Error ? error.message : String(error) };

@@ -11,6 +11,7 @@ import {
   type SynthesisRequest,
 } from "@/api";
 import { AttemptList } from "@/components/attempt-list";
+import { NewAttempt } from "@/components/new-attempt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -131,16 +132,11 @@ function UnconfirmedSynthesis({
       <>
         <p className="text-sm">{attemptProblem(last)}</p>
         {last.message && <p className="text-muted-foreground text-xs whitespace-pre-wrap">{last.message}</p>}
-        <div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={sending}
-            onClick={() => send(() => newSynthesisAttempt(processId, block.id, request.id))}
-          >
-            {sending ? "Pedindo…" : "Tentar novamente"}
-          </Button>
-        </div>
+        <NewAttempt
+          last={last}
+          open={(cli) => newSynthesisAttempt(processId, block.id, request.id, cli)}
+          onChange={onChange}
+        />
       </>
     );
   } else if (request.proposal.outdated) {

@@ -110,7 +110,6 @@ export class Script<I, T> {
 
 // `Assistant` falso, com um roteiro por operação.
 export class FakeAssistant implements Assistant {
-  readonly cli = "claude";
   readonly refinement = new Script<{ originalDescription: string }, StatementProposal>(() => completed());
   readonly block = new Script<BlockInput, GeneratedBlock>(() => completed(defaultBlock));
   readonly synthesis = new Script<SynthesisInput, GeneratedSynthesis>(() => completed(defaultSynthesis));

@@ -326,7 +326,11 @@ describe("CLI failure", () => {
     await testApp.app.inject({
       method: "PUT",
       url: "/api/settings",
-      payload: { claudeModel: TEST_MODEL, cloakProfile: { source: "explicit", name: "antigo" } },
+      payload: {
+        cli: "claude",
+        models: { claude: TEST_MODEL, codex: null, grok: null, agy: null },
+        cloakProfile: { source: "explicit", name: "antigo" },
+      },
     });
     const id = await createProcess();
     await requestRefinement(id);
@@ -335,7 +339,11 @@ describe("CLI failure", () => {
     await testApp.app.inject({
       method: "PUT",
       url: "/api/settings",
-      payload: { claudeModel: TEST_MODEL, cloakProfile: { source: "directory" } },
+      payload: {
+        cli: "claude",
+        models: { claude: TEST_MODEL, codex: null, grok: null, agy: null },
+        cloakProfile: { source: "directory" },
+      },
     });
     const response = await newAttempt(id);
 

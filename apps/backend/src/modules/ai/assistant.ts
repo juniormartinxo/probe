@@ -3,7 +3,11 @@
 import type { StagePoint } from "../process/stage-points.ts";
 import type { Stage } from "../process/stage.ts";
 
-export type Cli = "claude";
+// CLIs que o executor chama, pelo nome com que o Cloak as registra. Gemini roda pelo `agy`.
+export const clis = ["claude", "codex", "grok", "agy"] as const;
+export type Cli = (typeof clis)[number];
+
+export const isCli = (value: unknown): value is Cli => clis.some((cli) => cli === value);
 
 // Perfil do Cloak com que a CLI roda: o que o Cloak liga ao diretório de trabalho do executor, ou
 // um perfil escolhido pelo nome. As contas e credenciais da CLI são as do perfil.
@@ -53,6 +57,7 @@ export type AssistantOutcome<T> =
 export interface AttemptContext {
   // Identifica a tentativa no executor; permite cancelá-la.
   id: string;
+  cli: Cli;
   model: string;
   cloakProfile: CloakProfile;
   signal: AbortSignal;
@@ -147,7 +152,6 @@ export interface GeneratedSynthesis {
 }
 
 export interface Assistant {
-  readonly cli: Cli;
   refineProblemStatement(
     input: { originalDescription: string },
     context: AttemptContext,

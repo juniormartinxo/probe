@@ -1,10 +1,10 @@
 // Decide o que o `cloak` falso (fake-cloak.sh) faz: segue `cloak.json` (mesmo diretório) e
-// registra cada chamada em `invocations.json`. No `exec`, escreve o diretório de configuração do
-// perfil, que o script passa à CLI. Não lê o stdin: ele é da CLI.
+// registra cada chamada em `invocations.json`. No `exec`, escreve o diretório de configuração da CLI
+// no perfil, que o script passa à CLI. Não lê o stdin: ele é da CLI.
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { profiles, defaultProfile, brokenConfig } = JSON.parse(fs.readFileSync(path.join(__dirname, "cloak.json"), "utf8"));
+const { profiles, defaultProfile, brokenConfig, clis } = JSON.parse(fs.readFileSync(path.join(__dirname, "cloak.json"), "utf8"));
 const args = process.argv.slice(2);
 
 // Como o Cloak: o `.cloak` mais próximo, subindo a partir do diretório atual; sem ele, o perfil padrão.
@@ -45,10 +45,13 @@ if (args[0] !== "exec") fail(`unexpected command: ${args.join(" ")}`);
 
 const explicit = args[1] === "--profile" ? args[2] : undefined;
 const profile = explicit ?? directoryProfile();
+const cli = args[explicit === undefined ? 1 : 3];
 record(profile);
 // O Cloak real perguntaria pelo stdin se deve criar o perfil; o executor nunca deve chegar aqui.
 if (explicit !== undefined && !profiles.includes(explicit)) {
   process.stderr.write(`Profile '${explicit}' does not exist.\n`);
   process.exit(1);
 }
-process.stdout.write(path.join(__dirname, "profiles", profile, "claude"));
+// Como o Cloak real, só executa as CLIs registradas na configuração dele.
+if (!clis.includes(cli)) fail(`CLI '${cli}' not configured in config.toml`);
+process.stdout.write(path.join(__dirname, "profiles", profile, cli));

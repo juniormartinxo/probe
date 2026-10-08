@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { Db } from "../../db/database.ts";
+import { isCli, type Cli } from "../ai/assistant.ts";
 import { stageAssessmentsOf, type StageAssessments } from "../assessments/stage-assessments.ts";
 import type { AnswerChange, AnswerValue, Answers } from "./answers.ts";
 import type { Blocks } from "./blocks.ts";
@@ -77,6 +78,16 @@ function stageConfirmationFrom(body: unknown): StageConfirmationRequest | undefi
   return { stageAssessmentId, justification: justificationFrom(body)?.trim() ?? null };
 }
 
+// A CLI que o usuário escolheu para uma nova tentativa; sem corpo ou sem `cli`, nenhuma escolha
+// (a tentativa segue com a CLI da anterior). Uma CLI que não existe é recusada.
+function attemptCliFrom(body: unknown): { ok: true; cli: Cli | undefined } | { ok: false } {
+  if (body === undefined || body === null) return { ok: true, cli: undefined };
+  if (typeof body !== "object") return { ok: false };
+  const { cli } = body as Record<string, unknown>;
+  if (cli === undefined) return { ok: true, cli: undefined };
+  return isCli(cli) ? { ok: true, cli } : { ok: false };
+}
+
 const errorStatus = {
   process_not_found: 404,
   process_not_open: 409,
@@ -118,6 +129,7 @@ const errorStatus = {
   assessment_outdated: 409,
   assessment_required: 409,
   justification_required: 422,
+  cli_model_not_configured: 409,
 } as const;
 
 export const processRoutes =
@@ -196,7 +208,9 @@ export const processRoutes =
       async (request, reply) => {
         const { id } = request.params;
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
-        const result = await problemStatements.newRefinementAttempt(id);
+        const chosen = attemptCliFrom(request.body);
+        if (!chosen.ok) return reply.code(400).send({ error: "invalid_cli" });
+        const result = await problemStatements.newRefinementAttempt(id, chosen.cli);
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(202).send({ refinement: result.refinement });
       },
@@ -226,7 +240,9 @@ export const processRoutes =
         const { id, requestId } = request.params;
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
         if (!uuidPattern.test(requestId)) return reply.code(404).send({ error: "block_request_not_found" });
-        const result = await blocks.newAttempt(id, requestId);
+        const chosen = attemptCliFrom(request.body);
+        if (!chosen.ok) return reply.code(400).send({ error: "invalid_cli" });
+        const result = await blocks.newAttempt(id, requestId, chosen.cli);
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(202).send({ blockRequest: result.blockRequest });
       },
@@ -291,7 +307,9 @@ export const processRoutes =
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
         if (!uuidPattern.test(blockId)) return reply.code(404).send({ error: "block_not_found" });
         if (!uuidPattern.test(requestId)) return reply.code(404).send({ error: "synthesis_request_not_found" });
-        const result = await syntheses.newAttempt(id, blockId, requestId);
+        const chosen = attemptCliFrom(request.body);
+        if (!chosen.ok) return reply.code(400).send({ error: "invalid_cli" });
+        const result = await syntheses.newAttempt(id, blockId, requestId, chosen.cli);
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(202).send({ synthesisRequest: result.synthesisRequest });
       },

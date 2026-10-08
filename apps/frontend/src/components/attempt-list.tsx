@@ -1,6 +1,6 @@
 import type { Attempt } from "@/api";
 import { formatDate } from "@/lib/format";
-import { attemptStatusName, cloakProfileSummary, usageSummary } from "@/refinement";
+import { attemptStatusName, cliName, cloakProfileSummary, usageSummary } from "@/refinement";
 
 // Tentativas de uma Solicitação à IA, com CLI, modelo, perfil do Cloak e consumo de cada uma.
 export function AttemptList({ attempts }: { attempts: Attempt[] }) {
@@ -10,7 +10,7 @@ export function AttemptList({ attempts }: { attempts: Attempt[] }) {
       <ol className="mt-2 flex flex-col gap-1">
         {attempts.map((attempt) => (
           <li key={attempt.id}>
-            Tentativa {attempt.number} · {attempt.cli} · {attempt.model} · {cloakProfileSummary(attempt.cloakProfile)} ·{" "}
+            Tentativa {attempt.number} · {cliName(attempt.cli)} · {attempt.model} · {cloakProfileSummary(attempt.cloakProfile)} ·{" "}
             {attemptStatusName(attempt.status)} ·{" "}
             {usageSummary(attempt.usage)} · {formatDate(attempt.startedAt)}
           </li>

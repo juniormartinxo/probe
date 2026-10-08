@@ -118,11 +118,14 @@ const isRelayedReason = (reason: unknown): reason is (typeof relayedReasons)[num
   relayedReasons.some((relayed) => relayed === reason);
 
 // Das falhas da CLI, o executor só distingue "a CLI falhou"; limite de uso e autenticação são
-// lidos da mensagem. A CLI roda pelo Cloak: sem autenticação, é o perfil que precisa de login.
+// lidos da mensagem, nos termos que as quatro CLIs usam. A CLI roda pelo Cloak: sem autenticação, é
+// o perfil que precisa de login.
 function cliFailureReason(reason: unknown, message: string): FailureReason {
   if (isRelayedReason(reason)) return reason;
-  if (/\b429\b|rate[_ ]?limit|usage limit/i.test(message)) return "cli_rate_limited";
-  if (/\b401\b|invalid api key|\/login|not logged in|authenticat|oauth token/i.test(message)) return "cloak_unauthenticated";
+  if (/\b429\b|rate[_ ]?limit|usage limit|resource[_ ]exhausted|quota/i.test(message)) return "cli_rate_limited";
+  if (/\b401\b|invalid api key|\/login|not logged in|not signed in|authenticat|oauth token/i.test(message)) {
+    return "cloak_unauthenticated";
+  }
   return "cli_error";
 }
 
@@ -156,7 +159,10 @@ function outcomeOf({ status, body }: Response): AssistantOutcome<string> {
 }
 
 export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSettings): Assistant {
-  async function generateText(prompt: string, { id, model, cloakProfile, signal }: AttemptContext): Promise<AssistantOutcome<string>> {
+  async function generateText(
+    prompt: string,
+    { id, cli, model, cloakProfile, signal }: AttemptContext,
+  ): Promise<AssistantOutcome<string>> {
     if (!token) {
       return {
         status: "failed",
@@ -173,7 +179,7 @@ export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSett
         usage: null,
       };
     }
-    const body = { id, operation: "generate_text", model, cloakProfile: cloakProfileName(cloakProfile), prompt };
+    const body = { id, operation: "generate_text", cli, model, cloakProfile: cloakProfileName(cloakProfile), prompt };
     const sent = await post(new URL("/generations", url), token, body, {
       signal,
       deadline: AbortSignal.timeout(deadlineMs),
@@ -202,7 +208,6 @@ export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSett
   }
 
   return {
-    cli: "claude",
     refineProblemStatement({ originalDescription }, context) {
       return generate(refinementPrompt(originalDescription), parseStatementProposal, context);
     },

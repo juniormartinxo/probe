@@ -16,4 +16,4 @@ if ! command -v "$cli" >/dev/null 2>&1; then
   printf "Error: \n   0: '%s' not found in PATH. Install it or set cli.%s.binary in config.\n" "$cli" "$cli" >&2
   exit 1
 fi
-CLAUDE_CONFIG_DIR=$config_dir exec "$cli" "$@"
+FAKE_CLOAK_CONFIG_DIR=$config_dir exec "$cli" "$@"
