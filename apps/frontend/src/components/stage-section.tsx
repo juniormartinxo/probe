@@ -96,6 +96,7 @@ function StagePoints({
 
 function StagePointItem({ processId, point, onChange }: { processId: string; point: StagePointState; onChange: () => void }) {
   const [declaring, setDeclaring] = useState(false);
+  const [confirmingAbsence, setConfirmingAbsence] = useState(false);
   const [justification, setJustification] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -114,6 +115,7 @@ function StagePointItem({ processId, point, onChange }: { processId: string; poi
     try {
       await action();
       setDeclaring(false);
+      setConfirmingAbsence(false);
     } catch (caught) {
       setError(caught instanceof ApiError && caught.code === "stage_point_closed" ? "Este Ponto já não está aberto." : failure);
     } finally {
@@ -127,7 +129,7 @@ function StagePointItem({ processId, point, onChange }: { processId: string; poi
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={point.status === "open" ? "outline" : "secondary"}>{stagePointStatusText[point.status]}</Badge>
         <span title={point.description}>{point.name}</span>
-        {point.status === "open" && !declaring && (
+        {point.status === "open" && !declaring && !confirmingAbsence && (
           <div className="ml-auto flex gap-1">
             {point.absence && (
               <Button
@@ -136,17 +138,37 @@ function StagePointItem({ processId, point, onChange }: { processId: string; poi
                 className="h-7 text-xs"
                 disabled={saving}
                 title="A ausência registrada conta como cobertura do Ponto."
-                onClick={() => close(() => recordAbsence(processId, point.key), "Não foi possível registrar a ausência; tente de novo.")}
+                onClick={() => setConfirmingAbsence(true)}
               >
                 {point.absence}
               </Button>
             )}
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setDeclaring(true)}>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" disabled={saving} onClick={() => setDeclaring(true)}>
               Declarar inaplicável
             </Button>
           </div>
         )}
       </div>
+      {confirmingAbsence && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs">
+            Registrar “{point.absence}” para este Ponto? A ausência conta como cobertura e não pode ser desfeita.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={() => setConfirmingAbsence(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={saving}
+              onClick={() => close(() => recordAbsence(processId, point.key), "Não foi possível registrar a ausência; tente de novo.")}
+            >
+              {saving ? "Registrando…" : "Confirmar"}
+            </Button>
+          </div>
+        </div>
+      )}
       {point.status === "absent" && <p className="text-muted-foreground text-xs">{point.absence}</p>}
       {!declaring && error && <p className="text-destructive text-xs">{error}</p>}
       {point.status === "inapplicable" && (

@@ -192,6 +192,7 @@ export function Questionnaire({
         key={question.id}
         processId={processId}
         question={question}
+        synthesized={block.synthesis !== null}
         edit={edits[question.id] ?? storedEdit(question)}
         onEdit={(value) => edit(question, value)}
         onSettled={(settled) => setEdits((current) => ({ ...current, [question.id]: settled }))}
@@ -218,6 +219,7 @@ export function Questionnaire({
 function QuestionView({
   processId,
   question,
+  synthesized,
   edit,
   onEdit,
   onSettled,
@@ -226,6 +228,8 @@ function QuestionView({
 }: {
   processId: string;
   question: Question;
+  // A síntese do Bloco já foi confirmada.
+  synthesized: boolean;
   edit: Edit;
   onEdit: (value: AnswerValue) => void;
   onSettled: (edit: Edit) => void;
@@ -320,7 +324,7 @@ function QuestionView({
 
       <AnswerInput question={question} value={edit.value} onChange={onEdit} disabled={saving} />
 
-      {question.answer && <SavedAnswer question={question} />}
+      {question.answer && <SavedAnswer question={question} synthesized={synthesized} />}
 
       {question.unknown && (
         <div className="flex flex-col gap-1 rounded-md border border-dashed p-3 text-sm">
@@ -455,13 +459,21 @@ function AnswerInput({
   );
 }
 
-function SavedAnswer({ question }: { question: Question }) {
+// Uma Versão nova depois da síntese confirmada não volta a ser confirmada por ela: a síntese do Bloco
+// não se confirma de novo.
+function savedAnswerStatus(confirmed: boolean, synthesized: boolean): string {
+  if (confirmed) return "confirmada pela síntese do Bloco";
+  if (synthesized) return "alterada depois da síntese confirmada do Bloco; ainda não confirmada";
+  return "provisória até a síntese do Bloco ser confirmada";
+}
+
+function SavedAnswer({ question, synthesized }: { question: Question; synthesized: boolean }) {
   const { current, previous } = question.answer!;
   return (
     <div className="bg-muted/50 flex flex-col gap-1 rounded-md p-3 text-sm">
       <p className="text-muted-foreground text-xs">
         Resposta salva · Versão {current.number} · {formatDate(current.createdAt)} ·{" "}
-        {current.confirmed ? "confirmada pela síntese do Bloco" : "provisória até a síntese do Bloco ser confirmada"}
+        {savedAnswerStatus(current.confirmed, synthesized)}
       </p>
       <p className="whitespace-pre-wrap">{describe(question, current)}</p>
       {previous.length > 0 && (
