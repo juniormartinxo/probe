@@ -9,13 +9,14 @@ import {
   type Proposal,
   type Refinement,
 } from "@/api";
+import { AttemptList } from "@/components/attempt-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/lib/format";
-import { attemptProblem, attemptStatusName, originName, usageSummary } from "@/refinement";
+import { attemptProblem, originName } from "@/refinement";
 
 // Enunciado do problema: a proposta da IA aparece como sugestão até o usuário confirmar o texto,
 // como veio ou corrigido. `onChange` recarrega o Processo depois de cada ação.
@@ -36,7 +37,7 @@ export function ProblemStatementSection({ process, onChange }: { process: Proces
           />
         </>
       )}
-      {refinement && <AttemptList refinement={refinement} />}
+      {refinement && <AttemptList attempts={refinement.attempts} />}
     </section>
   );
 }
@@ -239,21 +240,5 @@ function StatementForm({
         </CardFooter>
       </form>
     </Card>
-  );
-}
-
-function AttemptList({ refinement }: { refinement: Refinement }) {
-  return (
-    <details className="text-muted-foreground text-xs">
-      <summary className="cursor-pointer">Tentativas da Solicitação à IA ({refinement.attempts.length})</summary>
-      <ol className="mt-2 flex flex-col gap-1">
-        {refinement.attempts.map((attempt) => (
-          <li key={attempt.id}>
-            Tentativa {attempt.number} · {attempt.cli} · {attempt.model} · {attemptStatusName(attempt.status)} ·{" "}
-            {usageSummary(attempt.usage)} · {formatDate(attempt.startedAt)}
-          </li>
-        ))}
-      </ol>
-    </details>
   );
 }

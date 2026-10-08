@@ -7,6 +7,7 @@ export interface Process {
   originalDescription: string;
   status: ProcessStatus;
   currentStage: Stage;
+  stagePointsVersion: number;
   createdAt: string;
 }
 
@@ -71,9 +72,73 @@ export interface ProblemStatement {
   confirmedAt: string;
 }
 
+// Item fixo que a Etapa precisa cobrir; a lista é da aplicação, não da IA.
+export interface StagePoint {
+  key: string;
+  name: string;
+  description: string;
+}
+
+export type AnswerType = "single_choice" | "multiple_choice" | "free_text";
+
+// Índices das alternativas escolhidas ou texto livre, conforme a Pergunta.
+export type AnswerValue = { selectedOptions: number[] } | { text: string };
+
+export interface AnswerVersion {
+  id: string;
+  number: number;
+  selectedOptions: number[] | null;
+  text: string | null;
+  createdAt: string;
+}
+
+// A Versão que vale e as superadas, da mais recente para a mais antiga.
+export interface Answer {
+  current: AnswerVersion;
+  previous: AnswerVersion[];
+}
+
+export interface AnswerDraft {
+  basedOnVersionId: string | null;
+  selectedOptions: number[] | null;
+  text: string | null;
+  updatedAt: string;
+}
+
+export interface Question {
+  id: string;
+  subject: string;
+  contextRelation: string;
+  rationale: string | null;
+  stagePoints: { key: string; name: string }[];
+  answerType: AnswerType;
+  options: string[];
+  answer: Answer | null;
+  draft: AnswerDraft | null;
+}
+
+export interface Block {
+  id: string;
+  number: number;
+  stage: Stage;
+  createdAt: string;
+  questions: Question[];
+}
+
+export interface BlockRequest {
+  id: string;
+  status: AttemptStatus;
+  blockId: string | null;
+  attempts: Attempt[];
+}
+
 export interface ProcessDetail extends ProcessWithConversation {
   problemStatement: ProblemStatement | null;
   refinement: Refinement | null;
+  // Pontos da Etapa atual ainda não cobertos.
+  openStagePoints: StagePoint[];
+  blockRequests: BlockRequest[];
+  blocks: Block[];
 }
 
 export class ApiError extends Error {
@@ -145,4 +210,55 @@ export async function confirmProblemStatement(
     { method: "POST", body: JSON.stringify({ statement, proposalId }) },
   );
   return problemStatement;
+}
+
+const processPath = (processId: string) => `/processes/${encodeURIComponent(processId)}`;
+
+export async function requestBlock(processId: string): Promise<BlockRequest> {
+  const { blockRequest } = await request<{ blockRequest: BlockRequest }>(`${processPath(processId)}/block-requests`, {
+    method: "POST",
+  });
+  return blockRequest;
+}
+
+export async function newBlockAttempt(processId: string, blockRequestId: string): Promise<BlockRequest> {
+  const { blockRequest } = await request<{ blockRequest: BlockRequest }>(
+    `${processPath(processId)}/block-requests/${encodeURIComponent(blockRequestId)}/attempts`,
+    { method: "POST" },
+  );
+  return blockRequest;
+}
+
+const answerPath = (processId: string, questionId: string) =>
+  `${processPath(processId)}/questions/${encodeURIComponent(questionId)}/answer`;
+
+// Nova Versão da resposta, a partir da Versão que o usuário viu (null na primeira resposta).
+export async function recordAnswer(
+  processId: string,
+  questionId: string,
+  value: AnswerValue,
+  basedOnVersionId: string | null,
+): Promise<AnswerVersion> {
+  const { answerVersion } = await request<{ answerVersion: AnswerVersion }>(`${answerPath(processId, questionId)}/versions`, {
+    method: "POST",
+    body: JSON.stringify({ ...value, basedOnVersionId }),
+  });
+  return answerVersion;
+}
+
+export async function saveDraft(
+  processId: string,
+  questionId: string,
+  value: AnswerValue,
+  basedOnVersionId: string | null,
+): Promise<AnswerDraft> {
+  const { draft } = await request<{ draft: AnswerDraft }>(`${answerPath(processId, questionId)}/draft`, {
+    method: "PUT",
+    body: JSON.stringify({ ...value, basedOnVersionId }),
+  });
+  return draft;
+}
+
+export async function discardDraft(processId: string, questionId: string): Promise<void> {
+  await request<void>(`${answerPath(processId, questionId)}/draft`, { method: "DELETE" });
 }

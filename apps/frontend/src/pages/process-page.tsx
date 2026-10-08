@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ApiError, getProcess, type ProcessDetail, type Stage } from "@/api";
 import { ProblemStatementSection } from "@/components/problem-statement-section";
+import { StageSection } from "@/components/stage-section";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/format";
@@ -38,7 +39,9 @@ export function ProcessPage() {
   }, [load]);
 
   // Enquanto a IA trabalha, o Processo é recarregado até a tentativa terminar.
-  const running = state.kind === "loaded" && state.process.refinement?.status === "running";
+  const running =
+    state.kind === "loaded" &&
+    (state.process.refinement?.status === "running" || state.process.blockRequests.at(-1)?.status === "running");
   useEffect(() => {
     if (!running) return;
     const timer = setInterval(load, POLL_INTERVAL_MS);
@@ -81,6 +84,8 @@ function ProcessView({ process, onChange }: { process: ProcessDetail; onChange: 
       </Card>
 
       <ProblemStatementSection process={process} onChange={onChange} />
+
+      {process.problemStatement && <StageSection process={process} onChange={onChange} />}
     </>
   );
 }

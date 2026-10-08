@@ -5,6 +5,7 @@ import {
   startConversation,
   type Conversation,
 } from "../conversation/conversation.ts";
+import { CURRENT_STAGE_POINTS_VERSION } from "./stage-points.ts";
 
 export type ProcessStatus = "open" | "finalized";
 
@@ -14,12 +15,13 @@ export interface ProcessWithConversation extends Process {
   conversation: Conversation;
 }
 
-// O Processo nasce aberto, na Etapa P, com a descrição original intacta e uma Conversa vazia.
+// O Processo nasce aberto, na Etapa P, com a descrição original intacta, uma Conversa vazia e a
+// versão atual da lista de Pontos da etapa.
 export async function createProcess(db: Db, originalDescription: string): Promise<ProcessWithConversation> {
   return db.transaction().execute(async (trx) => {
     const process = await trx
       .insertInto("processes")
-      .values({ originalDescription })
+      .values({ originalDescription, stagePointsVersion: CURRENT_STAGE_POINTS_VERSION })
       .returningAll()
       .executeTakeFirstOrThrow();
     const conversation = await startConversation(trx, process.id);

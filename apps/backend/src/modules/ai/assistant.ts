@@ -1,5 +1,8 @@
 // Porta da IA. A implementação real chama o executor; nos testes, uma versão falsa a substitui.
 
+import type { StagePoint } from "../process/stage-points.ts";
+import type { Stage } from "../process/stage.ts";
+
 export type Cli = "claude";
 
 // Consumo como a CLI informou; o que ela não informou fica null, nunca zero.
@@ -43,10 +46,37 @@ export interface StatementProposal {
   missingInformation: string[];
 }
 
+export type AnswerType = "single_choice" | "multiple_choice" | "free_text";
+
+// Pergunta como a IA a formulou, servindo a um ou mais Pontos da etapa (pelas chaves). Só as
+// Perguntas de alternativa têm alternativas.
+export interface GeneratedQuestion {
+  subject: string;
+  contextRelation: string;
+  // Por que a Pergunta está sendo feita, quando a IA julga necessário dizer.
+  rationale: string | null;
+  stagePoints: string[];
+  answerType: AnswerType;
+  options: string[];
+}
+
+export interface GeneratedBlock {
+  questions: GeneratedQuestion[];
+}
+
+// O que a IA recebe para gerar um Bloco: o problema e os Pontos ainda abertos da Etapa.
+export interface BlockInput {
+  stage: Stage;
+  originalDescription: string;
+  problemStatement: string;
+  openStagePoints: StagePoint[];
+}
+
 export interface Assistant {
   readonly cli: Cli;
   refineProblemStatement(
     input: { originalDescription: string },
     context: AttemptContext,
   ): Promise<AssistantOutcome<StatementProposal>>;
+  generateBlock(input: BlockInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedBlock>>;
 }
