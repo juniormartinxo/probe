@@ -1,7 +1,7 @@
 import type {
   Assistant,
   AssistantOutcome,
-  Generation,
+  AttemptContext,
   StatementProposal,
   Usage,
 } from "../../src/modules/ai/assistant.ts";
@@ -21,21 +21,21 @@ export function completed(
 
 type Outcome = AssistantOutcome<StatementProposal>;
 
-export interface FakeCall {
+export interface ReceivedAttempt {
   input: { originalDescription: string };
-  generation: Generation;
-  // Responde uma chamada retida por hold().
+  context: AttemptContext;
+  // Responde uma tentativa retida por willHold().
   respond(outcome: Outcome): void;
 }
 
 const HOLD = Symbol("hold");
 
 // `Assistant` falso: segue um roteiro de desfechos, na ordem; sem roteiro, propõe defaultProposal.
-// Uma chamada retida fica pendente até o teste respondê-la, e termina como cancelada se a geração
+// Uma tentativa retida fica pendente até o teste respondê-la, e termina como cancelada se a geração
 // for abortada antes disso.
 export class FakeAssistant implements Assistant {
   readonly cli = "claude";
-  readonly calls: FakeCall[] = [];
+  readonly attempts: ReceivedAttempt[] = [];
   private readonly script: (Outcome | typeof HOLD)[] = [];
 
   willRespond(...outcomes: Outcome[]): this {
@@ -48,12 +48,12 @@ export class FakeAssistant implements Assistant {
     return this;
   }
 
-  refineProblemStatement(input: { originalDescription: string }, generation: Generation): Promise<Outcome> {
+  refineProblemStatement(input: { originalDescription: string }, context: AttemptContext): Promise<Outcome> {
     const step = this.script.shift() ?? completed();
     return new Promise((resolve) => {
-      this.calls.push({ input, generation, respond: resolve });
+      this.attempts.push({ input, context, respond: resolve });
       if (step !== HOLD) return resolve(step);
-      generation.signal.addEventListener("abort", () => resolve({ status: "canceled" }), { once: true });
+      context.signal.addEventListener("abort", () => resolve({ status: "canceled" }), { once: true });
     });
   }
 }

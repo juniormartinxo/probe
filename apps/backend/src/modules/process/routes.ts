@@ -64,7 +64,7 @@ export const processRoutes =
       async (request, reply) => {
         const { id } = request.params;
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
-        const result = await problemStatements.retryRefinement(id);
+        const result = await problemStatements.newRefinementAttempt(id);
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(202).send({ refinement: result.refinement });
       },

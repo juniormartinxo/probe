@@ -5,7 +5,11 @@ import { createExecutorAssistant } from "./modules/ai/executor-assistant.ts";
 
 const config = loadConfig();
 const db = createDatabase(config.databaseUrl);
-const assistant = createExecutorAssistant({ url: config.executorUrl, token: config.executorToken });
+const assistant = createExecutorAssistant({
+  url: config.executorUrl,
+  token: config.executorToken,
+  deadlineMs: config.executorDeadlineMs,
+});
 const app = buildApp({ db, assistant, aiModel: config.aiModel }, { logger: true });
 
 async function shutdown(): Promise<void> {

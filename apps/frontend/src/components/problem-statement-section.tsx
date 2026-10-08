@@ -1,9 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import {
   ApiError,
   confirmProblemStatement,
   requestRefinement,
-  retryRefinement,
+  newRefinementAttempt,
   type ProblemStatement,
   type ProcessDetail,
   type Proposal,
@@ -115,7 +115,7 @@ function RefinementStatus({
       {last.message && <p className="text-muted-foreground text-xs whitespace-pre-wrap">{last.message}</p>}
       <p className="text-muted-foreground text-xs">Seu progresso continua salvo. Você pode tentar de novo ou escrever o enunciado.</p>
       <div>
-        <Button variant="outline" size="sm" disabled={sending} onClick={() => send(retryRefinement)}>
+        <Button variant="outline" size="sm" disabled={sending} onClick={() => send(newRefinementAttempt)}>
           {sending ? "Pedindo…" : "Tentar novamente"}
         </Button>
       </div>
@@ -173,22 +173,32 @@ function StatementForm({
   onChange: () => void;
 }) {
   const [draft, setDraft] = useState(proposal?.statement ?? "");
+  // O rascunho só conta como vindo da proposta se foi preenchido com ela; o que o usuário escreveu
+  // antes de a proposta chegar continua sendo dele.
+  const [fromProposal, setFromProposal] = useState(proposal !== null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
-  const corrected = proposal !== null && draft !== proposal.statement;
+  const corrected = proposal !== null && fromProposal && draft.trim() !== proposal.statement;
 
-  // A proposta entra no campo quando chega, sem apagar o que o usuário já tenha escrito.
-  const proposedStatement = proposal?.statement;
-  useEffect(() => {
-    if (proposedStatement !== undefined) setDraft((current) => (current.trim() === "" ? proposedStatement : current));
-  }, [proposedStatement]);
+  function adoptProposal(statement: string) {
+    setDraft(statement);
+    setFromProposal(true);
+  }
+
+  // A proposta entra no campo quando chega, sem apagar o que o usuário já tenha escrito
+  // (estado ajustado durante a renderização, sem efeito).
+  const [seenProposalId, setSeenProposalId] = useState(proposal?.id ?? null);
+  if (proposal && proposal.id !== seenProposalId) {
+    setSeenProposalId(proposal.id);
+    if (draft.trim() === "") adoptProposal(proposal.statement);
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
     setError(undefined);
     try {
-      await confirmProblemStatement(processId, draft, proposal?.id ?? null);
+      await confirmProblemStatement(processId, draft, fromProposal ? (proposal?.id ?? null) : null);
       onChange();
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 409) return onChange();
@@ -218,9 +228,9 @@ function StatementForm({
           {error && <p className="text-destructive text-sm">{error}</p>}
         </CardContent>
         <CardFooter className="justify-end gap-2">
-          {corrected && (
-            <Button type="button" variant="ghost" disabled={saving} onClick={() => setDraft(proposal.statement)}>
-              Voltar à proposta
+          {proposal && (corrected || !fromProposal) && (
+            <Button type="button" variant="ghost" disabled={saving} onClick={() => adoptProposal(proposal.statement)}>
+              {fromProposal ? "Voltar à proposta" : "Usar a proposta"}
             </Button>
           )}
           <Button type="submit" disabled={saving || draft.trim() === ""}>

@@ -128,7 +128,7 @@ export async function requestRefinement(processId: string): Promise<Refinement> 
   return refinement;
 }
 
-export async function retryRefinement(processId: string): Promise<Refinement> {
+export async function newRefinementAttempt(processId: string): Promise<Refinement> {
   const { refinement } = await request<{ refinement: Refinement }>(`${statementPath(processId)}/refinement/attempts`, {
     method: "POST",
   });

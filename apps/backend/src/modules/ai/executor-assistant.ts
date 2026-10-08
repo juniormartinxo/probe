@@ -1,11 +1,14 @@
 import http from "node:http";
-import type { Assistant, AssistantOutcome, FailureReason, Generation, Usage } from "./assistant.ts";
+import type { Assistant, AssistantOutcome, FailureReason, AttemptContext, Usage } from "./assistant.ts";
 import { parseStatementProposal, refinementPrompt } from "./refine-problem-statement.ts";
 
 export interface ExecutorSettings {
   url: string;
   // Credencial técnica combinada com o executor; sem ela, nenhuma geração é enviada.
   token: string | undefined;
+  // Quanto o backend espera por uma geração antes de dá-la por interrompida. Fica acima do tempo
+  // máximo do executor, que normalmente encerra a CLI e responde "timed_out" antes.
+  deadlineMs: number;
 }
 
 const HEALTH_TIMEOUT_MS = 5_000;
@@ -27,8 +30,13 @@ type Response = { status: number; body: unknown };
 type Sent = { ok: true; response: Response } | { ok: false; outcome: AssistantOutcome<never> };
 
 // node:http em vez de fetch: o fetch do Node desiste de esperar a resposta depois de 300 s, o
-// mesmo tempo máximo padrão de uma geração no executor.
-function post(url: URL, token: string, body: unknown, signal: AbortSignal): Promise<Sent> {
+// mesmo tempo máximo padrão de uma geração no executor. O prazo do backend é `deadline`.
+function post(
+  url: URL,
+  token: string,
+  body: unknown,
+  { signal, deadline }: { signal: AbortSignal; deadline: AbortSignal },
+): Promise<Sent> {
   return new Promise((resolve) => {
     const payload = JSON.stringify(body);
     const request = http.request(url, {
@@ -38,13 +46,24 @@ function post(url: URL, token: string, body: unknown, signal: AbortSignal): Prom
         "content-type": "application/json",
         "content-length": Buffer.byteLength(payload),
       },
-      signal,
+      signal: AbortSignal.any([signal, deadline]),
     });
+    // A conexão pode cair antes da resposta ou no meio dela; o resultado da geração fica desconhecido.
+    const fail = (error: Error) => {
+      if (signal.aborted) return resolve({ ok: false, outcome: { status: "canceled" } });
+      const message = deadline.aborted
+        ? "O executor não respondeu dentro do prazo do backend; o resultado não foi recebido."
+        : `A conexão com o executor caiu: ${error.message}`;
+      resolve({ ok: false, outcome: { status: "interrupted", message } });
+    };
     request.on("response", (response) => {
       let text = "";
       response.setEncoding("utf8");
       response.on("data", (chunk: string) => (text += chunk));
+      response.on("error", fail);
+      response.on("aborted", () => fail(new Error("resposta incompleta")));
       response.on("end", () => {
+        if (!response.complete) return fail(new Error("resposta incompleta"));
         let parsed: unknown;
         try {
           parsed = JSON.parse(text);
@@ -54,11 +73,7 @@ function post(url: URL, token: string, body: unknown, signal: AbortSignal): Prom
         resolve({ ok: true, response: { status: response.statusCode ?? 0, body: parsed } });
       });
     });
-    request.on("error", (error) => {
-      if (signal.aborted) return resolve({ ok: false, outcome: { status: "canceled" } });
-      // A geração pode ter chegado ao executor; o que aconteceu com ela não se sabe.
-      resolve({ ok: false, outcome: { status: "interrupted", message: `A conexão com o executor caiu: ${error.message}` } });
-    });
+    request.on("error", fail);
     request.end(payload);
   });
 }
@@ -82,7 +97,7 @@ function usageFrom(value: unknown): Usage | null {
 // O executor só distingue "a CLI falhou"; limite de uso e autenticação são lidos da mensagem.
 function cliFailureReason(reason: unknown, message: string): FailureReason {
   if (reason === "cli_unavailable" || reason === "invalid_output") return reason;
-  if (/\b429\b|rate[_ ]?limit|usage limit|limit reached/i.test(message)) return "cli_rate_limited";
+  if (/\b429\b|rate[_ ]?limit|usage limit/i.test(message)) return "cli_rate_limited";
   if (/\b401\b|invalid api key|\/login|not logged in|authenticat|oauth token/i.test(message)) return "cli_unauthenticated";
   return "cli_error";
 }
@@ -116,8 +131,8 @@ function outcomeOf({ status, body }: Response): AssistantOutcome<string> {
   }
 }
 
-export function createExecutorAssistant({ url, token }: ExecutorSettings): Assistant {
-  async function generateText(prompt: string, { id, model, signal }: Generation): Promise<AssistantOutcome<string>> {
+export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSettings): Assistant {
+  async function generateText(prompt: string, { id, model, signal }: AttemptContext): Promise<AssistantOutcome<string>> {
     if (!token) {
       return {
         status: "failed",
@@ -134,14 +149,17 @@ export function createExecutorAssistant({ url, token }: ExecutorSettings): Assis
         usage: null,
       };
     }
-    const sent = await post(new URL("/generations", url), token, { id, operation: "generate_text", model, prompt }, signal);
+    const sent = await post(new URL("/generations", url), token, { id, operation: "generate_text", model, prompt }, {
+      signal,
+      deadline: AbortSignal.timeout(deadlineMs),
+    });
     return sent.ok ? outcomeOf(sent.response) : sent.outcome;
   }
 
   return {
     cli: "claude",
-    async refineProblemStatement({ originalDescription }, generation) {
-      const outcome = await generateText(refinementPrompt(originalDescription), generation);
+    async refineProblemStatement({ originalDescription }, context) {
+      const outcome = await generateText(refinementPrompt(originalDescription), context);
       if (outcome.status !== "completed") return outcome;
       const result = parseStatementProposal(outcome.result);
       if (!result) {

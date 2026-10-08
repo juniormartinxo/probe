@@ -27,21 +27,14 @@ export interface Refinement {
   attempts: Attempt[];
 }
 
-export type RefinementError =
-  | "process_not_found"
-  | "process_not_open"
-  | "problem_statement_confirmed"
-  | "refinement_already_requested";
+// Por que o enunciado de um Processo não aceita mais mudanças.
+export type StatementClosed = "process_not_found" | "process_not_open" | "problem_statement_confirmed";
 
-export type RetryError =
-  | "process_not_found"
-  | "process_not_open"
-  | "problem_statement_confirmed"
-  | "refinement_not_requested"
-  | "attempt_in_progress"
-  | "refinement_completed";
+export type RefinementError = StatementClosed | "refinement_already_requested";
 
-export type ConfirmationError = "process_not_found" | "process_not_open" | "problem_statement_confirmed" | "unknown_proposal";
+export type NewAttemptError = StatementClosed | "refinement_not_requested" | "attempt_in_progress" | "refinement_completed";
+
+export type ConfirmationError = StatementClosed | "unknown_proposal";
 
 // O texto que o usuário confirmou e, se partiu de uma, a proposta da IA que ele viu.
 export interface StatementConfirmation {
@@ -52,7 +45,7 @@ export interface StatementConfirmation {
 export interface ProblemStatements {
   requestRefinement(processId: string): Promise<{ ok: true; refinement: Refinement } | { ok: false; error: RefinementError }>;
   // Nova tentativa da mesma solicitação, depois de uma tentativa que não trouxe proposta.
-  retryRefinement(processId: string): Promise<{ ok: true; refinement: Refinement } | { ok: false; error: RetryError }>;
+  newRefinementAttempt(processId: string): Promise<{ ok: true; refinement: Refinement } | { ok: false; error: NewAttemptError }>;
   confirm(
     processId: string,
     confirmation: StatementConfirmation,
@@ -66,10 +59,7 @@ const OPERATION = "refine_problem_statement";
 async function lockOpenProcess(
   trx: Db,
   processId: string,
-): Promise<
-  | { ok: true; originalDescription: string }
-  | { ok: false; error: "process_not_found" | "process_not_open" | "problem_statement_confirmed" }
-> {
+): Promise<{ ok: true; originalDescription: string } | { ok: false; error: StatementClosed }> {
   const process = await trx
     .selectFrom("processes")
     .select(["status", "originalDescription"])
@@ -116,36 +106,31 @@ export function problemStatements(deps: {
   async function startAttempt<E extends string>(
     processId: string,
     prepare: (trx: Db) => Promise<{ ok: true; aiRequestId: string } | { ok: false; error: E }>,
-  ): Promise<
-    { ok: true; refinement: Refinement } | { ok: false; error: E | "process_not_found" | "process_not_open" | "problem_statement_confirmed" }
-  > {
+  ): Promise<{ ok: true; refinement: Refinement } | { ok: false; error: E | StatementClosed }> {
     const opened = await db.transaction().execute(async (trx) => {
       const process = await lockOpenProcess(trx, processId);
       if (!process.ok) return process;
       const prepared = await prepare(trx);
       if (!prepared.ok) return prepared;
-      const attemptId = await runner.openAttempt(trx, prepared.aiRequestId, { cli: assistant.cli, model: aiModel });
-      return { ok: true, attemptId, originalDescription: process.originalDescription } as const;
+      const attempt = await runner.openAttempt(trx, prepared.aiRequestId, { cli: assistant.cli, model: aiModel });
+      return { ok: true, attempt, originalDescription: process.originalDescription } as const;
     });
     if (!opened.ok) return opened;
-    // Lido antes de disparar a geração: a resposta mostra a tentativa recém-aberta.
-    const refinement = (await findRefinement(processId, null))!;
-    runner.run(opened.attemptId, aiModel, (generation) =>
-      assistant.refineProblemStatement({ originalDescription: opened.originalDescription }, generation),
-    );
-    return { ok: true, refinement };
+    try {
+      // Lido antes de disparar a geração: a resposta mostra a tentativa recém-aberta.
+      return { ok: true, refinement: (await findRefinement(processId, null))! };
+    } finally {
+      // Aberta, a tentativa sempre segue, mesmo que a leitura falhe: nunca fica "running" à toa.
+      runner.run(opened.attempt, (context) =>
+        assistant.refineProblemStatement({ originalDescription: opened.originalDescription }, context),
+      );
+    }
   }
 
   return {
     async requestRefinement(processId) {
       return startAttempt(processId, async (trx) => {
-        const existing = await trx
-          .selectFrom("aiRequests")
-          .select("id")
-          .where("processId", "=", processId)
-          .where("operation", "=", OPERATION)
-          .executeTakeFirst();
-        if (existing) return { ok: false, error: "refinement_already_requested" } as const;
+        if (await findAiRequest(trx, processId, OPERATION)) return { ok: false, error: "refinement_already_requested" } as const;
         const request = await trx
           .insertInto("aiRequests")
           .values({ processId, operation: OPERATION })
@@ -155,7 +140,7 @@ export function problemStatements(deps: {
       });
     },
 
-    async retryRefinement(processId) {
+    async newRefinementAttempt(processId) {
       return startAttempt(processId, async (trx) => {
         const request = await findAiRequest<StatementProposal>(trx, processId, OPERATION);
         if (!request) return { ok: false, error: "refinement_not_requested" } as const;
@@ -165,7 +150,9 @@ export function problemStatements(deps: {
       });
     },
 
-    async confirm(processId, { statement, proposalId }) {
+    async confirm(processId, confirmation) {
+      const statement = confirmation.statement.trim();
+      const { proposalId } = confirmation;
       return db.transaction().execute(async (trx) => {
         const process = await lockOpenProcess(trx, processId);
         if (!process.ok) return process;

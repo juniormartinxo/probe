@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Generation } from "../src/modules/ai/assistant.ts";
+import type { AttemptContext } from "../src/modules/ai/assistant.ts";
 import { createExecutorAssistant } from "../src/modules/ai/executor-assistant.ts";
 import { waitFor } from "./support/test-app.ts";
 
@@ -29,7 +29,7 @@ async function startExecutor(handler: Handler): Promise<{ url: string; requests:
   return { url, requests };
 }
 
-function generation(overrides: Partial<Generation> = {}): Generation {
+function attemptContext(overrides: Partial<AttemptContext> = {}): AttemptContext {
   return { id: "tentativa-1", model: "sonnet", signal: new AbortController().signal, ...overrides };
 }
 
@@ -39,10 +39,10 @@ const proposalJson = JSON.stringify({
   missingInformation: ["Frequência dos deploys."],
 });
 
-function refine(url: string, overrides: Partial<Generation> = {}, token = TOKEN) {
-  return createExecutorAssistant({ url, token }).refineProblemStatement(
+function refine(url: string, overrides: Partial<AttemptContext> = {}, token = TOKEN, deadlineMs = 10_000) {
+  return createExecutorAssistant({ url, token, deadlineMs }).refineProblemStatement(
     { originalDescription: description },
-    generation(overrides),
+    attemptContext(overrides),
   );
 }
 
@@ -194,6 +194,34 @@ describe("executor failure", () => {
     const outcome = await refine(url);
 
     expect(outcome).toMatchObject({ status: "interrupted", message: expect.any(String) });
+  });
+});
+
+describe("executor failure mid-answer", () => {
+  it("is reported as interrupted when the connection drops in the middle of the answer", async () => {
+    const { url } = await startExecutor((_request, reply) => {
+      reply.raw.writeHead(200, { "content-type": "application/json", "content-length": "500" });
+      reply.raw.write('{"id":"tentativa-1","status":"completed","output":"{\\"statement\\":');
+      setTimeout(() => reply.raw.destroy(), 20);
+      return reply;
+    });
+
+    const outcome = await refine(url);
+
+    expect(outcome).toMatchObject({ status: "interrupted", message: expect.any(String) });
+  });
+
+  it("is reported as interrupted when the executor does not answer within the backend's deadline", async () => {
+    let connectionClosed = false;
+    const { url } = await startExecutor((request) => {
+      request.raw.socket.on("close", () => (connectionClosed = true));
+      return new Promise(() => {});
+    });
+
+    const outcome = await refine(url, {}, TOKEN, 200);
+
+    expect(outcome).toEqual({ status: "interrupted", message: expect.stringContaining("prazo") });
+    await waitFor(() => connectionClosed);
   });
 });
 

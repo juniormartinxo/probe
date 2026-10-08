@@ -1,7 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
-import type { Selectable } from "kysely";
+import { sql, type Selectable } from "kysely";
 import type { AiRequestAttemptTable, Db } from "../../db/database.ts";
-import type { AssistantOutcome, Cli, FailureReason, Generation, Usage } from "./assistant.ts";
+import type { AssistantOutcome, Cli, FailureReason, AttemptContext, Usage } from "./assistant.ts";
 
 // Operações que o backend pede à IA. Cada uma tem a sua solicitação; uma nova chance depois de
 // uma falha é uma nova tentativa da mesma solicitação.
@@ -121,6 +121,15 @@ export interface AttemptSettings {
   model: string;
 }
 
+export interface OpenedAttempt {
+  id: string;
+  model: string;
+}
+
+// Relógio do banco no momento do comando (e não no início da transação), para que os instantes
+// de Tentativas e Confirmações sejam comparáveis entre si.
+const databaseClock = sql<Date>`clock_timestamp()`;
+
 // Executa tentativas em segundo plano e grava o desfecho de cada uma. Uma tentativa só é
 // encerrada uma vez: um desfecho que chega depois (por exemplo, de uma tentativa já marcada como
 // interrompida) é descartado.
@@ -134,7 +143,7 @@ export class AiRequestRunner {
 
   // Abre a tentativa seguinte da solicitação, já em andamento. Chamar dentro da transação que
   // verificou que a solicitação aceita uma nova tentativa.
-  async openAttempt(trx: Db, aiRequestId: string, settings: AttemptSettings): Promise<string> {
+  async openAttempt(trx: Db, aiRequestId: string, settings: AttemptSettings): Promise<OpenedAttempt> {
     const previous = await trx
       .selectFrom("aiRequestAttempts")
       .select((eb) => eb.fn.max("number").as("number"))
@@ -154,11 +163,11 @@ export class AiRequestRunner {
       })
       .returning("id")
       .executeTakeFirstOrThrow();
-    return id;
+    return { id, model: settings.model };
   }
 
   // Dispara a geração de uma tentativa aberta, depois de a transação que a abriu ser gravada.
-  run<T>(attemptId: string, model: string, generate: (generation: Generation) => Promise<AssistantOutcome<T>>): void {
+  run<T>({ id: attemptId, model }: OpenedAttempt, generate: (context: AttemptContext) => Promise<AssistantOutcome<T>>): void {
     const cancellation = new AbortController();
     const done = generate({ id: attemptId, model, signal: cancellation.signal })
       .catch((error: unknown): AssistantOutcome<T> => {
@@ -175,18 +184,19 @@ export class AiRequestRunner {
   private async finish(attemptId: string, outcome: AssistantOutcome<unknown>): Promise<void> {
     await this.db
       .updateTable("aiRequestAttempts")
-      .set({ ...outcomeColumns(outcome), finishedAt: new Date() })
+      .set({ ...outcomeColumns(outcome), finishedAt: databaseClock })
       .where("id", "=", attemptId)
       .where("status", "=", "running")
       .execute();
   }
 
   // Tentativas que ficaram "running" sem ninguém para recebê-las (o backend caiu) passam a
-  // interrompidas. Nada é reenviado: uma nova tentativa depende do usuário.
+  // interrompidas. Nada é reenviado: uma nova tentativa depende do usuário. Supõe um único
+  // backend por banco, como no uso local.
   async interruptAbandoned(): Promise<void> {
     await this.db
       .updateTable("aiRequestAttempts")
-      .set({ status: "interrupted", message: ABANDONED_MESSAGE, finishedAt: new Date() })
+      .set({ status: "interrupted", message: ABANDONED_MESSAGE, finishedAt: databaseClock })
       .where("status", "=", "running")
       .execute();
   }

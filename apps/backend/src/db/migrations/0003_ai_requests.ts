@@ -41,7 +41,8 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("cache_creation_input_tokens", "integer")
     .addColumn("cache_read_input_tokens", "integer")
     .addColumn("cost_usd", "double precision")
-    .addColumn("started_at", "timestamptz", (col) => col.notNull().defaultTo(sql`now()`))
+    // clock_timestamp(): o instante do comando, comparável com o das Confirmações.
+    .addColumn("started_at", "timestamptz", (col) => col.notNull().defaultTo(sql`clock_timestamp()`))
     .addColumn("finished_at", "timestamptz")
     .addUniqueConstraint("ai_request_attempts_number", ["ai_request_id", "number"])
     .execute();

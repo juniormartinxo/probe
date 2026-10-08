@@ -29,7 +29,7 @@ export type AssistantOutcome<T> =
   | { status: "canceled" }
   | { status: "interrupted"; message: string };
 
-export interface Generation {
+export interface AttemptContext {
   // Identifica a tentativa no executor; permite cancelá-la.
   id: string;
   model: string;
@@ -47,6 +47,6 @@ export interface Assistant {
   readonly cli: Cli;
   refineProblemStatement(
     input: { originalDescription: string },
-    generation: Generation,
+    context: AttemptContext,
   ): Promise<AssistantOutcome<StatementProposal>>;
 }
