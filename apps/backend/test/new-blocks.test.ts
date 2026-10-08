@@ -180,4 +180,25 @@ describe("New Block", () => {
     expect(response.json()).toEqual({ error: "synthesis_outdated" });
     expect((await api.blockOf(id, second.id)).synthesisRequests[0].proposal.outdated).toBe(true);
   });
+
+  it("does not offer for reformulation an ambiguous answer whose Points are all covered or inapplicable", async () => {
+    assistant.synthesis.willRespond(
+      completed({
+        ...defaultSynthesis,
+        ambiguousAnswers: [
+          { question: "1.1", reason: "Não disse do que a demora é sintoma." },
+          { question: "1.3", reason: ambiguity },
+        ],
+      }),
+    );
+    const { id, block } = await api.processWithAnsweredBlock();
+    const proposal = await api.synthesize(id, block.id);
+    // 1.1 serve só a real_problem, que fica coberto; 1.3 serve a urgency, que segue aberto.
+    await api.confirmSynthesis(id, block.id, { proposalId: proposal.id, synthesis: proposal.synthesis, coveredStagePoints: ["real_problem"] });
+    assistant.block.willRespond(completed(secondBlock));
+
+    await api.generateBlock(id);
+
+    expect(assistant.block.attempts[1]!.input.ambiguousAnswers).toEqual([{ question: "1.3", reason: ambiguity }]);
+  });
 });

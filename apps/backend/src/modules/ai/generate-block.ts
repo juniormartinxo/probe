@@ -1,6 +1,6 @@
 import type { AnswerType, BlockInput, GeneratedBlock, GeneratedQuestion } from "./assistant.ts";
 import { isFilledText, isTextList, parseJsonObject } from "./json-output.ts";
-import { askedQuestionsText, stageNames, stagePointsText } from "./prompt-parts.ts";
+import { askedQuestionsText, questionRef, stageNames, stagePointsText } from "./prompt-parts.ts";
 
 // Prompt versionado com o código. Tudo o que veio do usuário vai delimitado e só como dado; a CLI
 // roda sem ferramentas, então ela não tem como agir sobre o que o texto pedir.
@@ -19,7 +19,7 @@ ${points}
 
 Formule um Bloco de Perguntas, em português, adaptadas ao problema desta pessoa, para cobrir esses Pontos. Pergunte o que ela sabe sobre o próprio caso; não proponha soluções. Use poucas Perguntas, cada uma sobre uma coisa só; uma Pergunta pode servir a mais de um Ponto.
 
-Não pergunte de novo o que ela já respondeu nem o que ela registrou que não sabe: as Perguntas já feitas, com as respostas, e as sínteses que ela confirmou vêm abaixo. Se uma resposta ficou ambígua, você pode reformular a Pergunta: a reformulação é uma Pergunta nova, que indica em reformulates a referência entre colchetes da Pergunta original (como "1.2").
+Não pergunte de novo o que ela já respondeu nem o que ela registrou que não sabe: as Perguntas já feitas, com as respostas, e as sínteses que ela confirmou vêm abaixo. Se uma resposta ficou ambígua, você pode reformular a Pergunta: a reformulação é uma Pergunta nova, que indica em reformulates a referência da Pergunta original, sem colchetes (como "1.2"), e serve só a Pontos da lista acima, ainda em aberto.
 
 Para cada Pergunta, devolva:
 - wording: a pergunta, como será feita à pessoa.
@@ -76,7 +76,9 @@ function parseQuestion(value: unknown, openPointKeys: Set<string>, askedRefs: Se
   if (!isTextList(stagePoints) || stagePoints.length === 0 || stagePoints.some((key) => !openPointKeys.has(key))) {
     return undefined;
   }
-  if (reformulates !== null && (typeof reformulates !== "string" || !askedRefs.has(reformulates))) return undefined;
+  if (reformulates !== null && typeof reformulates !== "string") return undefined;
+  const reformulated = reformulates === null ? null : questionRef(reformulates);
+  if (reformulated !== null && !askedRefs.has(reformulated)) return undefined;
   if (!answerTypes.some((type) => type === answerType)) return undefined;
   if (!isTextList(choices)) return undefined;
   const trimmed = choices.map((choice) => choice.trim());
@@ -88,7 +90,7 @@ function parseQuestion(value: unknown, openPointKeys: Set<string>, askedRefs: Se
     contextRelation: contextRelation.trim(),
     rationale: rationale?.trim() || null,
     stagePoints: [...new Set(stagePoints)],
-    reformulates,
+    reformulates: reformulated,
     answerType: answerType as AnswerType,
     choices: trimmed,
   };

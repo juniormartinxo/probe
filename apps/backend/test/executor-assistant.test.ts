@@ -286,6 +286,14 @@ describe("Block generation after earlier Blocks, through the executor", () => {
     expect(outcome).toMatchObject({ status: "completed", result: { questions: [{ reformulates: "1.1" }] } });
   });
 
+  it("accepts the reference to the reformulated question written between brackets, as it appears in the prompt", async () => {
+    const { url } = await startExecutor(answering(reformulation("[1.1]")));
+
+    const outcome = await generateLater(url);
+
+    expect(outcome).toMatchObject({ status: "completed", result: { questions: [{ reformulates: "1.1" }] } });
+  });
+
   it.each([
     ["a question that was never asked", "3.1"],
     ["a reference that is not text", 11],
@@ -345,6 +353,24 @@ describe("Block synthesis through the executor", () => {
   });
 
   const withChanges = (changes: Record<string, unknown>) => JSON.stringify({ ...synthesisJson, ...changes });
+
+  it("accepts an ambiguous answer's reference between brackets, and keeps each question once", async () => {
+    const { url } = await startExecutor(
+      answering(
+        withChanges({
+          ambiguousAnswers: [
+            { question: "[2.2]", reason: "Não diz quando a diretoria cobrou." },
+            { question: "2.2", reason: "Repetida." },
+          ],
+        }),
+      ),
+    );
+
+    expect(await synthesize(url)).toMatchObject({
+      status: "completed",
+      result: { ambiguousAnswers: [{ question: "2.2", reason: "Não diz quando a diretoria cobrou." }] },
+    });
+  });
   const [consequence, urgency] = synthesisJson.coverage;
 
   it.each([

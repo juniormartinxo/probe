@@ -129,14 +129,21 @@ async function lockOpenProcess(
     .orderBy("blocks.number")
     .execute();
   const confirmedSyntheses = syntheses.filter((row) => row.synthesis !== null);
-  // Uma resposta ambígua que já ganhou reformulação não volta a ser oferecida para reformular.
+  const openStagePoints = openPoints(await stagePointStates(trx, process, stage));
+  const open = new Set(openStagePoints.map((point) => point.key));
+  // Uma resposta ambígua só é oferecida para reformular enquanto não ganhou reformulação e ainda
+  // serve a algum Ponto aberto: a reformulação também precisa servir a um Ponto aberto.
   const reformulated = new Set(questions.flatMap((question) => question.reformulatesQuestionId ?? []));
   const ambiguousAnswers: AmbiguousAnswer[] = confirmedSyntheses
     // O resultado foi validado como GeneratedSynthesis antes de a tentativa ser gravada.
     .flatMap((row) => (row.result as GeneratedSynthesis).ambiguousAnswers)
     .filter((item) => {
       const question = questions.find((asked) => asked.ref === item.question);
-      return question !== undefined && !reformulated.has(question.id);
+      return (
+        question !== undefined &&
+        !reformulated.has(question.id) &&
+        question.stagePoints.some((key) => open.has(key))
+      );
     });
   return {
     ok: true,
@@ -145,7 +152,7 @@ async function lockOpenProcess(
         stage,
         originalDescription: process.originalDescription,
         problemStatement: confirmed.statement,
-        openStagePoints: openPoints(await stagePointStates(trx, process, stage)),
+        openStagePoints,
         askedQuestions: questions.map(askedQuestionOf),
         confirmedSyntheses: confirmedSyntheses.map((row) => row.synthesis!),
         ambiguousAnswers,

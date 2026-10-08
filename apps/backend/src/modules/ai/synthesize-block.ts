@@ -1,6 +1,6 @@
 import type { AmbiguousAnswer, CoverageSuggestion, GeneratedSynthesis, SynthesisInput } from "./assistant.ts";
 import { isFilledText, parseJsonObject } from "./json-output.ts";
-import { askedQuestionsText, stageNames, stagePointsText } from "./prompt-parts.ts";
+import { askedQuestionsText, questionRef, stageNames, stagePointsText } from "./prompt-parts.ts";
 
 // Prompt versionado com o código. Tudo o que veio do usuário vai delimitado e só como dado; a CLI
 // roda sem ferramentas, então ela não tem como agir sobre o que o texto pedir.
@@ -11,7 +11,7 @@ export function synthesisPrompt(input: SynthesisInput): string {
 Ela acabou de responder o Bloco ${input.blockNumber} de Perguntas. Devolva:
 - synthesis: uma síntese, em português, do que as respostas do Bloco ${input.blockNumber} dizem sobre o problema, fiel ao que ela respondeu. Não invente fatos nem proponha soluções. A pessoa vai confirmar ou corrigir a síntese.
 - coverage: para cada Ponto abaixo, ainda em aberto, se as respostas (deste Bloco e dos anteriores) já o cobrem. Um item por Ponto, com stagePoint (a chave), covered (true ou false) e reason (por quê, em uma frase). Uma resposta ambígua ou desconhecida não cobre o Ponto.
-- ambiguousAnswers: respostas do Bloco ${input.blockNumber} que podem ser entendidas de mais de um jeito, com question (a referência entre colchetes, como "1.2") e reason (o que ficou ambíguo). Pode ser vazia.
+- ambiguousAnswers: respostas do Bloco ${input.blockNumber} que podem ser entendidas de mais de um jeito, com question (a referência da Pergunta, sem colchetes, como "1.2") e reason (o que ficou ambíguo). Pode ser vazia.
 
 Pontos ainda em aberto (chave, nome e o que ele pede):
 ${points}
@@ -49,7 +49,7 @@ function parseAmbiguous(value: unknown): AmbiguousAnswer | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const { question, reason } = value as Record<string, unknown>;
   if (!isFilledText(question) || !isFilledText(reason)) return undefined;
-  return { question: question.trim(), reason: reason.trim() };
+  return { question: questionRef(question), reason: reason.trim() };
 }
 
 // O que, numa síntese já no formato, contradiz o que a IA recebeu: a cobertura precisa trazer um
@@ -79,10 +79,10 @@ export function parseGeneratedSynthesis(output: string, input: SynthesisInput): 
   const items = coverage.map(parseCoverage);
   const ambiguous = ambiguousAnswers.map(parseAmbiguous);
   if (items.some((item) => item === undefined) || ambiguous.some((item) => item === undefined)) return undefined;
-  const result = {
-    synthesis: synthesis.trim(),
-    coverage: items as CoverageSuggestion[],
-    ambiguousAnswers: ambiguous as AmbiguousAnswer[],
-  };
+  // Uma Pergunta apontada mais de uma vez fica com o primeiro motivo.
+  const unique = (ambiguous as AmbiguousAnswer[]).filter(
+    (item, index, all) => all.findIndex((other) => other.question === item.question) === index,
+  );
+  const result = { synthesis: synthesis.trim(), coverage: items as CoverageSuggestion[], ambiguousAnswers: unique };
   return synthesisProblem(input, result) ? undefined : result;
 }
