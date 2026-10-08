@@ -1,7 +1,16 @@
 import type { FastifyBaseLogger } from "fastify";
 import { sql, type Selectable } from "kysely";
 import type { AiRequestAttemptTable, Db } from "../../db/database.ts";
-import type { AssistantOutcome, Cli, CloakProfile, FailureReason, AttemptContext, Usage } from "./assistant.ts";
+import {
+  cloakProfileName,
+  cloakProfileNamed,
+  type AssistantOutcome,
+  type Cli,
+  type CloakProfile,
+  type FailureReason,
+  type AttemptContext,
+  type Usage,
+} from "./assistant.ts";
 
 // Operações que o backend pede à IA. Cada uma tem a sua solicitação; uma nova chance depois de
 // uma falha é uma nova tentativa da mesma solicitação.
@@ -47,10 +56,9 @@ function usageOf(row: AttemptRow): Usage | null {
   return Object.values(usage).every((value) => value === null) ? null : usage;
 }
 
-function cloakProfileOf({ cloakProfileSource, cloakProfile }: AttemptRow): CloakProfile | null {
-  if (cloakProfileSource === "explicit" && cloakProfile !== null) return { source: "explicit", name: cloakProfile };
-  return cloakProfileSource === "directory" ? { source: "directory" } : null;
-}
+// Tentativas anteriores ao Cloak não têm perfil.
+const cloakProfileOf = (row: AttemptRow): CloakProfile | null =>
+  row.cloakProfileSource === null ? null : cloakProfileNamed(row.cloakProfileName);
 
 function attemptOf(row: AttemptRow): Attempt {
   return {
@@ -197,7 +205,7 @@ export class AiRequestRunner {
         cli: settings.cli,
         model: settings.model,
         cloakProfileSource: settings.cloakProfile.source,
-        cloakProfile: settings.cloakProfile.source === "explicit" ? settings.cloakProfile.name : null,
+        cloakProfileName: cloakProfileName(settings.cloakProfile),
         result: null,
         failureReason: null,
         message: null,

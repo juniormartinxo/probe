@@ -173,7 +173,7 @@ describe("failure", () => {
 
 describe("Cloak", () => {
   it("runs claude with the profile Cloak binds to the executor's work directory", async () => {
-    const workDir = createWorkDir({ profile: "trabalho" });
+    const workDir = createWorkDir("trabalho");
     const claude = startExecutor({ stdout: claudeResult("ok") }, { workDir });
 
     const response = await generate(generationRequest({ cloakProfile: null }));
@@ -191,7 +191,7 @@ describe("Cloak", () => {
   });
 
   it("runs claude with the profile chosen explicitly, over the work directory's", async () => {
-    const workDir = createWorkDir({ profile: "trabalho" });
+    const workDir = createWorkDir("trabalho");
     const claude = startExecutor({ stdout: claudeResult("ok") }, { workDir });
 
     const response = await generate(generationRequest({ cloakProfile: "pessoal" }));
@@ -223,6 +223,25 @@ describe("Cloak", () => {
     expect(claude.invocation()).toBeUndefined();
     // Nem chega ao `cloak exec`, que perguntaria pelo stdin (o prompt) se deve criar o perfil.
     expect(claude.cloak.invocations().map(({ argv }) => argv[0])).not.toContain("exec");
+  });
+
+  it.each([
+    ["the directory's profile", null],
+    ["an explicit profile", "pessoal"],
+  ])("reports Cloak's own error as a Cloak failure, apart from claude's, with %s", async (_case, cloakProfile) => {
+    const claude = installFakeClaude({ stdout: claudeResult("ok") });
+    const cloak = installFakeCloak({ brokenConfig: true });
+    executor = createTestExecutor({ pathDirs: [claude.dir, cloak.dir] });
+
+    const response = await generate(generationRequest({ cloakProfile }));
+
+    expect(response.json()).toEqual({
+      id: "solicitacao-1",
+      status: "failed",
+      error: { reason: "cloak_error", exitCode: 1, message: "failed parsing ~/.config/cloak/config.toml" },
+      usage: null,
+    });
+    expect(claude.invocation()).toBeUndefined();
   });
 
   it("is reported as unavailable when cloak is not installed", async () => {

@@ -1,5 +1,12 @@
 import http from "node:http";
-import type { Assistant, AssistantOutcome, FailureReason, AttemptContext, Usage } from "./assistant.ts";
+import {
+  cloakProfileName,
+  type Assistant,
+  type AssistantOutcome,
+  type AttemptContext,
+  type FailureReason,
+  type Usage,
+} from "./assistant.ts";
 import { blockPrompt, parseGeneratedBlock } from "./generate-block.ts";
 import { parseStatementProposal, refinementPrompt } from "./refine-problem-statement.ts";
 import { parseGeneratedSynthesis, synthesisPrompt } from "./synthesize-block.ts";
@@ -99,7 +106,13 @@ function usageFrom(value: unknown): Usage | null {
   };
 }
 
-const relayedReasons = ["cloak_unavailable", "cloak_profile_not_found", "cli_unavailable", "invalid_output"] as const;
+const relayedReasons = [
+  "cloak_unavailable",
+  "cloak_profile_not_found",
+  "cloak_error",
+  "cli_unavailable",
+  "invalid_output",
+] as const;
 
 const isRelayedReason = (reason: unknown): reason is (typeof relayedReasons)[number] =>
   relayedReasons.some((relayed) => relayed === reason);
@@ -160,9 +173,7 @@ export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSett
         usage: null,
       };
     }
-    // Para o executor, o perfil do diretório é a ausência de um nome.
-    const profile = cloakProfile.source === "explicit" ? cloakProfile.name : null;
-    const body = { id, operation: "generate_text", model, cloakProfile: profile, prompt };
+    const body = { id, operation: "generate_text", model, cloakProfile: cloakProfileName(cloakProfile), prompt };
     const sent = await post(new URL("/generations", url), token, body, {
       signal,
       deadline: AbortSignal.timeout(deadlineMs),

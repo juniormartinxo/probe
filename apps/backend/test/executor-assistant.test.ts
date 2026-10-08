@@ -418,6 +418,7 @@ describe("CLI failure reported by the executor", () => {
     ["claude is not logged in in the Cloak profile", failedWith("cli_error", "Invalid API key · Please run /login"), "cloak_unauthenticated"],
     ["cloak is not installed", failedWith("cloak_unavailable", "cloak não foi encontrado no PATH do executor."), "cloak_unavailable"],
     ["the Cloak profile does not exist", failedWith("cloak_profile_not_found", 'O perfil "x" não foi encontrado no Cloak.'), "cloak_profile_not_found"],
+    ["Cloak fails on its own", failedWith("cloak_error", "failed parsing ~/.config/cloak/config.toml"), "cloak_error"],
     ["claude fails otherwise", failedWith("cli_error", "claude terminou com código 1."), "cli_error"],
     ["claude's output is unrecognizable", failedWith("invalid_output", "claude não devolveu um resultado."), "invalid_output"],
   ])("is reported when %s", async (_case, handler, reason) => {

@@ -24,6 +24,8 @@ export interface Usage {
 export type FailureReason =
   | "cloak_unavailable"
   | "cloak_profile_not_found"
+  // Qualquer outro erro do próprio Cloak, como a configuração dele ilegível.
+  | "cloak_error"
   | "cli_unavailable"
   | "cli_error"
   | "invalid_output";
@@ -87,6 +89,18 @@ function parseResult(stdout: string): Record<string, unknown> | undefined {
   }
 }
 
+const withoutColors = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
+
+// Os erros do próprio Cloak saem no formato do color-eyre: "Error:" e a cadeia numerada de causas.
+const isCloakReport = (stderr: string) => /^Error:\s*\n\s*0: /.test(withoutColors(stderr));
+
+// Só as mensagens de erro do Cloak, sem cor, sem o local no código-fonte nem o aviso de backtrace.
+function cloakErrors(stderr: string): string {
+  const plain = withoutColors(stderr);
+  const errors = [...plain.matchAll(/^\s*\d+: (.+)$/gm)].map(([, message]) => message!.trim());
+  return errors.length > 0 ? errors.join("\n") : plain.trim();
+}
+
 // Só uma saída JSON de resultado, sem erro e com código 0, conta como conclusão.
 function outcomeOf(
   exitCode: number | null,
@@ -103,9 +117,10 @@ function outcomeOf(
   });
   const resultText = typeof result?.result === "string" ? result.result : undefined;
 
-  // O Cloak não achou o claude e nem chegou a chamá-lo.
-  if (!result && exitCode !== 0 && /'claude' not found in PATH/.test(stderr)) {
-    return failed("cli_unavailable", cloakErrors(stderr));
+  // O Cloak falhou antes de chamar o claude; se foi por não achá-lo, o claude não está instalado.
+  if (!result && exitCode !== 0 && isCloakReport(stderr)) {
+    const message = cloakErrors(stderr);
+    return failed(/'claude' not found in PATH/.test(message) ? "cli_unavailable" : "cloak_error", message);
   }
   if (exitCode !== 0 || result?.is_error === true) {
     const ending = signal ? `claude foi encerrado pelo sinal ${signal}.` : `claude terminou com código ${exitCode}.`;
@@ -164,18 +179,18 @@ function runProcess(
   });
 }
 
-// Só as mensagens de erro do Cloak, sem cor, sem o local no código-fonte nem o aviso de backtrace.
-function cloakErrors(stderr: string): string {
-  const plain = stderr.replace(/\x1b\[[0-9;]*m/g, "");
-  const errors = [...plain.matchAll(/^\s*\d+: (.+)$/gm)].map(([, message]) => message!.trim());
-  return errors.length > 0 ? errors.join("\n") : plain.trim();
-}
 
 const cloakUnavailable: GenerationOutcome = {
   status: "failed",
   error: { reason: "cloak_unavailable", exitCode: null, message: "cloak não foi encontrado no PATH do executor." },
   usage: null,
 };
+
+const cloakFailed = (message: string, exitCode: number | null = null): GenerationOutcome => ({
+  status: "failed",
+  error: { reason: "cloak_error", exitCode, message },
+  usage: null,
+});
 
 export async function runClaude({
   model,
@@ -197,14 +212,16 @@ export async function runClaude({
     const check = await runProcess("cloak", ["profile", "account", cloakProfile], { ...options, input: "" });
     if (check.status === "stopped") return stopped();
     if (check.status === "not_found") return cloakUnavailable;
-    if (check.status === "spawn_failed" || check.exitCode !== 0) {
-      const detail = check.status === "exited" ? cloakErrors(check.stderr) : check.message;
+    if (check.status === "spawn_failed") return cloakFailed(check.message);
+    if (check.exitCode !== 0) {
+      const detail = cloakErrors(check.stderr);
+      if (!/does not exist/.test(detail)) return cloakFailed(detail, check.exitCode);
       return {
         status: "failed",
         error: {
           reason: "cloak_profile_not_found",
-          exitCode: check.status === "exited" ? check.exitCode : null,
-          message: [`O perfil "${cloakProfile}" não foi encontrado no Cloak.`, detail].filter(Boolean).join("\n"),
+          exitCode: check.exitCode,
+          message: `O perfil "${cloakProfile}" não foi encontrado no Cloak.\n${detail}`,
         },
         usage: null,
       };
@@ -218,7 +235,7 @@ export async function runClaude({
     case "not_found":
       return cloakUnavailable;
     case "spawn_failed":
-      return { status: "failed", error: { reason: "cli_error", exitCode: null, message: run.message }, usage: null };
+      return cloakFailed(run.message);
     case "exited":
       return outcomeOf(run.exitCode, run.signal, run.stdout, run.stderr);
   }

@@ -271,6 +271,7 @@ describe("CLI failure", () => {
     ["not authenticated in the Cloak profile", "cloak_unauthenticated", "Invalid API key · Please run /login"],
     ["out of reach, without Cloak", "cloak_unavailable", "cloak não foi encontrado no PATH do executor."],
     ["asked for a Cloak profile that does not exist", "cloak_profile_not_found", 'O perfil "x" não foi encontrado no Cloak.'],
+    ["stopped by an error of Cloak itself", "cloak_error", "failed parsing ~/.config/cloak/config.toml"],
   ] as const)("when the CLI is %s, is reported and leaves the Process as it was", async (_case, reason, message) => {
     assistant.refinement.willRespond({ status: "failed", reason, message, usage: null });
     const id = await createProcess();

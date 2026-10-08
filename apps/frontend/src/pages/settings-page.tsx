@@ -1,6 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router";
-import { ApiError, getSettings, saveSettings, testConnection, type ConnectionTest, type Settings } from "@/api";
+import {
+  ApiError,
+  getSettings,
+  saveSettings,
+  testConnection,
+  type CloakProfile,
+  type ConnectionTest,
+  type Settings,
+} from "@/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -123,12 +131,9 @@ function ModelCard({ saved: savedSettings, onSaved }: SettingsCardProps) {
   );
 }
 
-// Perfil do diretório, ou o nome de um perfil escolhido.
-type ProfileChoice = "directory" | "explicit";
-
 function CloakProfileCard({ saved: savedSettings, onSaved }: SettingsCardProps) {
   const savedProfile = savedSettings.cloakProfile;
-  const [choice, setChoice] = useState<ProfileChoice>(savedProfile.source);
+  const [choice, setChoice] = useState<CloakProfile["source"]>(savedProfile.source);
   const [name, setName] = useState(savedProfile.source === "explicit" ? savedProfile.name : "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -173,7 +178,7 @@ function CloakProfileCard({ saved: savedSettings, onSaved }: SettingsCardProps) 
           <RadioGroup
             value={choice}
             onValueChange={(value) => {
-              setChoice(value as ProfileChoice);
+              setChoice(value as CloakProfile["source"]);
               setSaved(false);
             }}
           >

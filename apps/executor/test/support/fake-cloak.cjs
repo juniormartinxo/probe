@@ -4,7 +4,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { profiles, defaultProfile } = JSON.parse(fs.readFileSync(path.join(__dirname, "cloak.json"), "utf8"));
+const { profiles, defaultProfile, brokenConfig } = JSON.parse(fs.readFileSync(path.join(__dirname, "cloak.json"), "utf8"));
 const args = process.argv.slice(2);
 
 // Como o Cloak: o `.cloak` mais próximo, subindo a partir do diretório atual; sem ele, o perfil padrão.
@@ -31,6 +31,9 @@ function fail(message) {
   );
   process.exit(1);
 }
+
+// Como o Cloak real, a configuração é lida antes de qualquer comando.
+if (brokenConfig) fail("failed parsing ~/.config/cloak/config.toml");
 
 if (args[0] === "profile" && args[1] === "account") {
   record(args[2]);

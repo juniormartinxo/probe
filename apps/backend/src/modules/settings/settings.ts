@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "../../db/database.ts";
-import type { Attempt, AttemptStatus } from "../ai/ai-requests.ts";
-import type { Assistant, CloakProfile } from "../ai/assistant.ts";
+import type { Attempt, AttemptSettings, AttemptStatus } from "../ai/ai-requests.ts";
+import { cloakProfileName, cloakProfileNamed, type Assistant, type CloakProfile } from "../ai/assistant.ts";
 
 // Configurações não sensíveis, guardadas no banco. Segredos ficam no ambiente do backend e nunca
 // fazem parte delas.
@@ -23,6 +23,8 @@ export interface ConnectionTest extends Pick<Attempt, "cli" | "model" | "failure
 export interface SettingsModule {
   // Dentro de uma transação, passe-a: a leitura fica nela.
   find(trx?: Db): Promise<Settings>;
+  // CLI, modelo e perfil do Cloak de uma tentativa que abre agora; as já abertas guardam os seus.
+  forNewAttempt(trx: Db): Promise<AttemptSettings>;
   save(settings: { claudeModel: unknown; cloakProfile: unknown }): Promise<
     { ok: true; settings: Settings } | { ok: false; error: SettingsError }
   >;
@@ -52,34 +54,41 @@ function cloakProfileFrom(value: unknown): CloakProfile | undefined {
   return { source: "explicit", name: value.name };
 }
 
-// No banco, o perfil do diretório é a ausência de um nome.
-const cloakProfileOf = (name: string | null): CloakProfile =>
-  name === null ? { source: "directory" } : { source: "explicit", name };
-
 export function settings(deps: { db: Db; assistant: Assistant; defaultAiModel: string }): SettingsModule {
   const { db, assistant, defaultAiModel } = deps;
 
   async function find(trx: Db = db): Promise<Settings> {
-    const row = await trx.selectFrom("settings").select(["claudeModel", "cloakProfile"]).executeTakeFirst();
-    return { claudeModel: row?.claudeModel ?? defaultAiModel, cloakProfile: cloakProfileOf(row?.cloakProfile ?? null) };
+    const row = await trx.selectFrom("settings").select(["claudeModel", "cloakProfileName"]).executeTakeFirst();
+    return {
+      claudeModel: row?.claudeModel ?? defaultAiModel,
+      cloakProfile: cloakProfileNamed(row?.cloakProfileName ?? null),
+    };
   }
 
   return {
     find,
+
+    async forNewAttempt(trx) {
+      const { claudeModel, cloakProfile } = await find(trx);
+      return { cli: assistant.cli, model: claudeModel, cloakProfile };
+    },
 
     async save(requested) {
       const { claudeModel } = requested;
       if (!isModel(claudeModel)) return { ok: false, error: "invalid_model" };
       const profile = cloakProfileFrom(requested.cloakProfile);
       if (!profile) return { ok: false, error: "invalid_cloak_profile" };
-      const cloakProfile = profile.source === "explicit" ? profile.name : null;
+      const name = cloakProfileName(profile);
       const saved = await db
         .insertInto("settings")
-        .values({ claudeModel, cloakProfile })
-        .onConflict((oc) => oc.column("id").doUpdateSet({ claudeModel, cloakProfile, updatedAt: new Date() }))
-        .returning(["claudeModel", "cloakProfile"])
+        .values({ claudeModel, cloakProfileName: name })
+        .onConflict((oc) => oc.column("id").doUpdateSet({ claudeModel, cloakProfileName: name, updatedAt: new Date() }))
+        .returning(["claudeModel", "cloakProfileName"])
         .executeTakeFirstOrThrow();
-      return { ok: true, settings: { claudeModel: saved.claudeModel, cloakProfile: cloakProfileOf(saved.cloakProfile) } };
+      return {
+        ok: true,
+        settings: { claudeModel: saved.claudeModel, cloakProfile: cloakProfileNamed(saved.cloakProfileName) },
+      };
     },
 
     async testConnection(signal) {

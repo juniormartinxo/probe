@@ -5,6 +5,7 @@ const failureText: Record<FailureReason, string> = {
   executor_error: "O executor recusou a solicitação.",
   cloak_unavailable: "O Cloak não foi encontrado no executor.",
   cloak_profile_not_found: "O perfil escolhido não existe no Cloak. Escolha outro na configuração.",
+  cloak_error: "O Cloak falhou antes de chamar o claude.",
   cloak_unauthenticated: "O perfil do Cloak não está autenticado no claude. Rode cloak login claude no host.",
   cli_unavailable: "O claude não foi encontrado no executor.",
   cli_rate_limited: "O claude atingiu o limite de uso.",

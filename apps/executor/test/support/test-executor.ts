@@ -64,16 +64,18 @@ export interface FakeCloak {
   configDirOf(profile: string): string;
 }
 
-// Põe um `cloak` falso num diretório próprio. Ele conhece só os perfis dados; sem `.cloak` no
-// caminho, usa o padrão.
-export function installFakeCloak({ profiles = ["padrao", "pessoal", "trabalho"], defaultProfile = "padrao" } = {}): FakeCloak {
+// Põe um `cloak` falso num diretório próprio. Ele conhece os perfis padrao (o padrão, sem `.cloak`
+// no caminho), pessoal e trabalho; com `brokenConfig`, falha antes de qualquer comando, como o
+// Cloak real com a configuração ilegível.
+export function installFakeCloak({ brokenConfig = false } = {}): FakeCloak {
   const dir = mkdtempSync(path.join(tmpdir(), "probe-fake-cloak-"));
   temporaryDirs.push(dir);
   const executable = path.join(dir, "cloak");
   copyFileSync(new URL("./fake-cloak.sh", import.meta.url), executable);
   chmodSync(executable, 0o755);
   copyFileSync(new URL("./fake-cloak.cjs", import.meta.url), path.join(dir, "fake-cloak.cjs"));
-  writeFileSync(path.join(dir, "cloak.json"), JSON.stringify({ profiles, defaultProfile }));
+  const profiles = ["padrao", "pessoal", "trabalho"];
+  writeFileSync(path.join(dir, "cloak.json"), JSON.stringify({ profiles, defaultProfile: "padrao", brokenConfig }));
   const invocationsFile = path.join(dir, "invocations.json");
   return {
     dir,
@@ -82,12 +84,11 @@ export function installFakeCloak({ profiles = ["padrao", "pessoal", "trabalho"],
   };
 }
 
-// Diretório de trabalho do executor; com `profile`, ligado a esse perfil por um `.cloak`, como faz
-// `cloak use`.
-export function createWorkDir({ profile }: { profile?: string } = {}): string {
+// Diretório de trabalho do executor, ligado ao perfil por um `.cloak`, como faz `cloak use`.
+export function createWorkDir(profile: string): string {
   const dir = mkdtempSync(path.join(tmpdir(), "probe-work-dir-"));
   temporaryDirs.push(dir);
-  if (profile) writeFileSync(path.join(dir, ".cloak"), `profile = "${profile}"\n`);
+  writeFileSync(path.join(dir, ".cloak"), `profile = "${profile}"\n`);
   return dir;
 }
 

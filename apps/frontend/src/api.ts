@@ -31,6 +31,7 @@ export type FailureReason =
   | "executor_error"
   | "cloak_unavailable"
   | "cloak_profile_not_found"
+  | "cloak_error"
   | "cloak_unauthenticated"
   | "cli_unavailable"
   | "cli_rate_limited"
