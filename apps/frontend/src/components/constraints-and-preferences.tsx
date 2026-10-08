@@ -70,8 +70,11 @@ function ItemList({
     try {
       await withdrawItem(processId, kind, item.id);
     } catch (caught) {
+      const code = caught instanceof ApiError ? caught.code : undefined;
       // Outra aba pode ter retirado antes; o estado recarregado mostra o que vale.
-      if (!(caught instanceof ApiError && caught.code === "already_withdrawn")) setError("Não foi possível retirar o item.");
+      if (code === "no_constraint_or_preference") {
+        setError("O Ponto das Restrições e Preferências está coberto: registre outro item antes de retirar o último.");
+      } else if (code !== "already_withdrawn") setError("Não foi possível retirar o item.");
     } finally {
       setWithdrawing(undefined);
       onChange();

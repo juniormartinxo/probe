@@ -1,5 +1,5 @@
 import type { StagePoint } from "../process/stage-points.ts";
-import type { ItemStatement } from "../process/constraints-and-preferences.ts";
+import type { ItemStatement, ItemStatements } from "../process/constraints-and-preferences.ts";
 import type { Stage } from "../process/stage.ts";
 import type { AskedQuestion, ConfirmedStageAnswers } from "./assistant.ts";
 
@@ -62,5 +62,5 @@ const itemsText = (items: ItemStatement[]): string => (items.length > 0 ? items.
 
 // Restrições e Preferências em vigor, como entram nos prompts, separadas. O texto é do usuário e vai
 // dentro dos delimitadores de dado.
-export const constraintsAndPreferencesText = ({ constraints, preferences }: { constraints: ItemStatement[]; preferences: ItemStatement[] }): string =>
+export const constraintsAndPreferencesText = ({ constraints, preferences }: ItemStatements): string =>
   `Restrições (inegociáveis):\n${itemsText(constraints)}\nPreferências (negociáveis):\n${itemsText(preferences)}`;

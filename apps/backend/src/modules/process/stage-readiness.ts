@@ -1,6 +1,11 @@
 import type { Db } from "../../db/database.ts";
 import { describeAnswer } from "./answers.ts";
-import { constraintsAndPreferencesOf, inForce, type StatedItem } from "./constraints-and-preferences.ts";
+import {
+  constraintsAndPreferencesOf,
+  inForceOf,
+  itemsApplyTo,
+  type ConstraintsAndPreferencesState,
+} from "./constraints-and-preferences.ts";
 import { stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
 import type { ConfirmedStageAnswers } from "../ai/assistant.ts";
 import { stages, type Stage } from "./stage.ts";
@@ -76,15 +81,13 @@ export type StageNotReady =
   | "problem_statement_not_confirmed"
   | "open_stage_points";
 
-export interface ReadyStage {
+export interface ReadyStage extends ConstraintsAndPreferencesState {
   process: { id: string; stagePointsVersion: number };
   stage: Stage;
   problemStatement: string;
   stagePoints: StagePointState[];
   answers: ConfirmedAnswer[];
-  // As Restrições e Preferências em vigor.
-  constraints: StatedItem[];
-  preferences: StatedItem[];
+  // Restrições e Preferências: as em vigor, nas Etapas a partir de R; nenhuma antes.
 }
 
 // A Etapa atual de um Processo aberto, com o enunciado confirmado e nenhum Ponto aberto: o que a
@@ -108,7 +111,7 @@ export async function readyStage(
   if (!confirmed) return { ok: false, error: "problem_statement_not_confirmed" };
   const stagePoints = await stagePointStates(db, process, stage);
   if (stagePoints.some((point) => point.status === "open")) return { ok: false, error: "open_stage_points" };
-  const { constraints, preferences } = await constraintsAndPreferencesOf(db, processId);
+  const items = itemsApplyTo(stage) ? inForceOf(await constraintsAndPreferencesOf(db, processId)) : { constraints: [], preferences: [] };
   return {
     ok: true,
     ready: {
@@ -117,8 +120,7 @@ export async function readyStage(
       problemStatement: confirmed.statement,
       stagePoints,
       answers: await confirmedAnswersOf(db, processId, stage),
-      constraints: inForce(constraints),
-      preferences: inForce(preferences),
+      ...items,
     },
   };
 }

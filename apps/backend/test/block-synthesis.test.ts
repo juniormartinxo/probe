@@ -31,10 +31,8 @@ describe("Block synthesis", () => {
       stage: "P",
       originalDescription: description,
       problemStatement: statement,
-      // Na Etapa P, nenhuma Etapa confirmada antes e nenhuma Restrição ou Preferência.
+      // Na Etapa P, nenhuma Etapa confirmada antes.
       confirmedStages: [],
-      constraints: [],
-      preferences: [],
       openStagePoints: (await api.getProcess(id)).openStagePoints,
       blockNumber: 1,
       questions: [

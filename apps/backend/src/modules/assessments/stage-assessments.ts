@@ -1,6 +1,6 @@
 import type { Db } from "../../db/database.ts";
 import type { GeneratedSynthesis } from "../ai/assistant.ts";
-import { constraintsAndPreferencesOf, inForce } from "../process/constraints-and-preferences.ts";
+import { constraintsAndPreferencesOf, inForceOf, itemsApplyTo, statementsOf } from "../process/constraints-and-preferences.ts";
 import { stagePointStates, type ProcessPoints } from "../process/stage-point-coverage.ts";
 import { namedStagePoint } from "../process/stage-points.ts";
 import { confirmedAnswersOf, readyStage, type ReadyStage, type StageNotReady } from "../process/stage-readiness.ts";
@@ -80,7 +80,6 @@ function coverageProblem(input: CoverageInput, result: Record<string, Verdict>):
 // O que o Jev recebe: só os Pontos cobertos por um Bloco; um Ponto inaplicável, ou cuja ausência o
 // usuário registrou, não tem resposta a avaliar.
 function coverageInputOf(ready: ReadyStage): CoverageInput {
-  const statementOf = ({ statement, scope, unit }: ReadyStage["constraints"][number]) => ({ statement, scope, unit });
   return {
     stage: ready.stage,
     problemStatement: ready.problemStatement,
@@ -88,8 +87,7 @@ function coverageInputOf(ready: ReadyStage): CoverageInput {
       .filter((point) => point.status === "covered")
       .map(({ key, name, description }) => ({ key, name, description })),
     answers: ready.answers.map(({ ref, wording, answer }) => ({ ref, wording, answer })),
-    constraints: ready.constraints.map(statementOf),
-    preferences: ready.preferences.map(statementOf),
+    ...statementsOf(ready),
   };
 }
 
@@ -136,9 +134,10 @@ export async function stageAssessmentsOf(db: Db, process: ProcessPoints, stage: 
     .orderBy("id")
     .execute();
   const current = (await confirmedAnswersOf(db, process.id, stage)).map((answer) => answer.answerVersionId);
-  const items = await constraintsAndPreferencesOf(db, process.id);
-  const constraintIds = inForce(items.constraints).map((item) => item.id);
-  const preferenceIds = inForce(items.preferences).map((item) => item.id);
+  // Antes de R, nenhum item é contexto da Avaliação: os registrados depois não a desatualizam.
+  const items = itemsApplyTo(stage) ? inForceOf(await constraintsAndPreferencesOf(db, process.id)) : { constraints: [], preferences: [] };
+  const constraintIds = items.constraints.map((item) => item.id);
+  const preferenceIds = items.preferences.map((item) => item.id);
   const states = await stagePointStates(db, process, stage);
   const covered = states.filter((point) => point.status === "covered").map((point) => point.key);
   const order = states.map((point) => point.key);

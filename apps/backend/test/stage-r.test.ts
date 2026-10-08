@@ -251,11 +251,11 @@ describe("Coverage of Constraints distinguished from Preferences", () => {
     });
 
     expect(response.statusCode).toBe(409);
-    expect(response.json()).toEqual({ error: "constraints_not_registered" });
+    expect(response.json()).toEqual({ error: "no_constraint_or_preference" });
     expect((await api.blockOf(id, block.id)).synthesis).toBeNull();
   });
 
-  it("is suggested by the AI from the answers and the registered Constraints and Preferences, and confirmed by the user", async () => {
+  it("is suggested by the AI from the answers, and confirmed by the user with the Constraints and Preferences registered", async () => {
     const { id, block } = await stageRWithAnsweredBlock();
     await registerConstraint(id);
     await registerPreference(id);
@@ -271,8 +271,7 @@ describe("Coverage of Constraints distinguished from Preferences", () => {
     const { input } = assistant.synthesis.attempts.at(-1)!;
     expect(input.stage).toBe("R");
     expect(input.confirmedStages.map((stage) => stage.stage)).toEqual(["P"]);
-    expect(input.constraints).toEqual([{ statement: "O custo não pode passar de 500", scope: "Produção", unit: "reais por mês" }]);
-    expect(input.preferences).toEqual([{ statement: "Deploys sem fila", scope: null, unit: null }]);
+    expect(input).not.toHaveProperty("constraints");
     expect(response.statusCode).toBe(201);
     expect((await api.getProcess(id)).openStagePoints).toEqual([]);
   });
@@ -291,7 +290,7 @@ describe("Coverage of Constraints distinguished from Preferences", () => {
     });
 
     expect(response.statusCode).toBe(409);
-    expect(response.json()).toEqual({ error: "constraints_not_registered" });
+    expect(response.json()).toEqual({ error: "no_constraint_or_preference" });
   });
 });
 
@@ -312,7 +311,32 @@ async function stageRWithCoveredPoints() {
   return { id, blockP, block };
 }
 
+describe("Withdrawing the last Constraint or Preference", () => {
+  it("is refused while the Point that tells them apart is covered", async () => {
+    const { id } = await stageRWithCoveredPoints();
+    const { constraints, preferences } = await api.getProcess(id);
+    const withdraw = (path: string, itemId: string) =>
+      api.inject({ method: "POST", url: `/api/processes/${id}/${path}/${itemId}/withdrawal` });
+
+    const first = await withdraw("constraints", constraints[0].id);
+    const last = await withdraw("preferences", preferences[0].id);
+
+    expect(first.statusCode).toBe(200);
+    expect(last.statusCode).toBe(409);
+    expect(last.json()).toEqual({ error: "no_constraint_or_preference" });
+  });
+});
+
 describe("Jev Assessment and Confirmation of Stage R", () => {
+  it("leaves the Assessment of Stage P valid when Constraints and Preferences are registered in R", async () => {
+    const { id } = await api.processInStageR();
+
+    await registerConstraint(id);
+
+    const [assessmentP] = (await api.getProcess(id)).stageAssessments;
+    expect(assessmentP).toMatchObject({ stage: "P", outdated: false });
+  });
+
   it("judges the covered Points of R from the answers of R and the registered Constraints and Preferences", async () => {
     const { id, block } = await stageRWithCoveredPoints();
 

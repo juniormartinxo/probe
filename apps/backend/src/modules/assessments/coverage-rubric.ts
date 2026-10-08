@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { stageNames } from "../ai/prompt-parts.ts";
+import { hasAny } from "../process/constraints-and-preferences.ts";
 import type { StagePoint } from "../process/stage-points.ts";
 import type { AssessmentChoice, CoverageInput } from "./assessor.ts";
 
@@ -48,7 +49,7 @@ export function coverageRequest(input: CoverageInput): {
       enunciado: input.problemStatement,
       etapa: `${input.stage} (${stageNames[input.stage]})`,
       respostas: input.answers.map(({ ref, wording, answer }) => ({ pergunta: `[${ref}] ${wording}`, resposta: answer })),
-      ...(input.constraints.length + input.preferences.length > 0 && {
+      ...(hasAny(input) && {
         restricoes: input.constraints.map(({ statement, scope, unit }) => ({ restricao: statement, escopo: scope, unidade: unit })),
         preferencias: input.preferences.map(({ statement, scope, unit }) => ({ preferencia: statement, escopo: scope, unidade: unit })),
       }),

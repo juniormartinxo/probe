@@ -4,7 +4,7 @@ import type { Assistant, AssistantOutcome, AttemptContext, Cli, GeneratedSynthes
 import { synthesisProblem } from "../ai/synthesize-block.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 import { openStagePointsOf, type ProcessPoints } from "./stage-point-coverage.ts";
-import { statementsInForceOf } from "./constraints-and-preferences.ts";
+import { constraintsAndPreferencesOf, hasAny, inForceOf, type ItemsRequired } from "./constraints-and-preferences.ts";
 import { confirmedStagesOf } from "./stage-readiness.ts";
 import { askedQuestionOf, currentVersionsOf, stageQuestions } from "./stage-questions.ts";
 import { findStagePoint, namedStagePoint } from "./stage-points.ts";
@@ -76,7 +76,7 @@ export type SynthesisConfirmationError =
   | "unknown_synthesis"
   | "synthesis_outdated"
   | "invalid_coverage"
-  | "constraints_not_registered";
+  | ItemsRequired;
 
 export interface Syntheses {
   // Pede à IA a síntese de um Bloco cujas Perguntas foram todas respondidas ou declaradas desconhecidas.
@@ -154,7 +154,6 @@ async function lockBlock(
         originalDescription: process.originalDescription,
         problemStatement: statement,
         confirmedStages: await confirmedStagesOf(trx, processId, block.stage),
-        ...(await statementsInForceOf(trx, processId)),
         openStagePoints: await openStagePointsOf(trx, process, block.stage),
         blockNumber: block.number,
         questions: own.map(askedQuestionOf),
@@ -389,9 +388,8 @@ export function syntheses(deps: { db: Db; assistant: Assistant; runner: AiReques
         if (covered.some((key) => !open.includes(key))) return { ok: false, error: "invalid_coverage" } as const;
         // Distinguir Restrições de Preferências é registrá-las: sem nenhuma em vigor, o Ponto não se cobre.
         const needsItems = covered.some((key) => findStagePoint(block.stagePointsVersion, block.stage, key)?.needsConstraintsOrPreferences);
-        const { constraints, preferences } = block.input;
-        if (needsItems && constraints.length + preferences.length === 0) {
-          return { ok: false, error: "constraints_not_registered" } as const;
+        if (needsItems && !hasAny(inForceOf(await constraintsAndPreferencesOf(trx, processId)))) {
+          return { ok: false, error: "no_constraint_or_preference" } as const;
         }
 
         const row = await trx

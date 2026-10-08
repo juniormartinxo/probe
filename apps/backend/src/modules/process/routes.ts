@@ -6,6 +6,7 @@ import type { AnswerChange, AnswerValue, Answers } from "./answers.ts";
 import type { Blocks } from "./blocks.ts";
 import {
   constraintsAndPreferencesOf,
+  itemPaths,
   type ConstraintsAndPreferences,
   type ItemKind,
   type ItemStatement,
@@ -77,13 +78,13 @@ function justificationFrom(body: unknown): string | undefined {
 const optionalText = (value: unknown): value is string | null | undefined =>
   value === undefined || value === null || typeof value === "string";
 
-// O que a Restrição ou Preferência diz e, opcionalmente, o escopo e a unidade; texto em branco é ausência.
+// O que a Restrição ou Preferência diz e, opcionalmente, o escopo e a unidade. Os espaços, o módulo tira.
 function itemStatementFrom(body: unknown): ItemStatement | undefined {
   if (typeof body !== "object" || body === null) return undefined;
   const { statement, scope, unit } = body as Record<string, unknown>;
   if (typeof statement !== "string" || statement.trim() === "") return undefined;
   if (!optionalText(scope) || !optionalText(unit)) return undefined;
-  return { statement, scope: scope?.trim() || null, unit: unit?.trim() || null };
+  return { statement, scope: scope ?? null, unit: unit ?? null };
 }
 
 // A Avaliação que o usuário viu (a concluída ou a que falhou) e, se houver, a justificativa.
@@ -152,14 +153,11 @@ const errorStatus = {
   preference_not_found: 404,
   already_withdrawn: 409,
   absence_not_allowed: 422,
-  constraints_not_registered: 409,
+  no_constraint_or_preference: 409,
 } as const;
 
-// Rota de cada tipo de item: Restrições e Preferências seguem o mesmo caminho, cada uma no seu.
-const itemRoutes: { kind: ItemKind; path: string }[] = [
-  { kind: "constraint", path: "constraints" },
-  { kind: "preference", path: "preferences" },
-];
+// Restrições e Preferências seguem as mesmas rotas, cada uma no seu caminho.
+const itemKinds: ItemKind[] = ["constraint", "preference"];
 
 export const processRoutes =
   ({
@@ -417,7 +415,8 @@ export const processRoutes =
       return reply.code(201).send({ stageConfirmation: result.stageConfirmation });
     });
 
-    for (const { kind, path } of itemRoutes) {
+    for (const kind of itemKinds) {
+      const path = itemPaths[kind];
       app.post<{ Params: { id: string } }>(`/processes/:id/${path}`, async (request, reply) => {
         const { id } = request.params;
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });

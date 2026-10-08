@@ -394,8 +394,6 @@ const synthesisInput: SynthesisInput = {
   originalDescription: description,
   problemStatement: "O deploy leva 40 minutos e bloqueia o time de manhã.",
   confirmedStages: [],
-  constraints: [],
-  preferences: [],
   openStagePoints: stagePointsOf(1, "P").filter((point) => point.key !== "real_problem"),
   blockNumber: 2,
   questions: [
@@ -432,7 +430,6 @@ describe("Block synthesis through the executor", () => {
     expect(prompt).toContain("[1.1]");
     expect(prompt).toContain("- consequence:");
     expect(prompt).toContain("<<<ETAPAS_CONFIRMADAS\n(nenhuma)\nETAPAS_CONFIRMADAS>>>");
-    expect(prompt).toContain("<<<RESTRICOES_E_PREFERENCIAS\n");
     expect(prompt).not.toContain("- real_problem:");
   });
 

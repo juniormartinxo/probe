@@ -218,7 +218,7 @@ function ProposalForm({
       setError(
         code === "synthesis_outdated"
           ? "Uma resposta mudou depois desta síntese. Peça uma nova síntese."
-          : code === "constraints_not_registered"
+          : code === "no_constraint_or_preference"
             ? "Para dar por coberto o Ponto das Restrições e Preferências, registre ao menos uma delas acima."
             : "Não foi possível confirmar a síntese. O que você escreveu continua aqui; tente de novo.",
       );
