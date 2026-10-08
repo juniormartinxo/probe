@@ -16,6 +16,11 @@ Texto com que o usuário descreveu o problema ao criar o Processo, preservado ex
 _Code_: `originalDescription`
 _Avoid_: Enunciado, prompt, descrição inicial
 
+**Enunciado do problema**:
+Formulação do problema que o usuário confirmou: a proposta da IA como veio, corrigida por ele, ou escrita sem proposta. Só existe depois da Confirmação; a Descrição original continua preservada.
+_Code_: `ProblemStatement`
+_Avoid_: Problema estabelecido, descrição refinada
+
 **Conversa**:
 Registro das mensagens trocadas dentro de um Processo; cada Processo tem exatamente uma.
 _Code_: `Conversation`
@@ -49,6 +54,18 @@ _Avoid_: Ativo, em andamento, pendente
 Estado terminal de um Processo após a Finalização; um Processo finalizado é somente leitura.
 _Code_: `finalized`
 _Avoid_: Concluído, encerrado, fechado
+
+## IA
+
+**Solicitação à IA**:
+Pedido de uma operação à IA dentro de um Processo, como refinar o Enunciado do problema. Registra suas Tentativas; o estado da Solicitação é o da Tentativa mais recente.
+_Code_: `AiRequest`
+_Avoid_: Chamada, job, prompt
+
+**Tentativa**:
+Cada execução de uma Solicitação à IA, com estado, CLI, modelo e consumo quando a CLI o informa. Uma nova Tentativa só é aberta pelo usuário e nunca depois de uma que trouxe resultado.
+_Code_: `Attempt`
+_Avoid_: Retry, execução, chamada
 
 ## Perguntas e respostas
 

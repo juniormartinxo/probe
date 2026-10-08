@@ -1,14 +1,17 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import { ApiError, getProcess, type ProcessWithConversation, type Stage } from "@/api";
+import { ApiError, getProcess, type ProcessDetail, type Stage } from "@/api";
+import { ProblemStatementSection } from "@/components/problem-statement-section";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/format";
 import { stages, statusName } from "@/stages";
 
+const POLL_INTERVAL_MS = 1_500;
+
 type State =
   | { kind: "loading" }
-  | { kind: "loaded"; process: ProcessWithConversation }
+  | { kind: "loaded"; process: ProcessDetail }
   | { kind: "not-found" }
   | { kind: "error" };
 
@@ -16,14 +19,31 @@ export function ProcessPage() {
   const { id = "" } = useParams();
   const [state, setState] = useState<State>({ kind: "loading" });
 
+  const load = useCallback(
+    () =>
+      getProcess(id).then(
+        (process) => setState({ kind: "loaded", process }),
+        (error: unknown) =>
+          // Uma recarga que falha não esconde o Processo já carregado (nem o que está nos campos).
+          setState((current) =>
+            current.kind === "loaded" ? current : { kind: error instanceof ApiError && error.status === 404 ? "not-found" : "error" },
+          ),
+      ),
+    [id],
+  );
+
   useEffect(() => {
     setState({ kind: "loading" });
-    getProcess(id).then(
-      (process) => setState({ kind: "loaded", process }),
-      (error: unknown) =>
-        setState({ kind: error instanceof ApiError && error.status === 404 ? "not-found" : "error" }),
-    );
-  }, [id]);
+    load();
+  }, [load]);
+
+  // Enquanto a IA trabalha, o Processo é recarregado até a tentativa terminar.
+  const running = state.kind === "loaded" && state.process.refinement?.status === "running";
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(load, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [running, load]);
 
   return (
     <>
@@ -33,12 +53,12 @@ export function ProcessPage() {
       {state.kind === "loading" && <p className="text-muted-foreground text-sm">Carregando…</p>}
       {state.kind === "not-found" && <p className="text-sm">Processo não encontrado.</p>}
       {state.kind === "error" && <p className="text-destructive text-sm">Não foi possível carregar o Processo.</p>}
-      {state.kind === "loaded" && <ProcessView process={state.process} />}
+      {state.kind === "loaded" && <ProcessView process={state.process} onChange={load} />}
     </>
   );
 }
 
-function ProcessView({ process }: { process: ProcessWithConversation }) {
+function ProcessView({ process, onChange }: { process: ProcessDetail; onChange: () => void }) {
   return (
     <>
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -60,10 +80,7 @@ function ProcessView({ process }: { process: ProcessWithConversation }) {
         </CardContent>
       </Card>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold">Conversa</h2>
-        <p className="text-muted-foreground text-sm">A conversa ainda não começou.</p>
-      </section>
+      <ProblemStatementSection process={process} onChange={onChange} />
     </>
   );
 }
