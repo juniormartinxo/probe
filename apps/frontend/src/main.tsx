@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from "react-router";
 import "./index.css";
 import { ProcessesPage } from "./pages/processes-page";
 import { ProcessPage } from "./pages/process-page";
+import { SettingsPage } from "./pages/settings-page";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -12,6 +13,7 @@ createRoot(document.getElementById("root")!).render(
         <Routes>
           <Route path="/" element={<ProcessesPage />} />
           <Route path="/processes/:id" element={<ProcessPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
     </BrowserRouter>

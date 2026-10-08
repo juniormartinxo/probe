@@ -1,6 +1,7 @@
 import type { Db } from "../../db/database.ts";
 import { findAiRequest, type AiRequestRunner, type Attempt, type AttemptStatus } from "../ai/ai-requests.ts";
 import type { Assistant, StatementProposal } from "../ai/assistant.ts";
+import type { SettingsModule } from "../settings/settings.ts";
 
 // Como o enunciado confirmado nasceu: aceito como a IA propôs, corrigido a partir da proposta ou
 // escrito pelo usuário sem proposta.
@@ -81,9 +82,9 @@ export function problemStatements(deps: {
   db: Db;
   assistant: Assistant;
   runner: AiRequestRunner;
-  aiModel: string;
+  settings: SettingsModule;
 }): ProblemStatements {
-  const { db, assistant, runner, aiModel } = deps;
+  const { db, assistant, runner, settings } = deps;
 
   async function findRefinement(processId: string, confirmedAt: Date | null): Promise<Refinement | null> {
     const request = await findAiRequest<StatementProposal>(db, processId, OPERATION);
@@ -112,7 +113,9 @@ export function problemStatements(deps: {
       if (!process.ok) return process;
       const prepared = await prepare(trx);
       if (!prepared.ok) return prepared;
-      const attempt = await runner.openAttempt(trx, prepared.aiRequestId, { cli: assistant.cli, model: aiModel });
+      // O modelo é o configurado no momento em que a tentativa abre; as já abertas guardam o seu.
+      const { claudeModel } = await settings.find(trx);
+      const attempt = await runner.openAttempt(trx, prepared.aiRequestId, { cli: assistant.cli, model: claudeModel });
       return { ok: true, attempt, originalDescription: process.originalDescription } as const;
     });
     if (!opened.ok) return opened;

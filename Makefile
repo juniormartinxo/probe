@@ -39,7 +39,7 @@ help:
 	  '  make build         Verifica os tipos, compila o frontend e constrói a imagem do backend.' \
 	  'Portas publicadas em 127.0.0.1: PROBE_BACKEND_PORT (padrão 3210) e PROBE_DB_PORT (padrão 5434).' \
 	  'Executor: PROBE_EXECUTOR_HOST (padrão 127.0.0.1) e PROBE_EXECUTOR_PORT (padrão 3211).' \
-	  'Modelo do claude nas novas solicitações: PROBE_CLAUDE_MODEL (padrão sonnet).' \
+	  'Modelo do claude: PROBE_CLAUDE_MODEL (padrão sonnet) vale até ser escolhido outro na página de configuração.' \
 	  'Precedência: ambiente ou linha de comando > .env.local > padrão (vale também para o Vite e os testes).'
 
 node_modules/.modules.yaml: package.json pnpm-lock.yaml pnpm-workspace.yaml $(wildcard apps/*/package.json)

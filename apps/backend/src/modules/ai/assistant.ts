@@ -82,4 +82,6 @@ export interface Assistant {
     context: AttemptContext,
   ): Promise<AssistantOutcome<StatementProposal>>;
   generateBlock(input: BlockInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedBlock>>;
+  // Pedido mínimo à CLI, só para saber se a cadeia até ela funciona; o resultado é a resposta crua.
+  testConnection(context: AttemptContext): Promise<AssistantOutcome<string>>;
 }

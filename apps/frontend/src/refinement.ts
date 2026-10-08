@@ -24,7 +24,7 @@ export function attemptStatusName(status: AttemptStatus): string {
 }
 
 // Por que a tentativa não trouxe proposta, em uma frase.
-export function attemptProblem(attempt: Attempt): string {
+export function attemptProblem(attempt: Pick<Attempt, "status" | "failureReason">): string {
   switch (attempt.status) {
     case "failed":
       return attempt.failureReason ? failureText[attempt.failureReason] : "A solicitação falhou.";

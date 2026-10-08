@@ -367,3 +367,46 @@ describe("cancellation", () => {
     await waitFor(() => connectionClosed);
   });
 });
+
+describe("connection test through the executor", () => {
+  function testConnection(url: string, overrides: Partial<AttemptContext> = {}, token: string | undefined = TOKEN) {
+    return createExecutorAssistant({ url, token, deadlineMs: 10_000 }).testConnection(attemptContext(overrides));
+  }
+
+  it("sends a minimal predefined generation with the model and the credential", async () => {
+    const { url, requests } = await startExecutor(() => ({ id: "teste", status: "completed", output: "ok", usage: null }));
+
+    await testConnection(url, { id: "connection-test-1", model: "haiku" });
+
+    const [request] = requests;
+    expect(request!.headers.authorization).toBe(`Bearer ${TOKEN}`);
+    expect(request!.body).toMatchObject({ id: "connection-test-1", operation: "generate_text", model: "haiku" });
+  });
+
+  it("is completed with whatever claude answered, and the usage it reported", async () => {
+    const usage = { inputTokens: 20, outputTokens: 2, cacheCreationInputTokens: null, cacheReadInputTokens: null, costUsd: 0.0001 };
+    const { url } = await startExecutor(() => ({ id: "teste", status: "completed", output: "Ok.", usage }));
+
+    expect(await testConnection(url)).toEqual({ status: "completed", result: "Ok.", usage });
+  });
+
+  it("is not completed when claude answers nothing", async () => {
+    const { url } = await startExecutor(() => ({ id: "teste", status: "completed", output: "  ", usage: null }));
+
+    expect(await testConnection(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
+  });
+
+  it("reports the executor as unavailable when it is not running", async () => {
+    const { url } = await startExecutor(() => ({}));
+    await executor!.close();
+    executor = undefined;
+
+    expect(await testConnection(url)).toMatchObject({ status: "failed", reason: "executor_unavailable" });
+  });
+
+  it("reports the CLI failure the executor relayed", async () => {
+    const { url } = await startExecutor(failedWith("cli_error", "Invalid API key · Please run /login"));
+
+    expect(await testConnection(url)).toMatchObject({ status: "failed", reason: "cli_unauthenticated" });
+  });
+});

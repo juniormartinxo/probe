@@ -95,6 +95,13 @@ export interface AnswerDraftTable {
   updatedAt: Generated<Date>;
 }
 
+// Linha única de configurações não sensíveis.
+export interface SettingsTable {
+  id: Generated<boolean>;
+  claudeModel: string;
+  updatedAt: Generated<Date>;
+}
+
 export interface Database {
   processes: ProcessTable;
   conversations: ConversationTable;
@@ -105,6 +112,7 @@ export interface Database {
   questions: QuestionTable;
   answerVersions: AnswerVersionTable;
   answerDrafts: AnswerDraftTable;
+  settings: SettingsTable;
 }
 
 export type Db = Kysely<Database>;
