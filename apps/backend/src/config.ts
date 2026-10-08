@@ -7,7 +7,7 @@ export interface Config {
   executorToken: string | undefined;
   // Prazo do backend para cada geração no executor.
   executorDeadlineMs: number;
-  // Modelo do claude usado nas novas solicitações.
+  // Modelo do claude nas novas solicitações enquanto o usuário não escolhe outro na configuração.
   aiModel: string;
 }
 

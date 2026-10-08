@@ -40,9 +40,14 @@ export function ProcessesPage() {
 
   return (
     <>
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">PROBE</h1>
-        <p className="text-muted-foreground text-sm">Problema, Restrições, Opções, Balanceamento, Execução.</p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">PROBE</h1>
+          <p className="text-muted-foreground text-sm">Problema, Restrições, Opções, Balanceamento, Execução.</p>
+        </div>
+        <Link to="/settings" className="text-muted-foreground hover:text-foreground text-sm">
+          Configuração
+        </Link>
       </header>
 
       <Card>

@@ -14,6 +14,9 @@ export interface ExecutorSettings {
 
 const HEALTH_TIMEOUT_MS = 5_000;
 
+// Prompt do teste de conexão: o menor pedido que ainda passa pela CLI e pelo modelo.
+export const CONNECTION_TEST_PROMPT = "Teste de conexão do PROBE. Responda apenas: ok";
+
 // Pela conexão não dá para saber se o executor chegou a receber uma geração (no WSL, uma porta
 // sem serviço também aceita e derruba a conexão). Por isso o executor é consultado antes: se não
 // responde, a geração não é enviada; se cai depois, a geração fica interrompida.
@@ -185,6 +188,10 @@ export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSett
     generateBlock(input, context) {
       const openKeys = input.openStagePoints.map((point) => point.key);
       return generate(blockPrompt(input), (output) => parseGeneratedBlock(output, openKeys), context);
+    },
+    testConnection(context) {
+      // Qualquer resposta não vazia mostra que a CLI respondeu com o modelo pedido.
+      return generate(CONNECTION_TEST_PROMPT, (output) => output.trim() || undefined, context);
     },
   };
 }

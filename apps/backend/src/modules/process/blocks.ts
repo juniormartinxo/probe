@@ -8,6 +8,7 @@ import type {
   BlockInput,
   GeneratedBlock,
 } from "../ai/assistant.ts";
+import type { SettingsModule } from "../settings/settings.ts";
 import { answersOf, type AnswerDraft, type Answer } from "./answers.ts";
 import { findStagePoint, stagePointsOf, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
@@ -121,8 +122,8 @@ const saveBlock =
       .execute();
   };
 
-export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRunner; aiModel: string }): Blocks {
-  const { db, assistant, runner, aiModel } = deps;
+export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRunner; settings: SettingsModule }): Blocks {
+  const { db, assistant, runner, settings } = deps;
 
   async function findBlockRequests(processId: string): Promise<BlockRequest[]> {
     const requests = await listAiRequests<GeneratedBlock>(db, processId, OPERATION);
@@ -169,7 +170,9 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       if (!process.ok) return process;
       const prepared = await prepare(trx, process.blockInput);
       if (!prepared.ok) return prepared;
-      const attempt = await runner.openAttempt(trx, prepared.aiRequestId, { cli: assistant.cli, model: aiModel });
+      // O modelo é o configurado no momento em que a tentativa abre; as já abertas guardam o seu.
+      const { claudeModel } = await settings.find();
+      const attempt = await runner.openAttempt(trx, prepared.aiRequestId, { cli: assistant.cli, model: claudeModel });
       return { ok: true, attempt, aiRequestId: prepared.aiRequestId, input: prepared.input } as const;
     });
     if (!opened.ok) return opened;
@@ -212,6 +215,9 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
     },
 
     async find(process) {
+      // As solicitações antes dos Blocos: o Bloco é gravado na mesma transação que conclui a
+      // tentativa, então uma solicitação lida como concluída já tem o seu Bloco na leitura seguinte.
+      const blockRequests = await findBlockRequests(process.id);
       const blockRows = await db
         .selectFrom("blocks")
         .select(["id", "number", "stage", "createdAt"])
@@ -236,7 +242,7 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       );
       return {
         openStagePoints: stagePointsOf(process.stagePointsVersion, process.currentStage),
-        blockRequests: await findBlockRequests(process.id),
+        blockRequests,
         blocks: blockRows.map((block) => {
           return {
             ...block,

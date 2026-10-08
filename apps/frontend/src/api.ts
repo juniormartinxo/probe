@@ -143,6 +143,22 @@ export interface ProcessDetail extends ProcessWithConversation {
   blocks: Block[];
 }
 
+// Configurações não sensíveis; segredos ficam no ambiente do backend e nunca chegam aqui.
+export interface Settings {
+  // Modelo do claude usado nas novas solicitações à IA.
+  claudeModel: string;
+}
+
+// Desfecho de um teste de conexão com a CLI, pelo executor.
+export interface ConnectionTest {
+  cli: string;
+  model: string;
+  status: Exclude<AttemptStatus, "running">;
+  failureReason: FailureReason | null;
+  message: string | null;
+  usage: Usage | null;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -269,4 +285,25 @@ export async function saveDraft(
 
 export async function discardDraft(processId: string, questionId: string): Promise<void> {
   await request<void>(`${answerPath(processId, questionId)}/draft`, { method: "DELETE" });
+}
+
+export async function getSettings(): Promise<Settings> {
+  const { settings } = await request<{ settings: Settings }>("/settings");
+  return settings;
+}
+
+export async function saveSettings(settings: Settings): Promise<Settings> {
+  const { settings: saved } = await request<{ settings: Settings }>("/settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+  return saved;
+}
+
+// Chamada paga à IA: só por ação explícita do usuário.
+export async function testConnection(): Promise<ConnectionTest> {
+  const { connectionTest } = await request<{ connectionTest: ConnectionTest }>("/settings/connection-test", {
+    method: "POST",
+  });
+  return connectionTest;
 }

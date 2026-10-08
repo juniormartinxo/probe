@@ -96,6 +96,7 @@ export class FakeAssistant implements Assistant {
   readonly cli = "claude";
   readonly refinement = new Script<{ originalDescription: string }, StatementProposal>(() => completed());
   readonly block = new Script<BlockInput, GeneratedBlock>(() => completed(defaultBlock));
+  readonly connection = new Script<null, string>(() => completed("ok"));
 
   refineProblemStatement(input: { originalDescription: string }, context: AttemptContext) {
     return this.refinement.run(input, context);
@@ -103,5 +104,9 @@ export class FakeAssistant implements Assistant {
 
   generateBlock(input: BlockInput, context: AttemptContext) {
     return this.block.run(input, context);
+  }
+
+  testConnection(context: AttemptContext) {
+    return this.connection.run(null, context);
   }
 }

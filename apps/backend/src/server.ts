@@ -10,7 +10,7 @@ const assistant = createExecutorAssistant({
   token: config.executorToken,
   deadlineMs: config.executorDeadlineMs,
 });
-const app = buildApp({ db, assistant, aiModel: config.aiModel }, { logger: true });
+const app = buildApp({ db, assistant, defaultAiModel: config.aiModel }, { logger: true });
 
 async function shutdown(): Promise<void> {
   await app.close();

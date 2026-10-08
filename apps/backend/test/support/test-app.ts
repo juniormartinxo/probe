@@ -16,7 +16,7 @@ export interface TestApp {
 
 export async function createTestApp(options: { assistant?: Assistant } = {}): Promise<TestApp> {
   const db = createDatabase(testDatabaseUrl());
-  const app = buildApp({ db, assistant: options.assistant ?? new FakeAssistant(), aiModel: TEST_MODEL });
+  const app = buildApp({ db, assistant: options.assistant ?? new FakeAssistant(), defaultAiModel: TEST_MODEL });
   await app.ready();
   return {
     app,
@@ -29,7 +29,7 @@ export async function createTestApp(options: { assistant?: Assistant } = {}): Pr
 }
 
 export async function resetDatabase(db: Db): Promise<void> {
-  await sql`truncate table processes cascade`.execute(db);
+  await sql`truncate table processes, settings cascade`.execute(db);
 }
 
 export async function waitFor(condition: () => boolean | Promise<boolean>, timeoutMs = 5_000): Promise<void> {
