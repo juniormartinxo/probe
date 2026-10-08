@@ -70,7 +70,7 @@ const lists: Record<number, Record<Stage, StagePoint[]>> = {
       { key: "scalability", name: "Capacidade de escala", description: "Como cada Opção se comporta quando a demanda cresce." },
       { key: "maintenance", name: "Manutenção", description: "O esforço de manter cada Opção funcionando ao longo do tempo." },
       {
-        key: "choice_and_discards",
+        key: "chosen_option_and_discards",
         name: "Escolha com os motivos dos descartes",
         description: "Qual Opção é escolhida e por que as outras foram descartadas.",
       },

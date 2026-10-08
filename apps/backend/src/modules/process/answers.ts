@@ -158,7 +158,6 @@ export function answers({ db }: { db: Db }): Answers {
       });
     },
 
-
     async saveDraft(processId, questionId, { value, basedOnVersionId }) {
       return db.transaction().execute(async (trx) => {
         const locked = await lockQuestion(trx, processId, questionId);

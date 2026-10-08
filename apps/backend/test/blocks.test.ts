@@ -95,7 +95,7 @@ describe("Block", () => {
       {
         id: expect.any(String),
         wording: "A demora do deploy é o problema em si ou sintoma de outra coisa?",
-      subject: "Sintoma ou causa",
+        subject: "Sintoma ou causa",
         contextRelation: "O enunciado fala da demora do deploy, mas não do que a provoca.",
         rationale: "Separar o sintoma do problema real evita resolver a coisa errada.",
         stagePoints: [{ key: "real_problem", name: "Problema real versus sintoma" }],
@@ -107,7 +107,7 @@ describe("Block", () => {
       {
         id: expect.any(String),
         wording: "O que a demora do deploy já causou?",
-      subject: "Efeitos da demora",
+        subject: "Efeitos da demora",
         contextRelation: "O time perde a manhã esperando o deploy.",
         rationale: null,
         stagePoints: [
@@ -122,7 +122,7 @@ describe("Block", () => {
       {
         id: expect.any(String),
         wording: "Por que resolver isso agora, e não daqui a seis meses?",
-      subject: "Por que agora",
+        subject: "Por que agora",
         contextRelation: "O problema existe há algum tempo.",
         rationale: "A urgência define quanto esforço cabe agora.",
         stagePoints: [{ key: "urgency", name: "Motivo da urgência" }],

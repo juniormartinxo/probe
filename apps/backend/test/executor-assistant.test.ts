@@ -174,7 +174,7 @@ describe("Block generation through the executor", () => {
         questions: [
           {
             wording: "A demora é o problema ou sintoma?",
-    subject: "Sintoma ou causa",
+            subject: "Sintoma ou causa",
             contextRelation: "O enunciado fala da demora, não da causa.",
             rationale: "Separar sintoma de problema.",
             stagePoints: ["real_problem"],
@@ -183,7 +183,7 @@ describe("Block generation through the executor", () => {
           },
           {
             wording: "O que a demora causou?",
-    subject: "Efeitos",
+            subject: "Efeitos",
             contextRelation: "O time perde a manhã.",
             rationale: null,
             stagePoints: ["consequence", "urgency"],
@@ -192,7 +192,7 @@ describe("Block generation through the executor", () => {
           },
           {
             wording: "Por que agora?",
-    subject: "Por que agora",
+            subject: "Por que agora",
             contextRelation: "O problema é antigo.",
             rationale: null,
             stagePoints: ["urgency"],
