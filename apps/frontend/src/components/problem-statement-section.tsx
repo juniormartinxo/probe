@@ -245,7 +245,7 @@ function StatementForm({
 function AttemptList({ refinement }: { refinement: Refinement }) {
   return (
     <details className="text-muted-foreground text-xs">
-      <summary className="cursor-pointer">Solicitações à IA ({refinement.attempts.length})</summary>
+      <summary className="cursor-pointer">Tentativas da Solicitação à IA ({refinement.attempts.length})</summary>
       <ol className="mt-2 flex flex-col gap-1">
         {refinement.attempts.map((attempt) => (
           <li key={attempt.id}>

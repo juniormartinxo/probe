@@ -176,7 +176,14 @@ export class AiRequestRunner {
       })
       // Encerrada pelo desligamento do backend, a tentativa fica interrompida, qualquer que seja o desfecho.
       .then((outcome) => this.finish(attemptId, cancellation.signal.aborted ? shutdownOutcome : outcome))
-      .catch((error: unknown) => this.log.error({ err: error, attemptId }, "Não foi possível gravar o desfecho."))
+      // Se o banco recusou o desfecho, a tentativa ao menos sai de "running" para aceitar uma nova;
+      // se nem isso grava (banco fora do ar), o próximo início do backend a interrompe.
+      .catch(async (error: unknown) => {
+        this.log.error({ err: error, attemptId }, "Não foi possível gravar o desfecho.");
+        await this.finish(attemptId, unsavedOutcome).catch((retryError: unknown) =>
+          this.log.error({ err: retryError, attemptId }, "Não foi possível interromper a tentativa."),
+        );
+      })
       .finally(() => this.inFlight.delete(attemptId));
     this.inFlight.set(attemptId, { cancellation, done });
   }
@@ -210,3 +217,7 @@ export class AiRequestRunner {
 }
 
 const shutdownOutcome: AssistantOutcome<never> = { status: "interrupted", message: SHUTDOWN_MESSAGE };
+const unsavedOutcome: AssistantOutcome<never> = {
+  status: "interrupted",
+  message: "O resultado da geração não pôde ser gravado no banco.",
+};

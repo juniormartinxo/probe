@@ -414,6 +414,31 @@ describe("interrupted request", () => {
   });
 });
 
+describe("result that cannot be saved", () => {
+  it("leaves the attempt interrupted, open to a new one, instead of running forever", async () => {
+    const id = await createProcess();
+    await sql`create function probe_test_fail() returns trigger language plpgsql as
+      $$ begin raise exception 'falha simulada do banco'; end $$`.execute(testApp.db);
+    await sql`create trigger probe_test_fail before update on ai_request_attempts
+      for each row when (new.status = 'completed') execute function probe_test_fail()`.execute(testApp.db);
+    let refinement;
+    try {
+      await requestRefinement(id);
+      refinement = await settledRefinement(id);
+    } finally {
+      await sql`drop trigger probe_test_fail on ai_request_attempts`.execute(testApp.db);
+      await sql`drop function probe_test_fail`.execute(testApp.db);
+    }
+
+    expect(refinement).toMatchObject({
+      status: "interrupted",
+      proposal: null,
+      attempts: [{ status: "interrupted", message: expect.any(String) }],
+    });
+    expect((await newAttempt(id)).statusCode).toBe(202);
+  });
+});
+
 describe("late answer", () => {
   it("does not touch a problem statement the user confirmed while the AI was still working", async () => {
     assistant.willHold();
