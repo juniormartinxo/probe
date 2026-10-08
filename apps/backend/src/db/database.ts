@@ -1,7 +1,9 @@
-import { CamelCasePlugin, Kysely, PostgresDialect, type Generated } from "kysely";
+import { CamelCasePlugin, Kysely, PostgresDialect, type ColumnType, type Generated } from "kysely";
 import pg from "pg";
 import type { AttemptStatus, Operation } from "../modules/ai/ai-requests.ts";
 import type { AnswerType, Cli, CloakProfile, FailureReason } from "../modules/ai/assistant.ts";
+import type { AssessmentChoice, AssessorFailureReason } from "../modules/assessments/assessor.ts";
+import type { AssessmentType } from "../modules/assessments/stage-assessments.ts";
 import type { PendencyReason } from "../modules/process/pendencies.ts";
 import type { StatementOrigin } from "../modules/process/problem-statement.ts";
 import type { CoverageStatus } from "../modules/process/stage-point-coverage.ts";
@@ -138,6 +140,43 @@ export interface PendencyTable {
   resolvedByAnswerVersionId: string | null;
 }
 
+export interface StageAssessmentTable {
+  id: Generated<string>;
+  processId: string;
+  stage: Stage;
+  status: "completed" | "failed";
+  requestedModel: string;
+  jevModel: string | null;
+  rubricRevision: string;
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  createdAt: Generated<Date>;
+}
+
+export interface StageAssessmentAnswerVersionTable {
+  stageAssessmentId: string;
+  answerVersionId: string;
+}
+
+export interface AssessmentTable {
+  id: Generated<string>;
+  stageAssessmentId: string;
+  type: AssessmentType;
+  stagePoint: string;
+  choice: AssessmentChoice;
+  confidence: number;
+  // Gravado como JSON; lido como objeto.
+  probabilities: ColumnType<Record<AssessmentChoice, number>, string, never>;
+}
+
+export interface StageConfirmationTable {
+  processId: string;
+  stage: Stage;
+  stageAssessmentId: string | null;
+  justification: string | null;
+  confirmedAt: Generated<Date>;
+}
+
 // Linha única de configurações não sensíveis.
 export interface SettingsTable {
   id: Generated<boolean>;
@@ -161,6 +200,10 @@ export interface Database {
   blockSyntheses: BlockSynthesisTable;
   stagePointCoverage: StagePointCoverageTable;
   pendencies: PendencyTable;
+  stageAssessments: StageAssessmentTable;
+  stageAssessmentAnswerVersions: StageAssessmentAnswerVersionTable;
+  assessments: AssessmentTable;
+  stageConfirmations: StageConfirmationTable;
   settings: SettingsTable;
 }
 

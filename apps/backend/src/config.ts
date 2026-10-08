@@ -9,6 +9,10 @@ export interface Config {
   executorDeadlineMs: number;
   // Modelo do claude nas novas solicitações enquanto o usuário não escolhe outro na configuração.
   aiModel: string;
+  // Opcional para o backend subir; sem ela, as Avaliações falham com a explicação.
+  jevApiKey: string | undefined;
+  jevModel: string;
+  jevTimeoutMs: number;
 }
 
 // Folga sobre o tempo máximo do executor, para que ele responda "timed_out" antes de o backend desistir.
@@ -23,6 +27,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (!Number.isInteger(executorTimeoutMs) || executorTimeoutMs <= 0) {
     throw new Error(`PROBE_EXECUTOR_TIMEOUT_MS inválida: ${env.PROBE_EXECUTOR_TIMEOUT_MS}`);
   }
+  const jevTimeoutMs = Number(env.PROBE_JEV_TIMEOUT_MS || "60000");
+  if (!Number.isInteger(jevTimeoutMs) || jevTimeoutMs <= 0) {
+    throw new Error(`PROBE_JEV_TIMEOUT_MS inválida: ${env.PROBE_JEV_TIMEOUT_MS}`);
+  }
   return {
     databaseUrl,
     host: env.HOST ?? "localhost",
@@ -31,5 +39,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     executorToken: env.PROBE_EXECUTOR_TOKEN || undefined,
     executorDeadlineMs: executorTimeoutMs + EXECUTOR_DEADLINE_GRACE_MS,
     aiModel: env.PROBE_CLAUDE_MODEL || "sonnet",
+    jevApiKey: env.TYPESAFE_API_KEY || undefined,
+    jevModel: env.JEV_MODEL || "jev-latest",
+    jevTimeoutMs,
   };
 }

@@ -4,7 +4,7 @@
 # o executor e os testes. Precedência, igual em todos eles: ambiente (ou linha de comando) >
 # .env.local > padrão.
 PROBE_SETTINGS := PROBE_BACKEND_PORT PROBE_DB_PORT PROBE_EXECUTOR_PORT PROBE_EXECUTOR_HOST PROBE_EXECUTOR_TOKEN \
-  PROBE_EXECUTOR_TIMEOUT_MS PROBE_EXECUTOR_WORK_DIR PROBE_CLAUDE_MODEL
+  PROBE_EXECUTOR_TIMEOUT_MS PROBE_EXECUTOR_WORK_DIR PROBE_CLAUDE_MODEL TYPESAFE_API_KEY JEV_MODEL PROBE_JEV_TIMEOUT_MS
 $(foreach v,$(PROBE_SETTINGS),$(eval PROBE_FROM_ENV_$(v) := $(value $(v))))
 -include .env.local
 $(foreach v,$(PROBE_SETTINGS),$(if $(PROBE_FROM_ENV_$(v)),$(eval $(v) := $(PROBE_FROM_ENV_$(v)))))
@@ -18,6 +18,10 @@ export PROBE_CLAUDE_MODEL ?= sonnet
 export PROBE_EXECUTOR_TOKEN
 # Sem padrão: vazio, o executor usa o diretório temporário do sistema.
 export PROBE_EXECUTOR_WORK_DIR
+export JEV_MODEL ?= jev-latest
+export PROBE_JEV_TIMEOUT_MS ?= 60000
+# Sem padrão: sem a chave, as Avaliações do Jev falham com a explicação e a Etapa pode ser confirmada sem Avaliação.
+export TYPESAFE_API_KEY
 
 COMPOSE ?= docker compose
 PNPM ?= pnpm
@@ -43,6 +47,7 @@ help:
 	  'Executor: PROBE_EXECUTOR_HOST (padrão 127.0.0.1) e PROBE_EXECUTOR_PORT (padrão 3211).' \
 	  'Perfil do diretório do Cloak: o ligado (cloak use) a PROBE_EXECUTOR_WORK_DIR (padrão: temporário do sistema).' \
 	  'Modelo do claude: PROBE_CLAUDE_MODEL (padrão sonnet) vale até ser escolhido outro na página de configuração.' \
+	  'Jev: TYPESAFE_API_KEY (chave da API), JEV_MODEL (padrão jev-latest) e PROBE_JEV_TIMEOUT_MS (padrão 60000).' \
 	  'Precedência: ambiente ou linha de comando > .env.local > padrão (vale também para o Vite e os testes).'
 
 node_modules/.modules.yaml: package.json pnpm-lock.yaml pnpm-workspace.yaml $(wildcard apps/*/package.json)

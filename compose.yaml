@@ -28,6 +28,9 @@ services:
       PROBE_EXECUTOR_TOKEN: ${PROBE_EXECUTOR_TOKEN:-}
       PROBE_EXECUTOR_TIMEOUT_MS: ${PROBE_EXECUTOR_TIMEOUT_MS:-300000}
       PROBE_CLAUDE_MODEL: ${PROBE_CLAUDE_MODEL:-sonnet}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      JEV_MODEL: ${JEV_MODEL:-jev-latest}
+      PROBE_JEV_TIMEOUT_MS: ${PROBE_JEV_TIMEOUT_MS:-60000}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

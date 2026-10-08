@@ -110,6 +110,35 @@ export function processApi(current: () => TestApp) {
     return proposal;
   }
 
+  const requestAssessment = (id: string, stage = "P") =>
+    inject({ method: "POST", url: `/api/processes/${id}/stages/${stage}/assessments` });
+
+  const confirmStage = (id: string, payload: Record<string, unknown>, stage = "P") =>
+    inject({ method: "POST", url: `/api/processes/${id}/stages/${stage}/confirmation`, payload });
+
+  // Processo com o primeiro Bloco respondido e a síntese confirmada dando por cobertos o problema
+  // real e a consequência, como a IA sugeriu, e a urgência declarada inaplicável: nenhum Ponto aberto.
+  async function processWithClosedPoints() {
+    const { id, block } = await processWithAnsweredBlock();
+    const proposal = await synthesize(id, block.id);
+    const confirmed = await confirmSynthesis(id, block.id, {
+      proposalId: proposal.id,
+      synthesis: proposal.synthesis,
+      coveredStagePoints: ["real_problem", "consequence"],
+    });
+    expect(confirmed.statusCode).toBe(201);
+    const inapplicable = await declareInapplicable(id, "urgency", { justification: "Não há pressa: é melhoria contínua." });
+    expect(inapplicable.statusCode).toBe(201);
+    return { id, block };
+  }
+
+  // Pede a Avaliação do Jev da Etapa e devolve a Avaliação gravada.
+  async function assess(id: string, stage = "P") {
+    const response = await requestAssessment(id, stage);
+    expect(response.statusCode).toBe(201);
+    return response.json().stageAssessment;
+  }
+
   return {
     inject,
     getProcess,
@@ -129,5 +158,9 @@ export function processApi(current: () => TestApp) {
     answerAll,
     processWithAnsweredBlock,
     synthesize,
+    requestAssessment,
+    confirmStage,
+    processWithClosedPoints,
+    assess,
   };
 }
