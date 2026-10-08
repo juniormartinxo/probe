@@ -90,6 +90,8 @@ export interface AnswerVersion {
   selectedChoices: number[] | null;
   text: string | null;
   createdAt: string;
+  // Confirmada em conjunto com o Bloco pela Confirmação da síntese; até lá, provisória.
+  confirmed: boolean;
 }
 
 // A Versão que vale e as superadas, da mais recente para a mais antiga.
@@ -113,10 +115,41 @@ export interface Question {
   contextRelation: string;
   rationale: string | null;
   stagePoints: { key: string; name: string }[];
+  // A Pergunta original, quando esta é uma reformulação dela.
+  reformulates: { questionId: string; blockNumber: number; number: number; wording: string } | null;
   answerType: AnswerType;
   choices: string[];
   answer: Answer | null;
   draft: AnswerDraft | null;
+  // O usuário registrou que não sabe a informação.
+  unknown: boolean;
+}
+
+export type SynthesisOrigin = "proposal" | "corrected";
+
+// Proposta de síntese da IA: sugestão até o usuário confirmá-la ou corrigi-la.
+export interface SynthesisProposal {
+  id: string;
+  synthesis: string;
+  coverage: { stagePoint: { key: string; name: string }; covered: boolean; reason: string }[];
+  ambiguousAnswers: { questionId: string; reason: string }[];
+  // Uma resposta do Bloco mudou depois da proposta: ela não pode mais ser confirmada.
+  outdated: boolean;
+}
+
+export interface SynthesisRequest {
+  id: string;
+  status: AttemptStatus;
+  proposal: SynthesisProposal | null;
+  attempts: Attempt[];
+}
+
+export interface ConfirmedSynthesis {
+  synthesis: string;
+  origin: SynthesisOrigin;
+  proposalId: string;
+  confirmedAt: string;
+  coveredStagePoints: { key: string; name: string }[];
 }
 
 export interface Block {
@@ -125,6 +158,42 @@ export interface Block {
   stage: Stage;
   createdAt: string;
   questions: Question[];
+  synthesis: ConfirmedSynthesis | null;
+  synthesisRequests: SynthesisRequest[];
+}
+
+export type StagePointStatus = "open" | "covered" | "inapplicable";
+
+export interface StagePointState extends StagePoint {
+  status: StagePointStatus;
+  blockId: string | null;
+  justification: string | null;
+  recordedAt: string | null;
+}
+
+// Pendência de informação desconhecida, aberta numa Pergunta até uma resposta resolvê-la.
+export interface Pendency {
+  id: string;
+  reason: "unknown_information";
+  question: { id: string; wording: string; blockNumber: number; number: number };
+  stagePoints: { key: string; name: string }[];
+  openedAt: string;
+  resolvedAt: string | null;
+  resolvedByAnswerVersionId: string | null;
+}
+
+// Resumo do entendimento atual do Processo, montado sem chamar a IA.
+export interface Understanding {
+  originalDescription: string;
+  problemStatement: string | null;
+  currentStage: Stage;
+  stagePoints: { key: string; name: string; status: StagePointStatus; justification: string | null }[];
+  blocks: {
+    number: number;
+    synthesis: string | null;
+    answers: { questionId: string; wording: string; answer: string | null; confirmed: boolean; unknown: boolean }[];
+  }[];
+  openPendencies: { reason: Pendency["reason"]; wording: string }[];
 }
 
 export interface BlockRequest {
@@ -137,10 +206,13 @@ export interface BlockRequest {
 export interface ProcessDetail extends ProcessWithConversation {
   problemStatement: ProblemStatement | null;
   refinement: Refinement | null;
-  // Pontos da Etapa atual ainda não cobertos.
+  // Pontos da Etapa atual, cada um aberto, coberto ou inaplicável.
+  stagePoints: StagePointState[];
+  // Pontos da Etapa atual ainda abertos.
   openStagePoints: StagePoint[];
   blockRequests: BlockRequest[];
   blocks: Block[];
+  pendencies: Pendency[];
 }
 
 // Configurações não sensíveis; segredos ficam no ambiente do backend e nunca chegam aqui.
@@ -280,6 +352,59 @@ export async function saveDraft(
 
 export async function discardDraft(processId: string, questionId: string): Promise<void> {
   await request<void>(`${answerPath(processId, questionId)}/draft`, { method: "DELETE" });
+}
+
+// Registra que o usuário não sabe a informação que a Pergunta pede (Pendência de informação desconhecida).
+export async function markUnknown(processId: string, questionId: string): Promise<Pendency> {
+  const { pendency } = await request<{ pendency: Pendency }>(
+    `${processPath(processId)}/questions/${encodeURIComponent(questionId)}/unknown-information`,
+    { method: "POST" },
+  );
+  return pendency;
+}
+
+const blockPath = (processId: string, blockId: string) => `${processPath(processId)}/blocks/${encodeURIComponent(blockId)}`;
+
+export async function requestSynthesis(processId: string, blockId: string): Promise<SynthesisRequest> {
+  const { synthesisRequest } = await request<{ synthesisRequest: SynthesisRequest }>(
+    `${blockPath(processId, blockId)}/synthesis-requests`,
+    { method: "POST" },
+  );
+  return synthesisRequest;
+}
+
+export async function newSynthesisAttempt(processId: string, blockId: string, requestId: string): Promise<SynthesisRequest> {
+  const { synthesisRequest } = await request<{ synthesisRequest: SynthesisRequest }>(
+    `${blockPath(processId, blockId)}/synthesis-requests/${encodeURIComponent(requestId)}/attempts`,
+    { method: "POST" },
+  );
+  return synthesisRequest;
+}
+
+// Confirmação da síntese de bloco: o texto (como veio ou corrigido) e os Pontos que o usuário dá por cobertos.
+export async function confirmSynthesis(
+  processId: string,
+  blockId: string,
+  confirmation: { proposalId: string; synthesis: string; coveredStagePoints: string[] },
+): Promise<ConfirmedSynthesis> {
+  const { synthesis } = await request<{ synthesis: ConfirmedSynthesis }>(`${blockPath(processId, blockId)}/synthesis/confirmation`, {
+    method: "POST",
+    body: JSON.stringify(confirmation),
+  });
+  return synthesis;
+}
+
+export async function declareInapplicable(processId: string, key: string, justification: string): Promise<StagePointState> {
+  const { stagePoint } = await request<{ stagePoint: StagePointState }>(
+    `${processPath(processId)}/stage-points/${encodeURIComponent(key)}/inapplicability`,
+    { method: "POST", body: JSON.stringify({ justification }) },
+  );
+  return stagePoint;
+}
+
+export async function getUnderstanding(processId: string): Promise<Understanding> {
+  const { understanding } = await request<{ understanding: Understanding }>(`${processPath(processId)}/understanding`);
+  return understanding;
 }
 
 export async function getSettings(): Promise<Settings> {

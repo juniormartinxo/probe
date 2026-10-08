@@ -5,7 +5,7 @@ import type { AssistantOutcome, Cli, FailureReason, AttemptContext, Usage } from
 
 // Operações que o backend pede à IA. Cada uma tem a sua solicitação; uma nova chance depois de
 // uma falha é uma nova tentativa da mesma solicitação.
-export type Operation = "refine_problem_statement" | "generate_block";
+export type Operation = "refine_problem_statement" | "generate_block" | "synthesize_block";
 
 export type AttemptStatus = "running" | "completed" | "failed" | "timed_out" | "canceled" | "interrupted";
 
@@ -87,16 +87,21 @@ export async function findAiRequest<T>(db: Db, processId: string, operation: Ope
   return request ? withAttempts<T>(db, request) : null;
 }
 
-// Para operações que um Processo pede mais de uma vez, na ordem em que foram pedidas.
-export async function listAiRequests<T>(db: Db, processId: string, operation: Operation): Promise<AiRequest<T>[]> {
-  const requests = await db
+// Para operações que um Processo pede mais de uma vez, na ordem em que foram pedidas. Com
+// `blockId`, só as do Bloco.
+export async function listAiRequests<T>(
+  db: Db,
+  processId: string,
+  operation: Operation,
+  { blockId }: { blockId?: string } = {},
+): Promise<AiRequest<T>[]> {
+  let query = db
     .selectFrom("aiRequests")
     .select(["id", "operation"])
     .where("processId", "=", processId)
-    .where("operation", "=", operation)
-    .orderBy("createdAt")
-    .orderBy("id")
-    .execute();
+    .where("operation", "=", operation);
+  if (blockId) query = query.where("blockId", "=", blockId);
+  const requests = await query.orderBy("createdAt").orderBy("id").execute();
   return Promise.all(requests.map((request) => withAttempts<T>(db, request)));
 }
 
@@ -159,9 +164,15 @@ export class AiRequestRunner {
     private readonly log: FastifyBaseLogger,
   ) {}
 
-  // Abre a tentativa seguinte da solicitação, já em andamento. Chamar dentro da transação que
-  // verificou que a solicitação aceita uma nova tentativa.
-  async openAttempt(trx: Db, aiRequestId: string, settings: AttemptSettings): Promise<OpenedAttempt> {
+  // Abre a tentativa seguinte da solicitação, já em andamento, e registra as Versões de resposta
+  // que ela envia à IA. Chamar dentro da transação que verificou que a solicitação aceita uma nova
+  // tentativa.
+  async openAttempt(
+    trx: Db,
+    aiRequestId: string,
+    settings: AttemptSettings,
+    usedAnswerVersionIds: string[] = [],
+  ): Promise<OpenedAttempt> {
     const previous = await trx
       .selectFrom("aiRequestAttempts")
       .select((eb) => eb.fn.max("number").as("number"))
@@ -181,6 +192,12 @@ export class AiRequestRunner {
       })
       .returning("id")
       .executeTakeFirstOrThrow();
+    if (usedAnswerVersionIds.length > 0) {
+      await trx
+        .insertInto("attemptAnswerVersions")
+        .values(usedAnswerVersionIds.map((answerVersionId) => ({ attemptId: id, answerVersionId })))
+        .execute();
+    }
     return { id, model: settings.model };
   }
 

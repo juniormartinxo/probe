@@ -96,6 +96,11 @@ export function stagePointsOf(version: number, stage: Stage): StagePoint[] {
   return list[stage];
 }
 
+// Chave e nome do Ponto, para exibir; uma chave fora da lista aparece como veio.
+export function namedStagePoint(version: number, stage: Stage, key: string): { key: string; name: string } {
+  return { key, name: findStagePoint(version, stage, key)?.name ?? key };
+}
+
 export function findStagePoint(version: number, stage: Stage, key: string): StagePoint | undefined {
   return stagePointsOf(version, stage).find((point) => point.key === key);
 }

@@ -2,8 +2,12 @@ import type { FastifyPluginAsync } from "fastify";
 import type { Db } from "../../db/database.ts";
 import type { AnswerChange, AnswerValue, Answers } from "./answers.ts";
 import type { Blocks } from "./blocks.ts";
+import type { Pendencies } from "./pendencies.ts";
 import type { ProblemStatements, StatementConfirmation } from "./problem-statement.ts";
 import { createProcess, findProcess, listProcesses } from "./process.ts";
+import type { StagePointCoverage } from "./stage-point-coverage.ts";
+import type { SynthesisConfirmation, Syntheses } from "./syntheses.ts";
+import { understandingOf } from "./understanding.ts";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -44,6 +48,22 @@ function answerChangeFrom(body: unknown): AnswerChange | undefined {
   return value && { value, basedOnVersionId };
 }
 
+// Texto da síntese a confirmar, a proposta da IA que o usuário viu e os Pontos que ele dá por cobertos.
+function synthesisConfirmationFrom(body: unknown): SynthesisConfirmation | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { proposalId, synthesis, coveredStagePoints } = body as Record<string, unknown>;
+  if (typeof synthesis !== "string" || synthesis.trim() === "") return undefined;
+  if (typeof proposalId !== "string" || !uuidPattern.test(proposalId)) return undefined;
+  if (!Array.isArray(coveredStagePoints) || !coveredStagePoints.every((key) => typeof key === "string")) return undefined;
+  return { proposalId, synthesis, coveredStagePoints };
+}
+
+function justificationFrom(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { justification } = body as Record<string, unknown>;
+  return typeof justification === "string" && justification.trim() !== "" ? justification : undefined;
+}
+
 const errorStatus = {
   process_not_found: 404,
   process_not_open: 409,
@@ -61,6 +81,21 @@ const errorStatus = {
   invalid_answer: 422,
   superseded_version: 409,
   invalid_draft: 422,
+  synthesis_not_confirmed: 409,
+  no_open_stage_points: 409,
+  block_not_found: 404,
+  synthesis_confirmed: 409,
+  block_incomplete: 409,
+  synthesis_already_requested: 409,
+  synthesis_request_not_found: 404,
+  synthesis_generated: 409,
+  unknown_synthesis: 422,
+  synthesis_outdated: 409,
+  invalid_coverage: 422,
+  question_answered: 409,
+  already_unknown: 409,
+  stage_point_not_found: 404,
+  stage_point_closed: 409,
 } as const;
 
 export const processRoutes =
@@ -69,11 +104,17 @@ export const processRoutes =
     problemStatements,
     blocks,
     answers,
+    syntheses,
+    pendencies,
+    stagePointCoverage,
   }: {
     db: Db;
     problemStatements: ProblemStatements;
     blocks: Blocks;
     answers: Answers;
+    syntheses: Syntheses;
+    pendencies: Pendencies;
+    stagePointCoverage: StagePointCoverage;
   }): FastifyPluginAsync =>
   async (app) => {
     app.post("/processes", async (request, reply) => {
@@ -85,11 +126,28 @@ export const processRoutes =
 
     app.get("/processes", async () => ({ processes: await listProcesses(db) }));
 
-    app.get<{ Params: { id: string } }>("/processes/:id", async (request, reply) => {
-      const { id } = request.params;
+    // O Processo como o frontend o retoma: enunciado, Etapa, Blocos, respostas e Pendências.
+    async function processDetail(id: string) {
       const process = uuidPattern.test(id) ? await findProcess(db, id) : undefined;
+      if (!process) return undefined;
+      return {
+        ...process,
+        ...(await problemStatements.find(id)),
+        ...(await blocks.find(process)),
+        pendencies: await pendencies.list(process),
+      };
+    }
+
+    app.get<{ Params: { id: string } }>("/processes/:id", async (request, reply) => {
+      const process = await processDetail(request.params.id);
       if (!process) return reply.code(404).send({ error: "process_not_found" });
-      return { process: { ...process, ...(await problemStatements.find(id)), ...(await blocks.find(process)) } };
+      return { process };
+    });
+
+    app.get<{ Params: { id: string } }>("/processes/:id/understanding", async (request, reply) => {
+      const process = await processDetail(request.params.id);
+      if (!process) return reply.code(404).send({ error: "process_not_found" });
+      return { understanding: understandingOf(process) };
     });
 
     app.post<{ Params: { id: string } }>("/processes/:id/problem-statement/refinement", async (request, reply) => {
@@ -178,6 +236,70 @@ export const processRoutes =
         const result = await answers.discardDraft(id, questionId);
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(204).send();
+      },
+    );
+
+    app.post<{ Params: { id: string; blockId: string } }>(
+      "/processes/:id/blocks/:blockId/synthesis-requests",
+      async (request, reply) => {
+        const { id, blockId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(blockId)) return reply.code(404).send({ error: "block_not_found" });
+        const result = await syntheses.request(id, blockId);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(202).send({ synthesisRequest: result.synthesisRequest });
+      },
+    );
+
+    app.post<{ Params: { id: string; blockId: string; requestId: string } }>(
+      "/processes/:id/blocks/:blockId/synthesis-requests/:requestId/attempts",
+      async (request, reply) => {
+        const { id, blockId, requestId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(blockId)) return reply.code(404).send({ error: "block_not_found" });
+        if (!uuidPattern.test(requestId)) return reply.code(404).send({ error: "synthesis_request_not_found" });
+        const result = await syntheses.newAttempt(id, blockId, requestId);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(202).send({ synthesisRequest: result.synthesisRequest });
+      },
+    );
+
+    app.post<{ Params: { id: string; blockId: string } }>(
+      "/processes/:id/blocks/:blockId/synthesis/confirmation",
+      async (request, reply) => {
+        const { id, blockId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(blockId)) return reply.code(404).send({ error: "block_not_found" });
+        const confirmation = synthesisConfirmationFrom(request.body);
+        if (!confirmation) return reply.code(400).send({ error: "synthesis_required" });
+        const result = await syntheses.confirm(id, blockId, confirmation);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ synthesis: result.synthesis });
+      },
+    );
+
+    app.post<{ Params: { id: string; questionId: string } }>(
+      "/processes/:id/questions/:questionId/unknown-information",
+      async (request, reply) => {
+        const { id, questionId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(questionId)) return reply.code(404).send({ error: "question_not_found" });
+        const result = await pendencies.markUnknown(id, questionId);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ pendency: result.pendency });
+      },
+    );
+
+    app.post<{ Params: { id: string; key: string } }>(
+      "/processes/:id/stage-points/:key/inapplicability",
+      async (request, reply) => {
+        const { id, key } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        const justification = justificationFrom(request.body);
+        if (justification === undefined) return reply.code(400).send({ error: "justification_required" });
+        const result = await stagePointCoverage.declareInapplicable(id, key, justification);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ stagePoint: result.stagePoint });
       },
     );
   };

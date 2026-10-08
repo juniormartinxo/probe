@@ -4,8 +4,11 @@ import { AiRequestRunner } from "./modules/ai/ai-requests.ts";
 import type { Assistant } from "./modules/ai/assistant.ts";
 import { answers } from "./modules/process/answers.ts";
 import { blocks } from "./modules/process/blocks.ts";
+import { pendencies } from "./modules/process/pendencies.ts";
 import { problemStatements } from "./modules/process/problem-statement.ts";
 import { processRoutes } from "./modules/process/routes.ts";
+import { stagePointCoverage } from "./modules/process/stage-point-coverage.ts";
+import { syntheses } from "./modules/process/syntheses.ts";
 import { settingsRoutes } from "./modules/settings/routes.ts";
 import { settings as settingsModule } from "./modules/settings/settings.ts";
 
@@ -34,6 +37,9 @@ export function buildApp({ db, assistant, defaultAiModel }: AppDependencies, opt
           problemStatements: problemStatements({ db, assistant, runner, settings }),
           blocks: blocks({ db, assistant, runner, settings }),
           answers: answers({ db }),
+          syntheses: syntheses({ db, assistant, runner, settings }),
+          pendencies: pendencies({ db }),
+          stagePointCoverage: stagePointCoverage({ db }),
         }),
       );
       await api.register(settingsRoutes({ settings }));
