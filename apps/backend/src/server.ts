@@ -2,7 +2,7 @@ import { buildApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { createDatabase } from "./db/database.ts";
 import { createExecutorAssistant } from "./modules/ai/executor-assistant.ts";
-import { createJevAssessor } from "./modules/assessments/jev-assessor.ts";
+import { createJevAssessor, JEV_ENDPOINT } from "./modules/assessments/jev-assessor.ts";
 
 const config = loadConfig();
 const db = createDatabase(config.databaseUrl);
@@ -12,7 +12,7 @@ const assistant = createExecutorAssistant({
   deadlineMs: config.executorDeadlineMs,
 });
 const assessor = createJevAssessor({
-  url: config.jevUrl,
+  url: JEV_ENDPOINT,
   apiKey: config.jevApiKey,
   model: config.jevModel,
   timeoutMs: config.jevTimeoutMs,

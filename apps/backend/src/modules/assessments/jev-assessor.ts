@@ -7,6 +7,9 @@ import {
 } from "./assessor.ts";
 import { coverageRequest } from "./coverage-rubric.ts";
 
+// Endpoint da API do Jev. Fixo: só os testes apontam o Assessor para outro endereço.
+export const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
+
 export interface JevSettings {
   url: string;
   // Chave da API do Jev, só no ambiente do backend; sem ela, nenhuma Avaliação é enviada.

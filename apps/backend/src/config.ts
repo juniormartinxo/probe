@@ -9,7 +9,6 @@ export interface Config {
   executorDeadlineMs: number;
   // Modelo do claude nas novas solicitações enquanto o usuário não escolhe outro na configuração.
   aiModel: string;
-  jevUrl: string;
   // Opcional para o backend subir; sem ela, as Avaliações falham com a explicação.
   jevApiKey: string | undefined;
   jevModel: string;
@@ -40,7 +39,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     executorToken: env.PROBE_EXECUTOR_TOKEN || undefined,
     executorDeadlineMs: executorTimeoutMs + EXECUTOR_DEADLINE_GRACE_MS,
     aiModel: env.PROBE_CLAUDE_MODEL || "sonnet",
-    jevUrl: env.PROBE_JEV_URL || "https://api.typesafe.ai/v1/systemone",
     jevApiKey: env.TYPESAFE_API_KEY || undefined,
     jevModel: env.JEV_MODEL || "jev-latest",
     jevTimeoutMs,
