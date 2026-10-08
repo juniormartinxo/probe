@@ -1,7 +1,9 @@
 import type { Db } from "../../db/database.ts";
 import { describeAnswer } from "./answers.ts";
+import { constraintsAndPreferencesOf, inForce, type StatedItem } from "./constraints-and-preferences.ts";
 import { stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
-import type { Stage } from "./stage.ts";
+import type { ConfirmedStageAnswers } from "../ai/assistant.ts";
+import { stages, type Stage } from "./stage.ts";
 
 // Resposta confirmada de uma Pergunta da Etapa: a Versão mais recente que uma Confirmação da síntese
 // de bloco confirmou. Uma Versão posterior, ainda provisória, não entra.
@@ -56,6 +58,17 @@ export async function confirmedAnswersOf(db: Db, processId: string, stage: Stage
     }));
 }
 
+// As respostas confirmadas de cada Etapa anterior à atual, todas já confirmadas (as Etapas são
+// lineares), na ordem do PROBE.
+export async function confirmedStagesOf(db: Db, processId: string, current: Stage): Promise<ConfirmedStageAnswers[]> {
+  return Promise.all(
+    stages.slice(0, stages.indexOf(current)).map(async (stage) => ({
+      stage,
+      answers: (await confirmedAnswersOf(db, processId, stage)).map(({ ref, wording, answer }) => ({ ref, wording, answer })),
+    })),
+  );
+}
+
 export type StageNotReady =
   | "process_not_found"
   | "process_not_open"
@@ -69,6 +82,9 @@ export interface ReadyStage {
   problemStatement: string;
   stagePoints: StagePointState[];
   answers: ConfirmedAnswer[];
+  // As Restrições e Preferências em vigor.
+  constraints: StatedItem[];
+  preferences: StatedItem[];
 }
 
 // A Etapa atual de um Processo aberto, com o enunciado confirmado e nenhum Ponto aberto: o que a
@@ -92,6 +108,7 @@ export async function readyStage(
   if (!confirmed) return { ok: false, error: "problem_statement_not_confirmed" };
   const stagePoints = await stagePointStates(db, process, stage);
   if (stagePoints.some((point) => point.status === "open")) return { ok: false, error: "open_stage_points" };
+  const { constraints, preferences } = await constraintsAndPreferencesOf(db, processId);
   return {
     ok: true,
     ready: {
@@ -100,6 +117,8 @@ export async function readyStage(
       problemStatement: confirmed.statement,
       stagePoints,
       answers: await confirmedAnswersOf(db, processId, stage),
+      constraints: inForce(constraints),
+      preferences: inForce(preferences),
     },
   };
 }

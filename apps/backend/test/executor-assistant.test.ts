@@ -133,6 +133,9 @@ const blockInput: BlockInput = {
   stage: "P",
   originalDescription: description,
   problemStatement: "O deploy leva 40 minutos e bloqueia o time de manhã.",
+  confirmedStages: [],
+  constraints: [],
+  preferences: [],
   openStagePoints: stagePointsOf(1, "P"),
   askedQuestions: [],
   confirmedSyntheses: [],
@@ -328,10 +331,71 @@ describe("Block generation after earlier Blocks, through the executor", () => {
   });
 });
 
+const confirmedP = {
+  stage: "P" as const,
+  answers: [
+    { ref: "1.1", wording: "A demora é o problema ou sintoma?", answer: "É sintoma de testes lentos" },
+    { ref: "1.2", wording: "Por que agora?", answer: "A diretoria cobrou." },
+  ],
+};
+
+describe("Block generation in Stage R, through the executor", () => {
+  const stageRInput: BlockInput = { ...blockInput, stage: "R", confirmedStages: [confirmedP], openStagePoints: stagePointsOf(1, "R") };
+  const stageRQuestion = JSON.stringify({
+    questions: [
+      { wording: "Até quando?", subject: "Prazo", contextRelation: "A diretoria cobrou.", stagePoints: ["deadline"], answerType: "free_text" },
+    ],
+  });
+
+  it("sends the confirmed answers of Stage P as context, and asks to clarify scope and units", async () => {
+    const { url, requests } = await startExecutor(answering(stageRQuestion));
+
+    const outcome = await createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).generateBlock(stageRInput, attemptContext());
+
+    expect(outcome.status).toBe("completed");
+    const { prompt } = requests[0]!.body as { prompt: string };
+    expect(prompt).toContain("Etapa R (Restrições)");
+    expect(prompt).toContain("Etapa P (Problema)\n[1.1] A demora é o problema ou sintoma?\nResposta: É sintoma de testes lentos");
+    expect(prompt).toContain("[1.2] Por que agora?\nResposta: A diretoria cobrou.");
+    expect(prompt).toMatch(/escopo/);
+    expect(prompt).toMatch(/unidade/);
+  });
+
+  it("sends the registered Constraints and Preferences apart, with scope and unit", async () => {
+    const { url, requests } = await startExecutor(answering(stageRQuestion));
+    const input: BlockInput = {
+      ...stageRInput,
+      constraints: [{ statement: "Custo de até 500", scope: "Produção", unit: "reais por mês" }],
+      preferences: [{ statement: "Deploys sem fila", scope: null, unit: null }],
+    };
+
+    await createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).generateBlock(input, attemptContext());
+
+    const { prompt } = requests[0]!.body as { prompt: string };
+    expect(prompt).toContain(
+      "<<<RESTRICOES_E_PREFERENCIAS\nRestrições (inegociáveis):\n- Custo de até 500 (escopo: Produção; unidade: reais por mês)\nPreferências (negociáveis):\n- Deploys sem fila\nRESTRICOES_E_PREFERENCIAS>>>",
+    );
+  });
+
+  it("says there is no confirmed Stage yet in Stage P", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify({ questions: blockQuestions })));
+
+    await generateBlock(url);
+
+    const { prompt } = requests[0]!.body as { prompt: string };
+    expect(prompt).toContain("<<<ETAPAS_CONFIRMADAS\n(nenhuma)\nETAPAS_CONFIRMADAS>>>");
+    expect(prompt).toContain("Restrições (inegociáveis):\n(nenhuma)\nPreferências (negociáveis):\n(nenhuma)");
+    expect(prompt).not.toMatch(/unidade em que/);
+  });
+});
+
 const synthesisInput: SynthesisInput = {
   stage: "P",
   originalDescription: description,
   problemStatement: "O deploy leva 40 minutos e bloqueia o time de manhã.",
+  confirmedStages: [],
+  constraints: [],
+  preferences: [],
   openStagePoints: stagePointsOf(1, "P").filter((point) => point.key !== "real_problem"),
   blockNumber: 2,
   questions: [
@@ -367,6 +431,8 @@ describe("Block synthesis through the executor", () => {
     expect(prompt).toContain("[2.1] (Pontos: consequence) O que a demora causou?\nResposta: Atrasos; Horas extras");
     expect(prompt).toContain("[1.1]");
     expect(prompt).toContain("- consequence:");
+    expect(prompt).toContain("<<<ETAPAS_CONFIRMADAS\n(nenhuma)\nETAPAS_CONFIRMADAS>>>");
+    expect(prompt).toContain("<<<RESTRICOES_E_PREFERENCIAS\n");
     expect(prompt).not.toContain("- real_problem:");
   });
 

@@ -130,6 +130,17 @@ export interface StagePointCoverageTable {
   recordedAt: Generated<Date>;
 }
 
+// Restrição ou Preferência registrada pelo usuário na Etapa R; as duas têm a mesma forma.
+export interface StatedItemTable {
+  id: Generated<string>;
+  processId: string;
+  statement: string;
+  scope: string | null;
+  unit: string | null;
+  registeredAt: Generated<Date>;
+  withdrawnAt: Date | null;
+}
+
 export interface PendencyTable {
   id: Generated<string>;
   processId: string;
@@ -148,6 +159,8 @@ export interface StageAssessmentTable {
   requestedModel: string;
   jevModel: string | null;
   rubricRevision: string;
+  analyzedConstraintIds: Generated<string[]>;
+  analyzedPreferenceIds: Generated<string[]>;
   failureReason: AssessorFailureReason | null;
   message: string | null;
   createdAt: Generated<Date>;
@@ -204,6 +217,8 @@ export interface Database {
   attemptAnswerVersions: AttemptAnswerVersionTable;
   blockSyntheses: BlockSynthesisTable;
   stagePointCoverage: StagePointCoverageTable;
+  constraints: StatedItemTable;
+  preferences: StatedItemTable;
   pendencies: PendencyTable;
   stageAssessments: StageAssessmentTable;
   stageAssessmentAnswerVersions: StageAssessmentAnswerVersionTable;

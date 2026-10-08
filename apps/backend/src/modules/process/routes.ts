@@ -4,6 +4,12 @@ import { isCli, type Cli } from "../ai/assistant.ts";
 import { stageAssessmentsOf, type StageAssessments } from "../assessments/stage-assessments.ts";
 import type { AnswerChange, AnswerValue, Answers } from "./answers.ts";
 import type { Blocks } from "./blocks.ts";
+import {
+  constraintsAndPreferencesOf,
+  type ConstraintsAndPreferences,
+  type ItemKind,
+  type ItemStatement,
+} from "./constraints-and-preferences.ts";
 import type { Pendencies } from "./pendencies.ts";
 import type { ProblemStatements, StatementConfirmation } from "./problem-statement.ts";
 import { createProcess, findProcess, listProcesses } from "./process.ts";
@@ -68,6 +74,18 @@ function justificationFrom(body: unknown): string | undefined {
   return typeof justification === "string" && justification.trim() !== "" ? justification : undefined;
 }
 
+const optionalText = (value: unknown): value is string | null | undefined =>
+  value === undefined || value === null || typeof value === "string";
+
+// O que a Restrição ou Preferência diz e, opcionalmente, o escopo e a unidade; texto em branco é ausência.
+function itemStatementFrom(body: unknown): ItemStatement | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { statement, scope, unit } = body as Record<string, unknown>;
+  if (typeof statement !== "string" || statement.trim() === "") return undefined;
+  if (!optionalText(scope) || !optionalText(unit)) return undefined;
+  return { statement, scope: scope?.trim() || null, unit: unit?.trim() || null };
+}
+
 // A Avaliação que o usuário viu (a concluída ou a que falhou) e, se houver, a justificativa.
 function stageConfirmationFrom(body: unknown): StageConfirmationRequest | undefined {
   if (typeof body !== "object" || body === null) return undefined;
@@ -130,7 +148,18 @@ const errorStatus = {
   assessment_required: 409,
   justification_required: 422,
   cli_model_not_configured: 409,
+  constraint_not_found: 404,
+  preference_not_found: 404,
+  already_withdrawn: 409,
+  absence_not_allowed: 422,
+  constraints_not_registered: 409,
 } as const;
+
+// Rota de cada tipo de item: Restrições e Preferências seguem o mesmo caminho, cada uma no seu.
+const itemRoutes: { kind: ItemKind; path: string }[] = [
+  { kind: "constraint", path: "constraints" },
+  { kind: "preference", path: "preferences" },
+];
 
 export const processRoutes =
   ({
@@ -143,6 +172,7 @@ export const processRoutes =
     stagePointCoverage,
     stageAssessments,
     stageConfirmations,
+    constraintsAndPreferences,
   }: {
     db: Db;
     problemStatements: ProblemStatements;
@@ -153,6 +183,7 @@ export const processRoutes =
     stagePointCoverage: StagePointCoverage;
     stageAssessments: StageAssessments;
     stageConfirmations: StageConfirmations;
+    constraintsAndPreferences: ConstraintsAndPreferences;
   }): FastifyPluginAsync =>
   async (app) => {
     app.post("/processes", async (request, reply) => {
@@ -180,6 +211,7 @@ export const processRoutes =
           )
         ).flat(),
         stageConfirmations: await stageConfirmationsOf(db, process),
+        ...(await constraintsAndPreferencesOf(db, id)),
       };
     }
 
@@ -354,6 +386,14 @@ export const processRoutes =
       },
     );
 
+    app.post<{ Params: { id: string; key: string } }>("/processes/:id/stage-points/:key/absence", async (request, reply) => {
+      const { id, key } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      const result = await stagePointCoverage.recordAbsence(id, key);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ stagePoint: result.stagePoint });
+    });
+
     app.post<{ Params: { id: string; stage: string } }>("/processes/:id/stages/:stage/assessments", async (request, reply) => {
       const { id, stage } = request.params;
       if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
@@ -376,4 +416,25 @@ export const processRoutes =
       }
       return reply.code(201).send({ stageConfirmation: result.stageConfirmation });
     });
+
+    for (const { kind, path } of itemRoutes) {
+      app.post<{ Params: { id: string } }>(`/processes/:id/${path}`, async (request, reply) => {
+        const { id } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        const item = itemStatementFrom(request.body);
+        if (!item) return reply.code(400).send({ error: "statement_required" });
+        const result = await constraintsAndPreferences.register(id, kind, item);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ [kind]: result.item });
+      });
+
+      app.post<{ Params: { id: string; itemId: string } }>(`/processes/:id/${path}/:itemId/withdrawal`, async (request, reply) => {
+        const { id, itemId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(itemId)) return reply.code(404).send({ error: `${kind}_not_found` });
+        const result = await constraintsAndPreferences.withdraw(id, kind, itemId);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return { [kind]: result.item };
+      });
+    }
   };

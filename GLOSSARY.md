@@ -113,6 +113,11 @@ Ponto da etapa que o usuário declarou não se aplicar ao caso, com justificativ
 _Code_: `inapplicable`
 _Avoid_: Ponto ignorado, ponto pulado
 
+**Ausência registrada**:
+Registro explícito do usuário de que não há o que um Ponto da etapa pede, como prazo ou sistemas e APIs envolvidos. Conta como cobertura do Ponto, sem Bloco nem justificativa, e só existe nos Pontos que a admitem.
+_Code_: `absent`
+_Avoid_: Ponto vazio, sem prazo implícito
+
 **Resposta ambígua**:
 Resposta que a IA, ao sintetizar o Bloco, apontou como possível de entender de mais de um jeito. É sugestão: serve de candidata a Reformulação num Bloco novo, até ganhar uma.
 _Code_: `ambiguousAnswers`
@@ -158,12 +163,12 @@ _Avoid_: Bloqueio, alerta, issue
 ## Restrições e opções
 
 **Restrição**:
-Condição inegociável do problema; elimina as Opções que a violam e não pode ser compensada por vantagens em outra dimensão.
+Condição inegociável do problema; elimina as Opções que a violam e não pode ser compensada por vantagens em outra dimensão. O usuário a registra na Etapa R como item próprio do Processo, com escopo e unidade quando se aplicam; retirada, deixa de valer e fica no histórico.
 _Code_: `Constraint`
 _Avoid_: Restrição inegociável, requisito, condição
 
 **Preferência**:
-Condição desejável, mas negociável, que pesa no Balanceamento sem eliminar Opções.
+Condição desejável, mas negociável, que pesa no Balanceamento sem eliminar Opções. Registrada na Etapa R como item próprio, distinto das Restrições, com a mesma forma.
 _Code_: `Preference`
 _Avoid_: Restrição negociável, desejo, critério
 

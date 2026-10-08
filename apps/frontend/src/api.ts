@@ -94,6 +94,25 @@ export interface StagePoint {
   description: string;
 }
 
+// Restrição (inegociável) ou Preferência (negociável), registrada na Etapa R. Uma retirada deixa de
+// valer e continua no histórico.
+export type ItemKind = "constraint" | "preference";
+
+export interface StatedItem {
+  id: string;
+  statement: string;
+  scope: string | null;
+  unit: string | null;
+  registeredAt: string;
+  withdrawnAt: string | null;
+}
+
+export interface ItemStatement {
+  statement: string;
+  scope: string | null;
+  unit: string | null;
+}
+
 export type AnswerType = "single_choice" | "multiple_choice" | "free_text";
 
 // Índices das alternativas escolhidas ou texto livre, conforme a Pergunta.
@@ -177,9 +196,12 @@ export interface Block {
   synthesisRequests: SynthesisRequest[];
 }
 
-export type StagePointStatus = "open" | "covered" | "inapplicable";
+// `absent`: o usuário registrou que não há o que o Ponto pede (prazo, sistemas); conta como cobertura.
+export type StagePointStatus = "open" | "covered" | "inapplicable" | "absent";
 
 export interface StagePointState extends StagePoint {
+  // Como se registra a ausência, nos Pontos que a admitem; null nos outros.
+  absence: string | null;
   status: StagePointStatus;
   blockId: string | null;
   justification: string | null;
@@ -202,7 +224,10 @@ export interface Understanding {
   originalDescription: string;
   problemStatement: string | null;
   currentStage: Stage;
-  stagePoints: { key: string; name: string; status: StagePointStatus; justification: string | null }[];
+  stagePoints: { key: string; name: string; status: StagePointStatus; justification: string | null; absence: string | null }[];
+  // As Restrições e Preferências em vigor.
+  constraints: ItemStatement[];
+  preferences: ItemStatement[];
   blocks: {
     number: number;
     synthesis: string | null;
@@ -234,8 +259,8 @@ export interface Assessment {
   disagreesWithAi: boolean;
 }
 
-// Uma chamada ao Jev sobre os Pontos de uma Etapa; `outdated` quando as respostas confirmadas ou os
-// Pontos cobertos mudaram depois dela.
+// Uma chamada ao Jev sobre os Pontos de uma Etapa; `outdated` quando as respostas confirmadas, as
+// Restrições e Preferências em vigor ou os Pontos cobertos mudaram depois dela.
 export interface StageAssessment {
   id: string;
   stage: Stage;
@@ -269,7 +294,7 @@ export interface BlockRequest {
 export interface ProcessDetail extends ProcessWithConversation {
   problemStatement: ProblemStatement | null;
   refinement: Refinement | null;
-  // Pontos da Etapa atual, cada um aberto, coberto ou inaplicável.
+  // Pontos da Etapa atual, cada um aberto, coberto, inaplicável ou com a ausência registrada.
   stagePoints: StagePointState[];
   // Pontos da Etapa atual ainda abertos.
   openStagePoints: StagePoint[];
@@ -279,6 +304,9 @@ export interface ProcessDetail extends ProcessWithConversation {
   // Avaliações do Jev de cada Etapa já aberta, na ordem em que foram pedidas.
   stageAssessments: StageAssessment[];
   stageConfirmations: StageConfirmation[];
+  // Restrições e Preferências registradas, inclusive as retiradas, na ordem do registro.
+  constraints: StatedItem[];
+  preferences: StatedItem[];
 }
 
 // Configurações não sensíveis; segredos ficam no ambiente do backend e nunca chegam aqui.
@@ -478,6 +506,32 @@ export async function declareInapplicable(processId: string, key: string, justif
     { method: "POST", body: JSON.stringify({ justification }) },
   );
   return stagePoint;
+}
+
+export async function recordAbsence(processId: string, key: string): Promise<StagePointState> {
+  const { stagePoint } = await request<{ stagePoint: StagePointState }>(
+    `${processPath(processId)}/stage-points/${encodeURIComponent(key)}/absence`,
+    { method: "POST" },
+  );
+  return stagePoint;
+}
+
+const itemPaths: Record<ItemKind, string> = { constraint: "constraints", preference: "preferences" };
+
+export async function registerItem(processId: string, kind: ItemKind, item: ItemStatement): Promise<StatedItem> {
+  const body = await request<Record<ItemKind, StatedItem>>(`${processPath(processId)}/${itemPaths[kind]}`, {
+    method: "POST",
+    body: JSON.stringify(item),
+  });
+  return body[kind];
+}
+
+export async function withdrawItem(processId: string, kind: ItemKind, itemId: string): Promise<StatedItem> {
+  const body = await request<Record<ItemKind, StatedItem>>(
+    `${processPath(processId)}/${itemPaths[kind]}/${itemId}/withdrawal`,
+    { method: "POST" },
+  );
+  return body[kind];
 }
 
 export async function requestStageAssessment(processId: string, stage: Stage): Promise<StageAssessment> {

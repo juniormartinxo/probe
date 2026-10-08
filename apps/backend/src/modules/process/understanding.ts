@@ -1,5 +1,6 @@
 import { describeAnswer } from "./answers.ts";
 import type { StageWork } from "./blocks.ts";
+import { inForce, type ConstraintsAndPreferencesState, type ItemStatement } from "./constraints-and-preferences.ts";
 import type { Pendency, PendencyReason } from "./pendencies.ts";
 import type { ProblemStatement } from "./problem-statement.ts";
 import type { StagePointState } from "./stage-point-coverage.ts";
@@ -11,7 +12,10 @@ export interface Understanding {
   originalDescription: string;
   problemStatement: string | null;
   currentStage: Stage;
-  stagePoints: Pick<StagePointState, "key" | "name" | "status" | "justification">[];
+  stagePoints: Pick<StagePointState, "key" | "name" | "status" | "justification" | "absence">[];
+  // As Restrições e Preferências em vigor.
+  constraints: ItemStatement[];
+  preferences: ItemStatement[];
   blocks: {
     number: number;
     // A síntese que o usuário confirmou; null enquanto não há.
@@ -29,12 +33,22 @@ export function understandingOf(process: {
   stagePoints: StageWork["stagePoints"];
   blocks: StageWork["blocks"];
   pendencies: Pendency[];
-}): Understanding {
+} & ConstraintsAndPreferencesState): Understanding {
+  const statements = (items: ConstraintsAndPreferencesState["constraints"]) =>
+    inForce(items).map(({ statement, scope, unit }) => ({ statement, scope, unit }));
   return {
     originalDescription: process.originalDescription,
     problemStatement: process.problemStatement?.statement ?? null,
     currentStage: process.currentStage,
-    stagePoints: process.stagePoints.map(({ key, name, status, justification }) => ({ key, name, status, justification })),
+    stagePoints: process.stagePoints.map(({ key, name, status, justification, absence }) => ({
+      key,
+      name,
+      status,
+      justification,
+      absence,
+    })),
+    constraints: statements(process.constraints),
+    preferences: statements(process.preferences),
     blocks: process.blocks.map((block) => ({
       number: block.number,
       synthesis: block.synthesis?.synthesis ?? null,

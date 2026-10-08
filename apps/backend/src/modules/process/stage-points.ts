@@ -7,6 +7,11 @@ export interface StagePoint {
   name: string;
   // O que o Ponto pede, dito para a IA formular Perguntas a seu serviço.
   description: string;
+  // Como se registra que não há o que o Ponto pede (prazo, sistemas), nos Pontos em que isso é uma
+  // resposta; a ausência registrada conta como cobertura.
+  absence?: string;
+  // O Ponto só pode ser dado por coberto com alguma Restrição ou Preferência registrada em vigor.
+  needsConstraintsOrPreferences?: true;
 }
 
 // A lista é mantida pela aplicação, não pela IA (ADR 0002). Ajustes vêm do uso e entram como uma
@@ -31,16 +36,23 @@ const lists: Record<number, Record<Stage, StagePoint[]>> = {
       },
     ],
     R: [
-      { key: "deadline", name: "Prazo", description: "Até quando a solução precisa estar pronta, se houver prazo." },
+      {
+        key: "deadline",
+        name: "Prazo",
+        description: "Até quando a solução precisa estar pronta, se houver prazo.",
+        absence: "Não há prazo.",
+      },
       {
         key: "systems_and_apis",
         name: "Sistemas e APIs envolvidos",
         description: "Que sistemas, integrações e APIs a solução envolve, se algum.",
+        absence: "Nenhum sistema ou API envolvido.",
       },
       {
         key: "constraints_vs_preferences",
         name: "Restrições distinguidas das Preferências",
         description: "Quais condições são inegociáveis (Restrições) e quais são apenas desejáveis (Preferências).",
+        needsConstraintsOrPreferences: true,
       },
     ],
     O: [

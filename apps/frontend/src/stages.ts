@@ -1,4 +1,4 @@
-import type { ProcessStatus, Stage } from "./api";
+import type { ProcessStatus, Stage, StagePointStatus } from "./api";
 
 export const stages: { stage: Stage; name: string }[] = [
   { stage: "P", name: "Problema" },
@@ -15,3 +15,10 @@ export function stageName(stage: Stage): string {
 export function statusName(status: ProcessStatus): string {
   return status === "open" ? "aberto" : "finalizado";
 }
+
+export const stagePointStatusText: Record<StagePointStatus, string> = {
+  open: "aberto",
+  covered: "coberto",
+  inapplicable: "inaplicável",
+  absent: "ausência registrada",
+};

@@ -37,6 +37,8 @@ const input: CoverageInput = {
     { ref: "1.1", wording: "A demora é o problema em si?", answer: "A demora é sintoma de outra coisa" },
     { ref: "1.2", wording: "O que a demora já causou?", answer: "Atraso nas entregas" },
   ],
+  constraints: [],
+  preferences: [],
 };
 
 const choice = (picked: string, probabilities: Record<string, number>, confidence: number) => ({
@@ -79,6 +81,26 @@ describe("coverage Assessment through the Jev API", () => {
     expect(body.questions.real_problem!.instructions).toContain('"Problema real versus sintoma"');
     expect(body.questions.real_problem!.instructions).toContain(realProblem!.description);
     expect(Object.keys(body.questions.real_problem!.criteria as object)).toEqual(["yes", "no", "insufficient"]);
+  });
+
+  it("sends the registered Constraints and Preferences apart, with scope and unit, when there are any", async () => {
+    const { url, requests } = await startJev(() => ({ model: "jev-1.13.0", answers: validAnswers, usage: {} }));
+    const stageR: CoverageInput = {
+      ...input,
+      stage: "R",
+      constraints: [{ statement: "Custo de até 500", scope: "Produção", unit: "reais por mês" }],
+      preferences: [{ statement: "Deploys sem fila", scope: null, unit: null }],
+    };
+
+    await createJevAssessor({ url, apiKey: API_KEY, model: "jev-latest", timeoutMs: 5_000 }).assessCoverage(stageR);
+
+    const body = requests[0]!.body as { state: Record<string, unknown>; questions: Record<string, { instructions: string }> };
+    expect(body.state).toMatchObject({
+      etapa: "R (Restrições)",
+      restricoes: [{ restricao: "Custo de até 500", escopo: "Produção", unidade: "reais por mês" }],
+      preferencias: [{ preferencia: "Deploys sem fila", escopo: null, unidade: null }],
+    });
+    expect(body.questions.real_problem!.instructions).toContain("Restrições e Preferências");
   });
 
   it("brings each judgment as it came, with the model that answered", async () => {

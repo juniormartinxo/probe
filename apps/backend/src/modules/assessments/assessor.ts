@@ -1,6 +1,7 @@
 // Porta do Jev. A implementação real chama a API do Jev, em português (ADR 0001); nos testes, uma
 // versão falsa a substitui.
 
+import type { ItemStatement } from "../process/constraints-and-preferences.ts";
 import type { StagePoint } from "../process/stage-points.ts";
 import type { Stage } from "../process/stage.ts";
 
@@ -24,12 +25,15 @@ export interface AssessedAnswer {
   answer: string;
 }
 
-// O que o Jev recebe para avaliar, Ponto a Ponto, se as respostas confirmadas da Etapa os cobrem.
+// O que o Jev recebe para avaliar, Ponto a Ponto, se as respostas confirmadas da Etapa os cobrem,
+// com as Restrições e Preferências em vigor, que o usuário registrou.
 export interface CoverageInput {
   stage: Stage;
   problemStatement: string;
   stagePoints: StagePoint[];
   answers: AssessedAnswer[];
+  constraints: ItemStatement[];
+  preferences: ItemStatement[];
 }
 
 export type AssessorFailureReason =

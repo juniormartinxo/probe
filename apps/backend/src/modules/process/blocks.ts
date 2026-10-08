@@ -14,6 +14,8 @@ import type {
 import type { SettingsModule } from "../settings/settings.ts";
 import { answersOf, type AnswerDraft, type Answer } from "./answers.ts";
 import { openPoints, stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
+import { statementsInForceOf } from "./constraints-and-preferences.ts";
+import { confirmedStagesOf } from "./stage-readiness.ts";
 import { askedQuestionOf, currentVersionsOf, stageQuestions } from "./stage-questions.ts";
 import { namedStagePoint, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
@@ -161,6 +163,8 @@ async function lockOpenProcess(
         stage,
         originalDescription: process.originalDescription,
         problemStatement: confirmed.statement,
+        confirmedStages: await confirmedStagesOf(trx, processId, stage),
+        ...(await statementsInForceOf(trx, processId)),
         openStagePoints,
         askedQuestions: questions.map(askedQuestionOf),
         confirmedSyntheses: confirmedSyntheses.map((row) => row.synthesis!),

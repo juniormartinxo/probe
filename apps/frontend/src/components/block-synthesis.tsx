@@ -214,10 +214,13 @@ function ProposalForm({
       });
     } catch (caught) {
       // O texto fica nos campos para uma nova tentativa; o estado recarregado mostra o que mudou.
+      const code = caught instanceof ApiError ? caught.code : undefined;
       setError(
-        caught instanceof ApiError && caught.code === "synthesis_outdated"
+        code === "synthesis_outdated"
           ? "Uma resposta mudou depois desta síntese. Peça uma nova síntese."
-          : "Não foi possível confirmar a síntese. O que você escreveu continua aqui; tente de novo.",
+          : code === "constraints_not_registered"
+            ? "Para dar por coberto o Ponto das Restrições e Preferências, registre ao menos uma delas acima."
+            : "Não foi possível confirmar a síntese. O que você escreveu continua aqui; tente de novo.",
       );
     } finally {
       setSaving(false);

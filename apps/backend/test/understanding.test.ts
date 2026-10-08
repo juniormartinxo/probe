@@ -31,10 +31,12 @@ describe("Understanding of the Process", () => {
       problemStatement: null,
       currentStage: "P",
       stagePoints: [
-        { key: "real_problem", name: "Problema real versus sintoma", status: "open", justification: null },
-        { key: "consequence", name: "Consequência de não resolver", status: "open", justification: null },
-        { key: "urgency", name: "Motivo da urgência", status: "open", justification: null },
+        { key: "real_problem", name: "Problema real versus sintoma", status: "open", justification: null, absence: null },
+        { key: "consequence", name: "Consequência de não resolver", status: "open", justification: null, absence: null },
+        { key: "urgency", name: "Motivo da urgência", status: "open", justification: null, absence: null },
       ],
+      constraints: [],
+      preferences: [],
       blocks: [],
       openPendencies: [],
     });
@@ -60,10 +62,12 @@ describe("Understanding of the Process", () => {
       problemStatement: statement,
       currentStage: "P",
       stagePoints: [
-        { key: "real_problem", name: "Problema real versus sintoma", status: "covered", justification: null },
-        { key: "consequence", name: "Consequência de não resolver", status: "inapplicable", justification: "Nada acontece se não resolver." },
-        { key: "urgency", name: "Motivo da urgência", status: "open", justification: null },
+        { key: "real_problem", name: "Problema real versus sintoma", status: "covered", justification: null, absence: null },
+        { key: "consequence", name: "Consequência de não resolver", status: "inapplicable", justification: "Nada acontece se não resolver.", absence: null },
+        { key: "urgency", name: "Motivo da urgência", status: "open", justification: null, absence: null },
       ],
+      constraints: [],
+      preferences: [],
       blocks: [
         {
           number: 1,

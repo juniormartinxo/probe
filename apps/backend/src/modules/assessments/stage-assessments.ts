@@ -1,5 +1,6 @@
 import type { Db } from "../../db/database.ts";
 import type { GeneratedSynthesis } from "../ai/assistant.ts";
+import { constraintsAndPreferencesOf, inForce } from "../process/constraints-and-preferences.ts";
 import { stagePointStates, type ProcessPoints } from "../process/stage-point-coverage.ts";
 import { namedStagePoint } from "../process/stage-points.ts";
 import { confirmedAnswersOf, readyStage, type ReadyStage, type StageNotReady } from "../process/stage-readiness.ts";
@@ -29,8 +30,8 @@ export interface Assessment extends Verdict {
   disagreesWithAi: boolean;
 }
 
-// Uma chamada ao Jev sobre os Pontos de uma Etapa. `outdated`: as respostas confirmadas ou os Pontos
-// cobertos mudaram depois dela; não serve mais para confirmar a Etapa, e uma nova pode ser pedida.
+// Uma chamada ao Jev sobre os Pontos de uma Etapa. `outdated`: as respostas confirmadas, as
+// Restrições e Preferências em vigor ou os Pontos cobertos mudaram depois dela; não serve mais para confirmar a Etapa, e uma nova pode ser pedida.
 export interface StageAssessment {
   id: string;
   stage: Stage;
@@ -76,8 +77,10 @@ function coverageProblem(input: CoverageInput, result: Record<string, Verdict>):
   return undefined;
 }
 
-// O que o Jev recebe: só os Pontos cobertos; um Ponto inaplicável não tem cobertura a avaliar.
+// O que o Jev recebe: só os Pontos cobertos por um Bloco; um Ponto inaplicável, ou cuja ausência o
+// usuário registrou, não tem resposta a avaliar.
 function coverageInputOf(ready: ReadyStage): CoverageInput {
+  const statementOf = ({ statement, scope, unit }: ReadyStage["constraints"][number]) => ({ statement, scope, unit });
   return {
     stage: ready.stage,
     problemStatement: ready.problemStatement,
@@ -85,6 +88,8 @@ function coverageInputOf(ready: ReadyStage): CoverageInput {
       .filter((point) => point.status === "covered")
       .map(({ key, name, description }) => ({ key, name, description })),
     answers: ready.answers.map(({ ref, wording, answer }) => ({ ref, wording, answer })),
+    constraints: ready.constraints.map(statementOf),
+    preferences: ready.preferences.map(statementOf),
   };
 }
 
@@ -131,6 +136,9 @@ export async function stageAssessmentsOf(db: Db, process: ProcessPoints, stage: 
     .orderBy("id")
     .execute();
   const current = (await confirmedAnswersOf(db, process.id, stage)).map((answer) => answer.answerVersionId);
+  const items = await constraintsAndPreferencesOf(db, process.id);
+  const constraintIds = inForce(items.constraints).map((item) => item.id);
+  const preferenceIds = inForce(items.preferences).map((item) => item.id);
   const states = await stagePointStates(db, process, stage);
   const covered = states.filter((point) => point.status === "covered").map((point) => point.key);
   const order = states.map((point) => point.key);
@@ -168,7 +176,11 @@ export async function stageAssessmentsOf(db: Db, process: ProcessPoints, stage: 
       failureReason: run.failureReason,
       message: run.message,
       createdAt: run.createdAt,
-      outdated: !sameSet(analyzed, current) || (assessedPoints !== null && !sameSet(assessedPoints, covered)),
+      outdated:
+        !sameSet(analyzed, current) ||
+        !sameSet(run.analyzedConstraintIds, constraintIds) ||
+        !sameSet(run.analyzedPreferenceIds, preferenceIds) ||
+        (assessedPoints !== null && !sameSet(assessedPoints, covered)),
     };
   });
 }
@@ -214,6 +226,8 @@ export function stageAssessments({ db, assessor }: { db: Db; assessor: Assessor 
             requestedModel: assessor.model,
             jevModel: outcome.status === "completed" ? outcome.model : null,
             rubricRevision: COVERAGE_RUBRIC_REVISION,
+            analyzedConstraintIds: found.ready.constraints.map((item) => item.id),
+            analyzedPreferenceIds: found.ready.preferences.map((item) => item.id),
             failureReason: outcome.status === "failed" ? outcome.reason : null,
             message: outcome.status === "failed" ? outcome.message : null,
           })
