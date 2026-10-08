@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 
 export interface ClaudeRun {
   model: string;
+  // Perfil do Cloak; null deixa o Cloak resolver o perfil a partir de `cwd`.
+  cloakProfile: string | null;
   prompt: string;
   env: NodeJS.ProcessEnv;
   cwd: string;
@@ -18,7 +20,13 @@ export interface Usage {
   costUsd: number | null;
 }
 
-export type FailureReason = "cli_unavailable" | "cli_error" | "invalid_output";
+// As falhas do Cloak vêm antes da CLI: ela nem chegou a rodar.
+export type FailureReason =
+  | "cloak_unavailable"
+  | "cloak_profile_not_found"
+  | "cli_unavailable"
+  | "cli_error"
+  | "invalid_output";
 
 export type GenerationOutcome =
   | { status: "completed"; output: string; usage: Usage | null }
@@ -30,12 +38,16 @@ export type GenerationOutcome =
   | { status: "timed_out"; timeoutMs: number }
   | { status: "canceled" };
 
+// A CLI roda pelo Cloak (`cloak exec`), que lhe dá a configuração e as credenciais do perfil.
 // Modo não interativo, saída JSON (traz o consumo) e nada além de gerar texto: sem ferramentas
 // embutidas, sem servidores MCP, sem skills e sem gravar a sessão em disco. O modo seguro deixa de
 // fora as personalizações do usuário (CLAUDE.md global, hooks, plugins), mantendo autenticação e
 // modelo. O prompt vai pelo stdin, nunca pela linha de comando.
-function claudeArgs(model: string): string[] {
+function cloakExecArgs(cloakProfile: string | null, model: string): string[] {
   return [
+    "exec",
+    ...(cloakProfile === null ? [] : ["--profile", cloakProfile]),
+    "claude",
     "-p",
     "--output-format",
     "json",
@@ -91,6 +103,10 @@ function outcomeOf(
   });
   const resultText = typeof result?.result === "string" ? result.result : undefined;
 
+  // O Cloak não achou o claude e nem chegou a chamá-lo.
+  if (!result && exitCode !== 0 && /'claude' not found in PATH/.test(stderr)) {
+    return failed("cli_unavailable", cloakErrors(stderr));
+  }
   if (exitCode !== 0 || result?.is_error === true) {
     const ending = signal ? `claude foi encerrado pelo sinal ${signal}.` : `claude terminou com código ${exitCode}.`;
     return failed("cli_error", resultText || stderr.trim() || ending);
@@ -102,39 +118,108 @@ function outcomeOf(
 // Tempo que a CLI tem para sair depois do SIGTERM antes de receber SIGKILL.
 const KILL_GRACE_MS = 2_000;
 
-export function runClaude({ model, prompt, env, cwd, timeoutMs, signal }: ClaudeRun): Promise<GenerationOutcome> {
-  if (signal.aborted) return Promise.resolve({ status: "canceled" });
+type ProcessEnd =
+  | { status: "exited"; exitCode: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }
+  | { status: "not_found" }
+  | { status: "spawn_failed"; message: string }
+  | { status: "stopped" };
+
+// Roda um comando com `input` no stdin e espera ele sair. Interrompido por `stop`, a saída é
+// descartada: o resultado parcial nunca vira conclusão.
+function runProcess(
+  command: string,
+  args: string[],
+  { env, cwd, input, stop }: { env: NodeJS.ProcessEnv; cwd: string; input: string; stop: AbortSignal },
+): Promise<ProcessEnd> {
+  if (stop.aborted) return Promise.resolve({ status: "stopped" });
   return new Promise((resolve) => {
-    const child = spawn("claude", claudeArgs(model), { env, cwd, stdio: ["pipe", "pipe", "pipe"] });
-    // Interrompida, a saída é descartada: o resultado parcial nunca vira conclusão.
-    let stopped: GenerationOutcome | undefined;
-    const stop = (outcome: GenerationOutcome) => {
+    const child = spawn(command, args, { env, cwd, stdio: ["pipe", "pipe", "pipe"] });
+    let stopped = false;
+    const onStop = () => {
       if (stopped || child.exitCode !== null) return;
-      stopped = outcome;
+      stopped = true;
       child.kill("SIGTERM");
       setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS).unref();
     };
-    const timer = setTimeout(() => stop({ status: "timed_out", timeoutMs }), timeoutMs);
-    const onCancel = () => stop({ status: "canceled" });
-    signal.addEventListener("abort", onCancel, { once: true });
-    const settle = (outcome: GenerationOutcome) => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", onCancel);
-      resolve(outcome);
+    stop.addEventListener("abort", onStop, { once: true });
+    const settle = (end: ProcessEnd) => {
+      stop.removeEventListener("abort", onStop);
+      resolve(end);
     };
 
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
     child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
-    // A CLI pode sair antes de ler todo o stdin; o resultado vem do código de saída.
+    // O processo pode sair antes de ler todo o stdin; o resultado vem do código de saída.
     child.stdin.on("error", () => {});
 
     child.on("error", (error: NodeJS.ErrnoException) => {
-      const reason = error.code === "ENOENT" ? "cli_unavailable" : "cli_error";
-      settle({ status: "failed", error: { reason, exitCode: null, message: error.message }, usage: null });
+      settle(error.code === "ENOENT" ? { status: "not_found" } : { status: "spawn_failed", message: error.message });
     });
-    child.on("close", (exitCode, exitSignal) => settle(stopped ?? outcomeOf(exitCode, exitSignal, stdout, stderr)));
-    child.stdin.end(prompt);
+    child.on("close", (exitCode, signal) => {
+      settle(stopped ? { status: "stopped" } : { status: "exited", exitCode, signal, stdout, stderr });
+    });
+    child.stdin.end(input);
   });
+}
+
+// Só as mensagens de erro do Cloak, sem cor, sem o local no código-fonte nem o aviso de backtrace.
+function cloakErrors(stderr: string): string {
+  const plain = stderr.replace(/\x1b\[[0-9;]*m/g, "");
+  const errors = [...plain.matchAll(/^\s*\d+: (.+)$/gm)].map(([, message]) => message!.trim());
+  return errors.length > 0 ? errors.join("\n") : plain.trim();
+}
+
+const cloakUnavailable: GenerationOutcome = {
+  status: "failed",
+  error: { reason: "cloak_unavailable", exitCode: null, message: "cloak não foi encontrado no PATH do executor." },
+  usage: null,
+};
+
+export async function runClaude({
+  model,
+  cloakProfile,
+  prompt,
+  env,
+  cwd,
+  timeoutMs,
+  signal,
+}: ClaudeRun): Promise<GenerationOutcome> {
+  const stop = AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]);
+  const stopped = (): GenerationOutcome => (signal.aborted ? { status: "canceled" } : { status: "timed_out", timeoutMs });
+  // O Cloak resolve o perfil do diretório pelo PWD quando ele aponta para o diretório atual.
+  const options = { env: { ...env, PWD: cwd }, cwd, stop };
+
+  // Um perfil explícito que não existe faria o `cloak exec` perguntar, pelo stdin (o prompt), se
+  // deve criá-lo. Por isso o perfil é conferido antes, sem nada no stdin.
+  if (cloakProfile !== null) {
+    const check = await runProcess("cloak", ["profile", "account", cloakProfile], { ...options, input: "" });
+    if (check.status === "stopped") return stopped();
+    if (check.status === "not_found") return cloakUnavailable;
+    if (check.status === "spawn_failed" || check.exitCode !== 0) {
+      const detail = check.status === "exited" ? cloakErrors(check.stderr) : check.message;
+      return {
+        status: "failed",
+        error: {
+          reason: "cloak_profile_not_found",
+          exitCode: check.status === "exited" ? check.exitCode : null,
+          message: [`O perfil "${cloakProfile}" não foi encontrado no Cloak.`, detail].filter(Boolean).join("\n"),
+        },
+        usage: null,
+      };
+    }
+  }
+
+  const run = await runProcess("cloak", cloakExecArgs(cloakProfile, model), { ...options, input: prompt });
+  switch (run.status) {
+    case "stopped":
+      return stopped();
+    case "not_found":
+      return cloakUnavailable;
+    case "spawn_failed":
+      return { status: "failed", error: { reason: "cli_error", exitCode: null, message: run.message }, usage: null };
+    case "exited":
+      return outcomeOf(run.exitCode, run.signal, run.stdout, run.stderr);
+  }
 }

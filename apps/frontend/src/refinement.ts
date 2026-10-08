@@ -1,8 +1,11 @@
-import type { Attempt, AttemptStatus, FailureReason, StatementOrigin, Usage } from "./api";
+import type { Attempt, AttemptStatus, CloakProfile, FailureReason, StatementOrigin, Usage } from "./api";
 
 const failureText: Record<FailureReason, string> = {
   executor_unavailable: "O executor não está disponível.",
   executor_error: "O executor recusou a solicitação.",
+  cloak_unavailable: "O Cloak não foi encontrado no executor.",
+  cloak_profile_not_found: "O perfil escolhido não existe no Cloak. Escolha outro na configuração.",
+  cloak_unauthenticated: "O perfil do Cloak não está autenticado no claude. Rode cloak login claude no host.",
   cli_unavailable: "O claude não foi encontrado no executor.",
   cli_rate_limited: "O claude atingiu o limite de uso.",
   cli_unauthenticated: "O claude não está autenticado.",
@@ -37,6 +40,12 @@ export function attemptProblem(attempt: Pick<Attempt, "status" | "failureReason"
     default:
       return "";
   }
+}
+
+// Com que perfil do Cloak a CLI rodou.
+export function cloakProfileSummary(profile: CloakProfile | null): string {
+  if (!profile) return "sem Cloak";
+  return profile.source === "directory" ? "perfil do diretório" : `perfil ${profile.name}`;
 }
 
 const integer = new Intl.NumberFormat("pt-BR");

@@ -4,7 +4,7 @@
 # o executor e os testes. Precedência, igual em todos eles: ambiente (ou linha de comando) >
 # .env.local > padrão.
 PROBE_SETTINGS := PROBE_BACKEND_PORT PROBE_DB_PORT PROBE_EXECUTOR_PORT PROBE_EXECUTOR_HOST PROBE_EXECUTOR_TOKEN \
-  PROBE_EXECUTOR_TIMEOUT_MS PROBE_CLAUDE_MODEL
+  PROBE_EXECUTOR_TIMEOUT_MS PROBE_EXECUTOR_WORK_DIR PROBE_CLAUDE_MODEL
 $(foreach v,$(PROBE_SETTINGS),$(eval PROBE_FROM_ENV_$(v) := $(value $(v))))
 -include .env.local
 $(foreach v,$(PROBE_SETTINGS),$(if $(PROBE_FROM_ENV_$(v)),$(eval $(v) := $(PROBE_FROM_ENV_$(v)))))
@@ -16,6 +16,8 @@ export PROBE_EXECUTOR_TIMEOUT_MS ?= 300000
 export PROBE_CLAUDE_MODEL ?= sonnet
 # Sem padrão: o executor não sobe sem a credencial técnica, que o backend também recebe.
 export PROBE_EXECUTOR_TOKEN
+# Sem padrão: vazio, o executor usa o diretório temporário do sistema.
+export PROBE_EXECUTOR_WORK_DIR
 
 COMPOSE ?= docker compose
 PNPM ?= pnpm
@@ -32,13 +34,14 @@ help:
 	  '  make migrate       Aplica as migrations pendentes.' \
 	  '  make migrate-down  Desfaz a última migration aplicada.' \
 	  '  make frontend      Inicia o Vite e abre localhost (5173 ou a próxima porta livre) no navegador.' \
-	  '  make executor      Inicia o executor (chama o claude) no WSL; exige PROBE_EXECUTOR_TOKEN.' \
+	  '  make executor      Inicia o executor (chama o claude pelo Cloak) no WSL; exige PROBE_EXECUTOR_TOKEN.' \
 	  '  make dev           Sobe backend e banco e inicia o executor e o frontend juntos.' \
 	  '  make test          Roda os testes (o backend usa o banco probe_test do serviço db).' \
 	  '  make typecheck     Verifica os tipos de todos os pacotes.' \
 	  '  make build         Verifica os tipos, compila o frontend e constrói a imagem do backend.' \
 	  'Portas publicadas em 127.0.0.1: PROBE_BACKEND_PORT (padrão 3210) e PROBE_DB_PORT (padrão 5434).' \
 	  'Executor: PROBE_EXECUTOR_HOST (padrão 127.0.0.1) e PROBE_EXECUTOR_PORT (padrão 3211).' \
+	  'Perfil do diretório do Cloak: o ligado (cloak use) a PROBE_EXECUTOR_WORK_DIR (padrão: temporário do sistema).' \
 	  'Modelo do claude: PROBE_CLAUDE_MODEL (padrão sonnet) vale até ser escolhido outro na página de configuração.' \
 	  'Precedência: ambiente ou linha de comando > .env.local > padrão (vale também para o Vite e os testes).'
 

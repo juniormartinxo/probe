@@ -194,7 +194,7 @@ function newAttempt(id: string) {
 }
 
 describe("AI request", () => {
-  it("records the attempt with its CLI, model and the usage the CLI reported", async () => {
+  it("records the attempt with its CLI, model, Cloak profile and the usage the CLI reported", async () => {
     const usage = { inputTokens: 812, outputTokens: 95, cacheCreationInputTokens: null, cacheReadInputTokens: 0, costUsd: 0.0123 };
     assistant.refinement.willRespond(completed(defaultProposal, usage));
     const id = await createProcess();
@@ -209,6 +209,7 @@ describe("AI request", () => {
         status: "completed",
         cli: "claude",
         model: TEST_MODEL,
+        cloakProfile: { source: "directory" },
         usage,
         failureReason: null,
         message: null,
@@ -267,7 +268,9 @@ describe("CLI failure", () => {
   it.each([
     ["unavailable", "cli_unavailable", "spawn claude ENOENT"],
     ["rate limited", "cli_rate_limited", "API Error: 429 rate_limit_error"],
-    ["not authenticated", "cli_unauthenticated", "Invalid API key · Please run /login"],
+    ["not authenticated in the Cloak profile", "cloak_unauthenticated", "Invalid API key · Please run /login"],
+    ["out of reach, without Cloak", "cloak_unavailable", "cloak não foi encontrado no PATH do executor."],
+    ["asked for a Cloak profile that does not exist", "cloak_profile_not_found", 'O perfil "x" não foi encontrado no Cloak.'],
   ] as const)("when the CLI is %s, is reported and leaves the Process as it was", async (_case, reason, message) => {
     assistant.refinement.willRespond({ status: "failed", reason, message, usage: null });
     const id = await createProcess();
@@ -310,6 +313,39 @@ describe("CLI failure", () => {
       [2, "completed"],
     ]);
     expect(refinement.proposal.id).toBe(refinement.attempts[1].id);
+  });
+
+  it("accepts a new attempt after a Cloak failure, with the profile configured by then", async () => {
+    assistant.refinement.willRespond({
+      status: "failed",
+      reason: "cloak_profile_not_found",
+      message: 'O perfil "antigo" não foi encontrado no Cloak.',
+      usage: null,
+    });
+    await testApp.app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      payload: { claudeModel: TEST_MODEL, cloakProfile: { source: "explicit", name: "antigo" } },
+    });
+    const id = await createProcess();
+    await requestRefinement(id);
+    await settledRefinement(id);
+
+    await testApp.app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      payload: { claudeModel: TEST_MODEL, cloakProfile: { source: "directory" } },
+    });
+    const response = await newAttempt(id);
+
+    expect(response.statusCode).toBe(202);
+    const refinement = await settledRefinement(id);
+    expect(refinement.status).toBe("completed");
+    expect(refinement.attempts).toMatchObject([
+      { number: 1, status: "failed", failureReason: "cloak_profile_not_found", cloakProfile: { source: "explicit", name: "antigo" } },
+      { number: 2, status: "completed", cloakProfile: { source: "directory" } },
+    ]);
+    expect((await getProcess(id)).originalDescription).toBe(description);
   });
 
   it("refuses a new attempt once a proposal was received, so it is never duplicated", async () => {

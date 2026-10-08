@@ -302,12 +302,13 @@ export function syntheses(deps: { db: Db; assistant: Assistant; runner: AiReques
       if (!locked.block.complete) return { ok: false, error: "block_incomplete" } as const;
       const prepared = await prepare(trx, locked.block);
       if (!prepared.ok) return prepared;
-      // O modelo é o configurado no momento em que a tentativa abre; as já abertas guardam o seu.
-      const { claudeModel } = await settings.find(trx);
+      // Modelo e perfil do Cloak são os configurados no momento em que a tentativa abre; as já
+      // abertas guardam os seus.
+      const { claudeModel, cloakProfile } = await settings.find(trx);
       const attempt = await runner.openAttempt(
         trx,
         prepared.aiRequestId,
-        { cli: assistant.cli, model: claudeModel },
+        { cli: assistant.cli, model: claudeModel, cloakProfile },
         locked.block.currentVersionIds,
       );
       return { ok: true, attempt, aiRequestId: prepared.aiRequestId, input: locked.block.input } as const;

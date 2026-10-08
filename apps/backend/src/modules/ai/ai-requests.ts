@@ -1,7 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import { sql, type Selectable } from "kysely";
 import type { AiRequestAttemptTable, Db } from "../../db/database.ts";
-import type { AssistantOutcome, Cli, FailureReason, AttemptContext, Usage } from "./assistant.ts";
+import type { AssistantOutcome, Cli, CloakProfile, FailureReason, AttemptContext, Usage } from "./assistant.ts";
 
 // Operações que o backend pede à IA. Cada uma tem a sua solicitação; uma nova chance depois de
 // uma falha é uma nova tentativa da mesma solicitação.
@@ -15,6 +15,8 @@ export interface Attempt {
   status: AttemptStatus;
   cli: Cli;
   model: string;
+  // Perfil do Cloak com que a CLI foi chamada; null nas tentativas anteriores ao Cloak.
+  cloakProfile: CloakProfile | null;
   usage: Usage | null;
   failureReason: FailureReason | null;
   message: string | null;
@@ -45,6 +47,11 @@ function usageOf(row: AttemptRow): Usage | null {
   return Object.values(usage).every((value) => value === null) ? null : usage;
 }
 
+function cloakProfileOf({ cloakProfileSource, cloakProfile }: AttemptRow): CloakProfile | null {
+  if (cloakProfileSource === "explicit" && cloakProfile !== null) return { source: "explicit", name: cloakProfile };
+  return cloakProfileSource === "directory" ? { source: "directory" } : null;
+}
+
 function attemptOf(row: AttemptRow): Attempt {
   return {
     id: row.id,
@@ -52,6 +59,7 @@ function attemptOf(row: AttemptRow): Attempt {
     status: row.status,
     cli: row.cli,
     model: row.model,
+    cloakProfile: cloakProfileOf(row),
     usage: usageOf(row),
     failureReason: row.failureReason,
     message: row.message,
@@ -140,6 +148,7 @@ const ABANDONED_MESSAGE = "O backend reiniciou durante a geração; o resultado 
 export interface AttemptSettings {
   cli: Cli;
   model: string;
+  cloakProfile: CloakProfile;
 }
 
 export type OnCompleted<T> = (trx: Db, attemptId: string, result: T) => Promise<void>;
@@ -147,6 +156,7 @@ export type OnCompleted<T> = (trx: Db, attemptId: string, result: T) => Promise<
 export interface OpenedAttempt {
   id: string;
   model: string;
+  cloakProfile: CloakProfile;
 }
 
 // Relógio do banco no momento do comando (e não no início da transação), para que os instantes
@@ -186,6 +196,8 @@ export class AiRequestRunner {
         status: "running",
         cli: settings.cli,
         model: settings.model,
+        cloakProfileSource: settings.cloakProfile.source,
+        cloakProfile: settings.cloakProfile.source === "explicit" ? settings.cloakProfile.name : null,
         result: null,
         failureReason: null,
         message: null,
@@ -198,19 +210,19 @@ export class AiRequestRunner {
         .values(usedAnswerVersionIds.map((answerVersionId) => ({ attemptId: id, answerVersionId })))
         .execute();
     }
-    return { id, model: settings.model };
+    return { id, model: settings.model, cloakProfile: settings.cloakProfile };
   }
 
   // Dispara a geração de uma tentativa aberta, depois de a transação que a abriu ser gravada.
   // `onCompleted` grava o que o resultado produz na mesma transação que conclui a tentativa: ou os
   // dois ficam, ou a tentativa termina interrompida.
   run<T>(
-    { id: attemptId, model }: OpenedAttempt,
+    { id: attemptId, model, cloakProfile }: OpenedAttempt,
     generate: (context: AttemptContext) => Promise<AssistantOutcome<T>>,
     onCompleted?: OnCompleted<T>,
   ): void {
     const cancellation = new AbortController();
-    const done = generate({ id: attemptId, model, signal: cancellation.signal })
+    const done = generate({ id: attemptId, model, cloakProfile, signal: cancellation.signal })
       .catch((error: unknown): AssistantOutcome<T> => {
         this.log.error({ err: error, attemptId }, "Geração falhou sem desfecho reconhecível.");
         return { status: "interrupted", message: error instanceof Error ? error.message : String(error) };

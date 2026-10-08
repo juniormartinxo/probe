@@ -113,9 +113,14 @@ export function problemStatements(deps: {
       if (!process.ok) return process;
       const prepared = await prepare(trx);
       if (!prepared.ok) return prepared;
-      // O modelo é o configurado no momento em que a tentativa abre; as já abertas guardam o seu.
-      const { claudeModel } = await settings.find(trx);
-      const attempt = await runner.openAttempt(trx, prepared.aiRequestId, { cli: assistant.cli, model: claudeModel });
+      // Modelo e perfil do Cloak são os configurados no momento em que a tentativa abre; as já
+      // abertas guardam os seus.
+      const { claudeModel, cloakProfile } = await settings.find(trx);
+      const attempt = await runner.openAttempt(trx, prepared.aiRequestId, {
+        cli: assistant.cli,
+        model: claudeModel,
+        cloakProfile,
+      });
       return { ok: true, attempt, originalDescription: process.originalDescription } as const;
     });
     if (!opened.ok) return opened;

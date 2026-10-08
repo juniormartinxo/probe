@@ -21,8 +21,15 @@ async function getSettings(app = testApp) {
   return response.json();
 }
 
-function saveSettings(payload: unknown) {
-  return testApp.app.inject({ method: "PUT", url: "/api/settings", payload: payload as object });
+const directoryProfile = { source: "directory" } as const;
+
+// Sem perfil do Cloak no pedido, salva o do diretório: a escolha é sempre explícita no corpo.
+function saveSettings(payload: Record<string, unknown>) {
+  return testApp.app.inject({
+    method: "PUT",
+    url: "/api/settings",
+    payload: { cloakProfile: directoryProfile, ...payload },
+  });
 }
 
 async function createProcess(): Promise<string> {
@@ -55,18 +62,20 @@ async function refine(id: string, url = `/api/processes/${id}/problem-statement/
 }
 
 describe("settings", () => {
-  it("start with the backend's default model for the claude", async () => {
-    expect(await getSettings()).toEqual({ settings: { claudeModel: TEST_MODEL } });
+  it("start with the backend's default model for the claude and the directory's Cloak profile", async () => {
+    expect(await getSettings()).toEqual({ settings: { claudeModel: TEST_MODEL, cloakProfile: directoryProfile } });
   });
 
   it("keep the chosen model in the database, across restarts of the backend", async () => {
     const response = await saveSettings({ claudeModel: "claude-opus-5-5" });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ settings: { claudeModel: "claude-opus-5-5" } });
+    expect(response.json()).toEqual({ settings: { claudeModel: "claude-opus-5-5", cloakProfile: directoryProfile } });
     const restarted = await createTestApp();
     try {
-      expect(await getSettings(restarted)).toEqual({ settings: { claudeModel: "claude-opus-5-5" } });
+      expect(await getSettings(restarted)).toEqual({
+        settings: { claudeModel: "claude-opus-5-5", cloakProfile: directoryProfile },
+      });
     } finally {
       await restarted.close();
     }
@@ -76,7 +85,7 @@ describe("settings", () => {
     await saveSettings({ claudeModel: "opus" });
     await saveSettings({ claudeModel: "haiku" });
 
-    expect(await getSettings()).toEqual({ settings: { claudeModel: "haiku" } });
+    expect(await getSettings()).toEqual({ settings: { claudeModel: "haiku", cloakProfile: directoryProfile } });
   });
 
   it.each([
@@ -92,7 +101,54 @@ describe("settings", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: "invalid_model" });
-    expect(await getSettings()).toEqual({ settings: { claudeModel: "opus" } });
+    expect(await getSettings()).toEqual({ settings: { claudeModel: "opus", cloakProfile: directoryProfile } });
+  });
+
+  it("keep a Cloak profile chosen explicitly, and go back to the directory's", async () => {
+    const explicit = await saveSettings({ claudeModel: "opus", cloakProfile: { source: "explicit", name: "pessoal" } });
+
+    expect(explicit.statusCode).toBe(200);
+    expect(await getSettings()).toEqual({
+      settings: { claudeModel: "opus", cloakProfile: { source: "explicit", name: "pessoal" } },
+    });
+
+    await saveSettings({ claudeModel: "opus", cloakProfile: directoryProfile });
+    expect(await getSettings()).toEqual({ settings: { claudeModel: "opus", cloakProfile: directoryProfile } });
+  });
+
+  it.each([
+    ["missing", { cloakProfile: undefined }],
+    ["of an unknown source", { cloakProfile: { source: "host" } }],
+    ["explicit without a name", { cloakProfile: { source: "explicit" } }],
+    ["read as a CLI option", { cloakProfile: { source: "explicit", name: "--profile" } }],
+    ["with a path", { cloakProfile: { source: "explicit", name: "../pessoal" } }],
+    ["with spaces", { cloakProfile: { source: "explicit", name: "meu perfil" } }],
+  ])("refuse a Cloak profile %s and keep the previous settings", async (_case, payload) => {
+    await saveSettings({ claudeModel: "opus", cloakProfile: { source: "explicit", name: "pessoal" } });
+
+    const response = await saveSettings({ claudeModel: "haiku", ...payload });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "invalid_cloak_profile" });
+    expect(await getSettings()).toEqual({
+      settings: { claudeModel: "opus", cloakProfile: { source: "explicit", name: "pessoal" } },
+    });
+  });
+
+  it("send the chosen Cloak profile only in new requests; earlier ones keep the profile they used", async () => {
+    const earlier = await createProcess();
+    await refine(earlier);
+
+    await saveSettings({ claudeModel: TEST_MODEL, cloakProfile: { source: "explicit", name: "pessoal" } });
+    const later = await createProcess();
+    const attempts = await refine(later);
+
+    expect(attempts).toMatchObject([{ cloakProfile: { source: "explicit", name: "pessoal" }, status: "completed" }]);
+    expect(assistant.refinement.attempts.map((attempt) => attempt.context.cloakProfile)).toEqual([
+      directoryProfile,
+      { source: "explicit", name: "pessoal" },
+    ]);
+    expect((await getProcess(earlier)).refinement.attempts).toMatchObject([{ cloakProfile: directoryProfile }]);
   });
 
   it("send the chosen model to the AI only in new requests; earlier ones keep the CLI and model they used", async () => {
@@ -161,16 +217,33 @@ describe("connection test", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      connectionTest: { cli: "claude", model: "haiku", status: "completed", failureReason: null, message: null, usage },
+      connectionTest: {
+        cli: "claude",
+        model: "haiku",
+        cloakProfile: directoryProfile,
+        status: "completed",
+        failureReason: null,
+        message: null,
+        usage,
+      },
     });
     expect(assistant.connection.attempts).toHaveLength(1);
     expect(assistant.connection.attempts[0]!.context.model).toBe("haiku");
   });
 
+  it("goes through the chosen Cloak profile", async () => {
+    await saveSettings({ claudeModel: TEST_MODEL, cloakProfile: { source: "explicit", name: "pessoal" } });
+
+    const response = await testConnection();
+
+    expect(response.json().connectionTest).toMatchObject({ cloakProfile: { source: "explicit", name: "pessoal" } });
+    expect(assistant.connection.attempts[0]!.context.cloakProfile).toEqual({ source: "explicit", name: "pessoal" });
+  });
+
   it("reports why the connection failed", async () => {
     assistant.connection.willRespond({
       status: "failed",
-      reason: "cli_unauthenticated",
+      reason: "cloak_unauthenticated",
       message: "Not logged in · Please run /login",
       usage: null,
     });
@@ -182,8 +255,9 @@ describe("connection test", () => {
       connectionTest: {
         cli: "claude",
         model: TEST_MODEL,
+        cloakProfile: directoryProfile,
         status: "failed",
-        failureReason: "cli_unauthenticated",
+        failureReason: "cloak_unauthenticated",
         message: "Not logged in · Please run /login",
         usage: null,
       },

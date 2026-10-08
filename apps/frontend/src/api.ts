@@ -29,11 +29,19 @@ export type AttemptStatus = "running" | "completed" | "failed" | "timed_out" | "
 export type FailureReason =
   | "executor_unavailable"
   | "executor_error"
+  | "cloak_unavailable"
+  | "cloak_profile_not_found"
+  | "cloak_unauthenticated"
   | "cli_unavailable"
   | "cli_rate_limited"
+  // Só em tentativas anteriores ao Cloak.
   | "cli_unauthenticated"
   | "cli_error"
   | "invalid_output";
+
+// Perfil do Cloak com que a CLI roda: o que o Cloak liga ao diretório de trabalho do executor, ou
+// um perfil escolhido pelo nome.
+export type CloakProfile = { source: "directory" } | { source: "explicit"; name: string };
 
 export interface Attempt {
   id: string;
@@ -41,6 +49,8 @@ export interface Attempt {
   status: AttemptStatus;
   cli: string;
   model: string;
+  // null nas tentativas anteriores ao Cloak.
+  cloakProfile: CloakProfile | null;
   usage: Usage | null;
   failureReason: FailureReason | null;
   message: string | null;
@@ -219,10 +229,13 @@ export interface ProcessDetail extends ProcessWithConversation {
 export interface Settings {
   // Modelo do claude usado nas novas solicitações à IA.
   claudeModel: string;
+  // Perfil do Cloak com que a CLI roda nas novas solicitações.
+  cloakProfile: CloakProfile;
 }
 
 // Desfecho de um teste de conexão com a CLI, pelo executor.
 export interface ConnectionTest extends Pick<Attempt, "cli" | "model" | "failureReason" | "message" | "usage"> {
+  cloakProfile: CloakProfile;
   status: Exclude<AttemptStatus, "running">;
 }
 

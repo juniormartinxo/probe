@@ -7,7 +7,7 @@ import type { Config } from "./config.ts";
 import { credentialChecker } from "./credential.ts";
 import { parseGenerationRequest } from "./generation-request.ts";
 
-export type ExecutorOptions = Pick<Config, "token" | "timeoutMs" | "cliEnv">;
+export type ExecutorOptions = Pick<Config, "token" | "timeoutMs" | "cliEnv"> & Partial<Pick<Config, "workDir">>;
 
 export function buildApp(options: ExecutorOptions, appOptions: { logger?: boolean } = {}): FastifyInstance {
   const app = Fastify({ logger: appOptions.logger ?? false });
@@ -31,7 +31,7 @@ export function buildApp(options: ExecutorOptions, appOptions: { logger?: boolea
     generations.post("/generations", async (request, reply) => {
       const parsed = parseGenerationRequest(request.body);
       if (!parsed.ok) return reply.code(400).send({ error: parsed.error });
-      const { id, model, prompt } = parsed.request;
+      const { id, model, cloakProfile, prompt } = parsed.request;
       if (running.has(id)) return reply.code(409).send({ error: "generation_in_progress" });
 
       const cancellation = new AbortController();
@@ -40,22 +40,24 @@ export function buildApp(options: ExecutorOptions, appOptions: { logger?: boolea
       reply.raw.on("close", () => {
         if (!reply.raw.writableFinished) cancellation.abort();
       });
-      let workDir: string | undefined;
+      let generationDir: string | undefined;
       try {
         // Diretório vazio por geração: a CLI não acha CLAUDE.md nem configuração de projeto por perto.
-        workDir = await mkdtemp(path.join(tmpdir(), "probe-claude-"));
+        // Fica dentro do diretório de trabalho, de onde o Cloak resolve o perfil do diretório.
+        generationDir = await mkdtemp(path.join(options.workDir ?? tmpdir(), "probe-claude-"));
         const outcome = await runClaude({
           model,
+          cloakProfile,
           prompt,
           env: options.cliEnv,
-          cwd: workDir,
+          cwd: generationDir,
           timeoutMs: options.timeoutMs,
           signal: cancellation.signal,
         });
         return { id, ...outcome };
       } finally {
         running.delete(id);
-        if (workDir) await rm(workDir, { recursive: true, force: true });
+        if (generationDir) await rm(generationDir, { recursive: true, force: true });
       }
     });
 

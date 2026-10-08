@@ -31,7 +31,13 @@ async function startExecutor(handler: Handler): Promise<{ url: string; requests:
 }
 
 function attemptContext(overrides: Partial<AttemptContext> = {}): AttemptContext {
-  return { id: "tentativa-1", model: "sonnet", signal: new AbortController().signal, ...overrides };
+  return {
+    id: "tentativa-1",
+    model: "sonnet",
+    cloakProfile: { source: "directory" },
+    signal: new AbortController().signal,
+    ...overrides,
+  };
 }
 
 const proposalJson = JSON.stringify({
@@ -57,6 +63,15 @@ describe("refinement through the executor", () => {
     expect(request!.headers.authorization).toBe(`Bearer ${TOKEN}`);
     expect(request!.body).toMatchObject({ id: "tentativa-7", operation: "generate_text", model: "claude-opus-5-5" });
     expect((request!.body as { prompt: string }).prompt).toContain(description);
+  });
+
+  it("sends the Cloak profile chosen explicitly by its name, and the directory's as null", async () => {
+    const { url, requests } = await startExecutor(() => ({ id: "tentativa-1", status: "completed", output: proposalJson, usage: null }));
+
+    await refine(url, { cloakProfile: { source: "explicit", name: "pessoal" } });
+    await refine(url, { cloakProfile: { source: "directory" } });
+
+    expect(requests.map((request) => (request.body as { cloakProfile: unknown }).cloakProfile)).toEqual(["pessoal", null]);
   });
 
   it("brings the proposal and the usage the executor reported", async () => {
@@ -400,7 +415,9 @@ describe("CLI failure reported by the executor", () => {
   it.each([
     ["claude is not installed", failedWith("cli_unavailable", "spawn claude ENOENT"), "cli_unavailable"],
     ["the usage limit is reached", failedWith("cli_error", "API Error: 429 rate_limit_error"), "cli_rate_limited"],
-    ["claude is not logged in", failedWith("cli_error", "Invalid API key · Please run /login"), "cli_unauthenticated"],
+    ["claude is not logged in in the Cloak profile", failedWith("cli_error", "Invalid API key · Please run /login"), "cloak_unauthenticated"],
+    ["cloak is not installed", failedWith("cloak_unavailable", "cloak não foi encontrado no PATH do executor."), "cloak_unavailable"],
+    ["the Cloak profile does not exist", failedWith("cloak_profile_not_found", 'O perfil "x" não foi encontrado no Cloak.'), "cloak_profile_not_found"],
     ["claude fails otherwise", failedWith("cli_error", "claude terminou com código 1."), "cli_error"],
     ["claude's output is unrecognizable", failedWith("invalid_output", "claude não devolveu um resultado."), "invalid_output"],
   ])("is reported when %s", async (_case, handler, reason) => {
@@ -536,14 +553,19 @@ describe("connection test through the executor", () => {
     return createExecutorAssistant({ url, token, deadlineMs: 10_000 }).testConnection(attemptContext(overrides));
   }
 
-  it("sends a minimal predefined generation with the model and the credential", async () => {
+  it("sends a minimal predefined generation with the model, the Cloak profile and the credential", async () => {
     const { url, requests } = await startExecutor(() => ({ id: "teste", status: "completed", output: "ok", usage: null }));
 
-    await testConnection(url, { id: "connection-test-1", model: "haiku" });
+    await testConnection(url, { id: "connection-test-1", model: "haiku", cloakProfile: { source: "explicit", name: "pessoal" } });
 
     const [request] = requests;
     expect(request!.headers.authorization).toBe(`Bearer ${TOKEN}`);
-    expect(request!.body).toMatchObject({ id: "connection-test-1", operation: "generate_text", model: "haiku" });
+    expect(request!.body).toMatchObject({
+      id: "connection-test-1",
+      operation: "generate_text",
+      model: "haiku",
+      cloakProfile: "pessoal",
+    });
   });
 
   it("is completed with whatever claude answered, and the usage it reported", async () => {
@@ -570,6 +592,6 @@ describe("connection test through the executor", () => {
   it("reports the CLI failure the executor relayed", async () => {
     const { url } = await startExecutor(failedWith("cli_error", "Invalid API key · Please run /login"));
 
-    expect(await testConnection(url)).toMatchObject({ status: "failed", reason: "cli_unauthenticated" });
+    expect(await testConnection(url)).toMatchObject({ status: "failed", reason: "cloak_unauthenticated" });
   });
 });

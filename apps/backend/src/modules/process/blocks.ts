@@ -247,12 +247,13 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       if (!process.ok) return process;
       const ready = await prepare(trx, process.prepared);
       if (!ready.ok) return ready;
-      // O modelo é o configurado no momento em que a tentativa abre; as já abertas guardam o seu.
-      const { claudeModel } = await settings.find(trx);
+      // Modelo e perfil do Cloak são os configurados no momento em que a tentativa abre; as já
+      // abertas guardam os seus.
+      const { claudeModel, cloakProfile } = await settings.find(trx);
       const attempt = await runner.openAttempt(
         trx,
         ready.aiRequestId,
-        { cli: assistant.cli, model: claudeModel },
+        { cli: assistant.cli, model: claudeModel, cloakProfile },
         ready.prepared.usedVersionIds,
       );
       return { ok: true, attempt, aiRequestId: ready.aiRequestId, prepared: ready.prepared } as const;

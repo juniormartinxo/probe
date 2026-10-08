@@ -7,7 +7,9 @@ import {
   TOKEN,
   claudeResult,
   createTestExecutor,
+  createWorkDir,
   installFakeClaude,
+  installFakeCloak,
   removeTemporaryDirs,
   waitFor,
   type FakeClaudeBehavior,
@@ -21,10 +23,12 @@ afterEach(async () => {
   removeTemporaryDirs();
 });
 
-function startExecutor(behavior: FakeClaudeBehavior, options: { timeoutMs?: number } = {}) {
+// O executor acha o `cloak` e o `claude` falsos pelo PATH; o `cloak` chama o `claude`.
+function startExecutor(behavior: FakeClaudeBehavior, options: { timeoutMs?: number; workDir?: string } = {}) {
   const claude = installFakeClaude(behavior);
-  executor = createTestExecutor({ pathDirs: [claude.dir], ...options });
-  return claude;
+  const cloak = installFakeCloak();
+  executor = createTestExecutor({ pathDirs: [claude.dir, cloak.dir], ...options });
+  return Object.assign(claude, { cloak });
 }
 
 function generationRequest(overrides: Record<string, unknown> = {}) {
@@ -32,10 +36,25 @@ function generationRequest(overrides: Record<string, unknown> = {}) {
     id: "solicitacao-1",
     operation: "generate_text",
     model: "sonnet",
+    cloakProfile: null,
     prompt: "Proponha um enunciado mais claro para o problema.",
     ...overrides,
   };
 }
+
+const claudeArgs = (model: string) => [
+  "-p",
+  "--output-format",
+  "json",
+  "--model",
+  model,
+  "--tools",
+  "",
+  "--strict-mcp-config",
+  "--disable-slash-commands",
+  "--no-session-persistence",
+  "--safe-mode",
+];
 
 function generate(payload: unknown, headers: Record<string, string> = { authorization: `Bearer ${TOKEN}` }) {
   return executor!.inject({ method: "POST", url: "/generations", payload: payload as object, headers });
@@ -65,19 +84,8 @@ describe("generation", () => {
     expect(response.json().status).toBe("completed");
     const invocation = claude.invocation()!;
     expect(invocation.stdin).toBe(prompt);
-    expect(invocation.argv).toEqual([
-      "-p",
-      "--output-format",
-      "json",
-      "--model",
-      "claude-opus-5-5",
-      "--tools",
-      "",
-      "--strict-mcp-config",
-      "--disable-slash-commands",
-      "--no-session-persistence",
-      "--safe-mode",
-    ]);
+    expect(invocation.argv).toEqual(claudeArgs("claude-opus-5-5"));
+    expect(claude.cloak.invocations().map(({ argv }) => argv)).toEqual([["exec", "claude", ...claudeArgs("claude-opus-5-5")]]);
     expect(existsSync(marker)).toBe(false);
   });
 
@@ -154,11 +162,88 @@ describe("failure", () => {
   });
 
   it("is reported when claude is not installed", async () => {
-    executor = createTestExecutor({ pathDirs: [] });
+    const cloak = installFakeCloak();
+    executor = createTestExecutor({ pathDirs: [cloak.dir] });
 
     const response = await generate(generationRequest());
 
     expect(response.json()).toMatchObject({ status: "failed", error: { reason: "cli_unavailable" }, usage: null });
+  });
+});
+
+describe("Cloak", () => {
+  it("runs claude with the profile Cloak binds to the executor's work directory", async () => {
+    const workDir = createWorkDir({ profile: "trabalho" });
+    const claude = startExecutor({ stdout: claudeResult("ok") }, { workDir });
+
+    const response = await generate(generationRequest({ cloakProfile: null }));
+
+    expect(response.json().status).toBe("completed");
+    const [exec] = claude.cloak.invocations();
+    expect(exec).toMatchObject({ argv: ["exec", "claude", ...claudeArgs("sonnet")], profile: "trabalho" });
+    const invocation = claude.invocation()!;
+    expect(invocation.configDir).toBe(claude.cloak.configDirOf("trabalho"));
+    // Cloak e claude rodam num diretório vazio próprio, dentro do diretório de trabalho.
+    expect(exec!.cwd).toBe(invocation.cwd);
+    expect(path.dirname(invocation.cwd)).toBe(workDir);
+    expect(invocation.cwdEntries).toEqual([]);
+    expect(existsSync(invocation.cwd)).toBe(false);
+  });
+
+  it("runs claude with the profile chosen explicitly, over the work directory's", async () => {
+    const workDir = createWorkDir({ profile: "trabalho" });
+    const claude = startExecutor({ stdout: claudeResult("ok") }, { workDir });
+
+    const response = await generate(generationRequest({ cloakProfile: "pessoal" }));
+
+    expect(response.json().status).toBe("completed");
+    expect(claude.cloak.invocations().at(-1)).toMatchObject({
+      argv: ["exec", "--profile", "pessoal", "claude", ...claudeArgs("sonnet")],
+      profile: "pessoal",
+    });
+    expect(claude.invocation()!.configDir).toBe(claude.cloak.configDirOf("pessoal"));
+  });
+
+  it("reports a profile that does not exist as a Cloak failure, without running claude", async () => {
+    const claude = startExecutor({ stdout: claudeResult("ok") });
+
+    const response = await generate(generationRequest({ cloakProfile: "inexistente" }));
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      id: "solicitacao-1",
+      status: "failed",
+      error: {
+        reason: "cloak_profile_not_found",
+        exitCode: 1,
+        message: `O perfil "inexistente" não foi encontrado no Cloak.\nprofile 'inexistente' does not exist`,
+      },
+      usage: null,
+    });
+    expect(claude.invocation()).toBeUndefined();
+    // Nem chega ao `cloak exec`, que perguntaria pelo stdin (o prompt) se deve criar o perfil.
+    expect(claude.cloak.invocations().map(({ argv }) => argv[0])).not.toContain("exec");
+  });
+
+  it("is reported as unavailable when cloak is not installed", async () => {
+    const claude = installFakeClaude({ stdout: claudeResult("ok") });
+    executor = createTestExecutor({ pathDirs: [claude.dir] });
+
+    const response = await generate(generationRequest());
+
+    expect(response.json()).toMatchObject({ status: "failed", error: { reason: "cloak_unavailable" }, usage: null });
+    expect(claude.invocation()).toBeUndefined();
+  });
+
+  it("passes on claude's own failure when the profile is not logged in", async () => {
+    startExecutor({ stderr: "Not logged in · Please run /login\n", exitCode: 1 });
+
+    const response = await generate(generationRequest({ cloakProfile: "pessoal" }));
+
+    expect(response.json()).toMatchObject({
+      status: "failed",
+      error: { reason: "cli_error", exitCode: 1, message: "Not logged in · Please run /login" },
+    });
   });
 });
 
@@ -323,6 +408,11 @@ describe("controlled arguments", () => {
     ["a model that looks like a flag", { model: "--dangerously-skip-permissions" }, "invalid_model"],
     ["a model with shell syntax", { model: "sonnet; rm -rf ~" }, "invalid_model"],
     ["no model", { model: undefined }, "invalid_model"],
+    ["a Cloak profile that looks like a flag", { cloakProfile: "--profile" }, "invalid_cloak_profile"],
+    ["a Cloak profile with a path", { cloakProfile: "../pessoal" }, "invalid_cloak_profile"],
+    ["a Cloak profile with spaces", { cloakProfile: "meu perfil" }, "invalid_cloak_profile"],
+    ["a Cloak profile that is not text", { cloakProfile: 7 }, "invalid_cloak_profile"],
+    ["no Cloak profile, not even the directory's", { cloakProfile: undefined }, "invalid_cloak_profile"],
     ["a blank prompt", { prompt: " \n " }, "invalid_prompt"],
     ["a prompt that is not text", { prompt: 42 }, "invalid_prompt"],
     ["no request id", { id: undefined }, "invalid_id"],
