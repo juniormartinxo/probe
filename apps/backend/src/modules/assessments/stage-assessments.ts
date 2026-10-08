@@ -18,12 +18,15 @@ export type AssessmentType = "stage_point_coverage";
 
 // Avaliação do Jev sobre um Ponto, bruta (escolha, probabilidades e confiança), ao lado da sugestão
 // da IA que acompanhou a Confirmação da síntese que cobriu o Ponto. Só se avaliam Pontos dados por
-// cobertos: `disagrees` diz que o Jev não confirma essa cobertura (escolha diferente de `yes`).
+// cobertos. `disagreesWithCoverage`: o Jev não confirma a cobertura que o usuário deu (escolha
+// diferente de `yes`); confirmar a Etapa assim pede justificativa. `disagreesWithAi`: o Jev e a
+// sugestão da IA dizem coisas diferentes sobre o Ponto.
 export interface Assessment extends Verdict {
   type: AssessmentType;
   stagePoint: { key: string; name: string };
   aiSuggestion: { covered: boolean; reason: string } | null;
-  disagrees: boolean;
+  disagreesWithCoverage: boolean;
+  disagreesWithAi: boolean;
 }
 
 // Uma chamada ao Jev sobre os Pontos de uma Etapa. `outdated`: as respostas confirmadas ou os Pontos
@@ -57,7 +60,7 @@ export interface StageAssessments {
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((item) => b.includes(item));
 
-const isUnit = (value: unknown): value is number => typeof value === "number" && value >= 0 && value <= 1;
+const isUnit = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 
 // Os Pontos são da aplicação (ADR 0002): um desfecho que deixe Ponto sem julgamento, julgue Ponto que
 // não foi pedido ou traga escolha fora da primitiva é recusado, qualquer que seja o Assessor.
@@ -138,15 +141,19 @@ export async function stageAssessmentsOf(db: Db, process: ProcessPoints, stage: 
     const assessments = verdicts
       .filter((row) => row.stageAssessmentId === run.id)
       .toSorted((a, b) => order.indexOf(a.stagePoint) - order.indexOf(b.stagePoint))
-      .map((row) => ({
-        type: row.type,
-        stagePoint: namedStagePoint(process.stagePointsVersion, stage, row.stagePoint),
-        choice: row.choice,
-        confidence: row.confidence,
-        probabilities: row.probabilities,
-        aiSuggestion: suggestions.get(row.stagePoint) ?? null,
-        disagrees: row.choice !== "yes",
-      }));
+      .map((row) => {
+        const aiSuggestion = suggestions.get(row.stagePoint) ?? null;
+        return {
+          type: row.type,
+          stagePoint: namedStagePoint(process.stagePointsVersion, stage, row.stagePoint),
+          choice: row.choice,
+          confidence: row.confidence,
+          probabilities: row.probabilities,
+          aiSuggestion,
+          disagreesWithCoverage: row.choice !== "yes",
+          disagreesWithAi: aiSuggestion !== null && aiSuggestion.covered !== (row.choice === "yes"),
+        };
+      });
     // Os Pontos que a chamada julgou (ou, se falhou, os que ela enviou) são os cobertos na época.
     const assessedPoints = run.status === "completed" ? assessments.map((item) => item.stagePoint.key) : null;
     return {

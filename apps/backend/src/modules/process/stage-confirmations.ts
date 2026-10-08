@@ -2,11 +2,11 @@ import type { Db } from "../../db/database.ts";
 import { stageAssessmentsOf } from "../assessments/stage-assessments.ts";
 import { pendenciesBlockingStage } from "./pendencies.ts";
 import type { ProcessPoints } from "./stage-point-coverage.ts";
-import { nextStage, readyStage, type StageNotReady } from "./stage-readiness.ts";
-import type { Stage } from "./stage.ts";
+import { readyStage, type StageNotReady } from "./stage-readiness.ts";
+import { nextStage, type Stage } from "./stage.ts";
 
 // Confirmação da Etapa: o ato do usuário que dá a Etapa por estabelecida e abre a seguinte. Registra a
-// Avaliação do Jev que ele viu e, quando confirma contra ela, a justificativa. `withoutAssessment`: o
+// Avaliação do Jev que ele viu e a justificativa, obrigatória quando confirma contra o Jev. `withoutAssessment`: o
 // Jev falhou (ou não havia Ponto coberto a avaliar) e o usuário confirmou sem Avaliação.
 export interface StageConfirmation {
   stage: Stage;
@@ -71,15 +71,15 @@ export function stageConfirmations({ db }: { db: Db }): StageConfirmations {
         if (pendencyIds.length > 0) return { ok: false, error: "blocking_pendencies", pendencyIds } as const;
 
         // Nenhuma Avaliação confirma nada: ela só precisa ser a que o usuário viu, e valer ainda.
-        const latest = (await stageAssessmentsOf(trx, process, stage)).at(-1);
         if (stageAssessmentId === null) {
           const toAssess = found.ready.stagePoints.some((point) => point.status === "covered");
           if (toAssess) return { ok: false, error: "assessment_required" } as const;
         } else {
+          const latest = (await stageAssessmentsOf(trx, process, stage)).at(-1);
           if (latest?.id !== stageAssessmentId) return { ok: false, error: "unknown_assessment" } as const;
           if (latest.outdated) return { ok: false, error: "assessment_outdated" } as const;
           // Contra o Jev, a decisão continua do usuário, desde que ele diga por quê.
-          const against = latest.assessments.some((assessment) => assessment.disagrees);
+          const against = latest.assessments.some((assessment) => assessment.disagreesWithCoverage);
           if (against && justification === null) return { ok: false, error: "justification_required" } as const;
         }
 

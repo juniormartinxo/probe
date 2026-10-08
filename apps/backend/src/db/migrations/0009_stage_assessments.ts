@@ -71,5 +71,6 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   await db.schema.dropTable("assessments").execute();
   await db.schema.dropTable("stage_assessment_answer_versions").execute();
   await db.schema.dropTable("stage_assessments").execute();
+  // Sem as Confirmações da Etapa, nenhum Processo pode ter passado de P.
   await sql`update processes set current_stage = 'P'`.execute(db);
 }

@@ -95,7 +95,7 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
   }
 
   const busy = assessing || confirming;
-  const against = latest?.status === "completed" && !latest.outdated && latest.assessments.some((item) => item.disagrees);
+  const against = latest?.status === "completed" && !latest.outdated && latest.assessments.some((item) => item.disagreesWithCoverage);
   const confirmLabel = confirming ? "Confirmando…" : `Confirmar Etapa ${stage}`;
 
   return (
@@ -155,20 +155,20 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
       ) : (
         <form onSubmit={confirm} className="flex flex-col gap-3">
           <AssessmentList assessment={latest} />
-          {against && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`stage-justification-${stage}`} className="text-xs font-normal">
-                O Jev não confirma a cobertura de algum Ponto. Você pode confirmar mesmo assim; diga por quê (obrigatório).
-              </Label>
-              <Textarea
-                id={`stage-justification-${stage}`}
-                value={justification}
-                rows={2}
-                disabled={busy}
-                onChange={(event) => setJustification(event.target.value)}
-              />
-            </div>
-          )}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`stage-justification-${stage}`} className="text-xs font-normal">
+              {against
+                ? "O Jev não confirma a cobertura de algum Ponto. Você pode confirmar mesmo assim; diga por quê (obrigatório)."
+                : "Justificativa (opcional), se quiser registrar por que confirma, por exemplo quando IA e Jev discordam."}
+            </Label>
+            <Textarea
+              id={`stage-justification-${stage}`}
+              value={justification}
+              rows={2}
+              disabled={busy}
+              onChange={(event) => setJustification(event.target.value)}
+            />
+          </div>
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={assess}>
               {assessing ? "Avaliando…" : "Avaliar de novo"}
@@ -243,7 +243,8 @@ function AssessmentItem({ item }: { item: Assessment }) {
     <li className="flex flex-col gap-1 rounded-md border p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{item.stagePoint.name}</span>
-        {item.disagrees && <Badge variant="destructive">Jev discorda da cobertura</Badge>}
+        {item.disagreesWithAi && <Badge variant="outline">IA e Jev discordam</Badge>}
+        {item.disagreesWithCoverage && <Badge variant="destructive">Jev não confirma a cobertura</Badge>}
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="flex flex-col gap-0.5">

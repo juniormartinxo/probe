@@ -1,7 +1,7 @@
 import type { Db } from "../../db/database.ts";
 import { describeAnswer } from "./answers.ts";
 import { stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
-import { stages, type Stage } from "./stage.ts";
+import type { Stage } from "./stage.ts";
 
 // Resposta confirmada de uma Pergunta da Etapa: a Versão mais recente que uma Confirmação da síntese
 // de bloco confirmou. Uma Versão posterior, ainda provisória, não entra.
@@ -63,8 +63,6 @@ export type StageNotReady =
   | "problem_statement_not_confirmed"
   | "open_stage_points";
 
-// A Etapa atual de um Processo aberto, com o enunciado confirmado e nenhum Ponto aberto: o que a
-// Avaliação do Jev e a Confirmação da Etapa exigem. Com `lock`, trava o Processo para a transação.
 export interface ReadyStage {
   process: { id: string; stagePointsVersion: number };
   stage: Stage;
@@ -73,6 +71,8 @@ export interface ReadyStage {
   answers: ConfirmedAnswer[];
 }
 
+// A Etapa atual de um Processo aberto, com o enunciado confirmado e nenhum Ponto aberto: o que a
+// Avaliação do Jev e a Confirmação da Etapa exigem. Com `lock`, trava o Processo para a transação.
 export async function readyStage(
   db: Db,
   processId: string,
@@ -103,10 +103,3 @@ export async function readyStage(
     },
   };
 }
-
-// A Etapa que a Confirmação da atual abre; a última não tem seguinte.
-export function nextStage(stage: Stage): Stage | undefined {
-  return stages[stages.indexOf(stage) + 1];
-}
-
-export const isStage = (value: string): value is Stage => stages.some((stage) => stage === value);

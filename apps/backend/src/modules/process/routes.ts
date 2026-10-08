@@ -8,8 +8,7 @@ import type { ProblemStatements, StatementConfirmation } from "./problem-stateme
 import { createProcess, findProcess, listProcesses } from "./process.ts";
 import type { StagePointCoverage } from "./stage-point-coverage.ts";
 import { stageConfirmationsOf, type StageConfirmations, type StageConfirmationRequest } from "./stage-confirmations.ts";
-import { isStage } from "./stage-readiness.ts";
-import { stages } from "./stage.ts";
+import { isStage, stages } from "./stage.ts";
 import type { SynthesisConfirmation, Syntheses } from "./syntheses.ts";
 import { understandingOf } from "./understanding.ts";
 
@@ -71,12 +70,11 @@ function justificationFrom(body: unknown): string | undefined {
 // A Avaliação que o usuário viu (a concluída ou a que falhou) e, se houver, a justificativa.
 function stageConfirmationFrom(body: unknown): StageConfirmationRequest | undefined {
   if (typeof body !== "object" || body === null) return undefined;
-  const { stageAssessmentId, justification = null } = body as Record<string, unknown>;
+  const { stageAssessmentId } = body as Record<string, unknown>;
   if (stageAssessmentId !== null && (typeof stageAssessmentId !== "string" || !uuidPattern.test(stageAssessmentId))) {
     return undefined;
   }
-  if (justification !== null && typeof justification !== "string") return undefined;
-  return { stageAssessmentId, justification: justification?.trim() ? justification.trim() : null };
+  return { stageAssessmentId, justification: justificationFrom(body)?.trim() ?? null };
 }
 
 const errorStatus = {
@@ -352,7 +350,7 @@ export const processRoutes =
       if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
       if (!isStage(stage)) return reply.code(404).send({ error: "stage_not_found" });
       const confirmation = stageConfirmationFrom(request.body);
-      if (!confirmation) return reply.code(400).send({ error: "stage_assessment_required" });
+      if (!confirmation) return reply.code(400).send({ error: "stage_assessment_id_required" });
       const result = await stageConfirmations.confirm(id, stage, confirmation);
       if (!result.ok) {
         const { error } = result;

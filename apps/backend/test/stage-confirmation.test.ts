@@ -62,13 +62,15 @@ describe("Jev Assessment of a Stage", () => {
           confidence: 0.9,
           probabilities: { yes: 0.9, no: expect.any(Number), insufficient: expect.any(Number) },
           aiSuggestion: suggestionOf("real_problem"),
-          disagrees: false,
+          disagreesWithCoverage: false,
+          disagreesWithAi: false,
         },
         {
           stagePoint: { key: "consequence", name: "Consequência de não resolver" },
           choice: "yes",
           aiSuggestion: suggestionOf("consequence"),
-          disagrees: false,
+          disagreesWithCoverage: false,
+          disagreesWithAi: false,
         },
       ],
     });
@@ -93,7 +95,11 @@ describe("Jev Assessment of a Stage", () => {
 
     const stageAssessment = await api.assess(id);
 
-    expect(stageAssessment.assessments[1]).toMatchObject({ choice: "insufficient", confidence: 0.34, disagrees: true });
+    expect(stageAssessment.assessments[1]).toMatchObject({
+      choice: "insufficient",
+      confidence: 0.34,
+      disagreesWithCoverage: true,
+    });
   });
 
   it("is refused while a Point of the Stage is still open", async () => {
@@ -249,7 +255,12 @@ describe("Stage Confirmation", () => {
     const { id } = await api.processWithClosedPoints();
     assessor.willRespond(coverageOutcome({ consequence: verdict("no", 0.71) }));
     const stageAssessment = await api.assess(id);
-    expect(stageAssessment.assessments[1]).toMatchObject({ choice: "no", aiSuggestion: { covered: true }, disagrees: true });
+    expect(stageAssessment.assessments[1]).toMatchObject({
+      choice: "no",
+      aiSuggestion: { covered: true },
+      disagreesWithCoverage: true,
+      disagreesWithAi: true,
+    });
 
     for (const justification of [undefined, "   "]) {
       const response = await api.confirmStage(id, { stageAssessmentId: stageAssessment.id, justification });
@@ -273,6 +284,32 @@ describe("Stage Confirmation", () => {
     expect(response.statusCode).toBe(201);
     expect(response.json().stageConfirmation).toMatchObject({ stage: "P", withoutAssessment: false, justification });
     expect((await api.getProcess(id)).currentStage).toBe("R");
+  });
+
+  it("tells apart the Jev disagreeing with the AI from the Jev disagreeing with the coverage given", async () => {
+    // A IA sugeriu a urgência aberta; o usuário a deu por coberta mesmo assim.
+    const { id, block } = await api.processWithAnsweredBlock();
+    const proposal = await api.synthesize(id, block.id);
+    await api.confirmSynthesis(id, block.id, {
+      proposalId: proposal.id,
+      synthesis: proposal.synthesis,
+      coveredStagePoints: ["real_problem", "consequence", "urgency"],
+    });
+    assessor.willRespond(coverageOutcome({ urgency: verdict("yes", 0.62) }));
+
+    const stageAssessment = await api.assess(id);
+
+    expect(stageAssessment.assessments[2]).toMatchObject({
+      stagePoint: { key: "urgency" },
+      choice: "yes",
+      aiSuggestion: suggestionOf("urgency"),
+      disagreesWithCoverage: false,
+      disagreesWithAi: true,
+    });
+    const justification = "A cobrança da diretoria tem prazo: a revisão trimestral.";
+    const response = await api.confirmStage(id, { stageAssessmentId: stageAssessment.id, justification });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().stageConfirmation).toMatchObject({ withoutAssessment: false, justification });
   });
 
   it("is refused with a Point still open", async () => {

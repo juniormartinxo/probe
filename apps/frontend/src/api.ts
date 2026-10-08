@@ -217,8 +217,8 @@ export type AssessorFailureReason =
   | "jev_error"
   | "invalid_output";
 
-// Avaliação do Jev sobre um Ponto coberto, bruta, ao lado da sugestão da IA. `disagrees`: o Jev não
-// confirma a cobertura que você deu ao Ponto.
+// Avaliação do Jev sobre um Ponto coberto, bruta, ao lado da sugestão da IA. `disagreesWithCoverage`:
+// o Jev não confirma a cobertura que você deu ao Ponto. `disagreesWithAi`: o Jev e a IA divergem.
 export interface Assessment {
   type: "stage_point_coverage";
   stagePoint: { key: string; name: string };
@@ -226,7 +226,8 @@ export interface Assessment {
   probabilities: Record<AssessmentChoice, number>;
   confidence: number;
   aiSuggestion: { covered: boolean; reason: string } | null;
-  disagrees: boolean;
+  disagreesWithCoverage: boolean;
+  disagreesWithAi: boolean;
 }
 
 // Uma chamada ao Jev sobre os Pontos de uma Etapa; `outdated` quando as respostas confirmadas ou os
