@@ -7,6 +7,7 @@ import type {
   AssistantOutcome,
   AttemptContext,
   BlockInput,
+  Cli,
   GeneratedBlock,
   GeneratedSynthesis,
 } from "../ai/assistant.ts";
@@ -68,18 +69,26 @@ export type BlockRequestError =
   | "problem_statement_not_confirmed"
   | "block_already_requested"
   | "synthesis_not_confirmed"
-  | "no_open_stage_points";
+  | "no_open_stage_points"
+  | "cli_model_not_configured";
 
-export type NewBlockAttemptError = BlocksClosed | "block_request_not_found" | "attempt_in_progress" | "block_generated";
+export type NewBlockAttemptError =
+  | BlocksClosed
+  | "block_request_not_found"
+  | "attempt_in_progress"
+  | "block_generated"
+  | "cli_model_not_configured";
 
 export interface Blocks {
   // Pede à IA um Bloco novo para os Pontos abertos da Etapa atual, depois de confirmada a síntese de
   // cada Bloco anterior da Etapa.
   request(processId: string): Promise<{ ok: true; blockRequest: BlockRequest } | { ok: false; error: BlockRequestError }>;
-  // Nova tentativa da mesma solicitação, depois de uma tentativa que não trouxe Bloco.
+  // Nova tentativa da mesma solicitação, depois de uma tentativa que não trouxe Bloco. Sem `cli`, com
+  // a CLI da tentativa anterior; com ela, com a que o usuário escolheu.
   newAttempt(
     processId: string,
     blockRequestId: string,
+    cli?: Cli,
   ): Promise<{ ok: true; blockRequest: BlockRequest } | { ok: false; error: NewBlockAttemptError }>;
   find(process: { id: string; currentStage: Stage; stagePointsVersion: number }): Promise<StageWork>;
 }
@@ -240,19 +249,16 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
     prepare: (
       trx: Db,
       prepared: PreparedBlock | null,
-    ) => Promise<{ ok: true; aiRequestId: string; prepared: PreparedBlock } | { ok: false; error: E }>,
-  ): Promise<{ ok: true; blockRequest: BlockRequest } | { ok: false; error: E | BlocksClosed }> {
+    ) => Promise<{ ok: true; aiRequestId: string; prepared: PreparedBlock; cli?: Cli } | { ok: false; error: E }>,
+  ): Promise<{ ok: true; blockRequest: BlockRequest } | { ok: false; error: E | BlocksClosed | "cli_model_not_configured" }> {
     const opened = await db.transaction().execute(async (trx) => {
       const process = await lockOpenProcess(trx, processId);
       if (!process.ok) return process;
       const ready = await prepare(trx, process.prepared);
       if (!ready.ok) return ready;
-      const attempt = await runner.openAttempt(
-        trx,
-        ready.aiRequestId,
-        await settings.forNewAttempt(trx),
-        ready.prepared.usedVersionIds,
-      );
+      const attemptSettings = await settings.forNewAttempt(trx, ready.cli);
+      if (!attemptSettings.ok) return attemptSettings;
+      const attempt = await runner.openAttempt(trx, ready.aiRequestId, attemptSettings.settings, ready.prepared.usedVersionIds);
       return { ok: true, attempt, aiRequestId: ready.aiRequestId, prepared: ready.prepared } as const;
     });
     if (!opened.ok) return opened;
@@ -293,14 +299,14 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       });
     },
 
-    async newAttempt(processId, blockRequestId) {
+    async newAttempt(processId, blockRequestId, cli) {
       return startAttempt(processId, async (trx, prepared) => {
         const request = (await listAiRequests(trx, processId, OPERATION)).find(({ id }) => id === blockRequestId);
         // Uma solicitação de Bloco só existe depois da Confirmação do enunciado: sem ela, não há o que tentar.
         if (!request || !prepared) return { ok: false, error: "block_request_not_found" } as const;
         if (request.status === "running") return { ok: false, error: "attempt_in_progress" } as const;
         if (request.status === "completed") return { ok: false, error: "block_generated" } as const;
-        return { ok: true, aiRequestId: request.id, prepared } as const;
+        return { ok: true, aiRequestId: request.id, prepared, cli: cli ?? request.attempts.at(-1)!.cli } as const;
       });
     },
 

@@ -9,6 +9,7 @@ import {
   type StagePointState,
 } from "@/api";
 import { AttemptList } from "@/components/attempt-list";
+import { RetryAttempt } from "@/components/retry-attempt";
 import { BlockSynthesis } from "@/components/block-synthesis";
 import { Questionnaire } from "@/components/questionnaire";
 import { ConfirmedStages, StageConfirmationPanel } from "@/components/stage-confirmation";
@@ -231,18 +232,8 @@ function BlockRequestStatus({
     <div className="flex flex-col gap-2 rounded-lg border p-4">
       <p className="text-sm">{attemptProblem(last)}</p>
       {last.message && <p className="text-muted-foreground text-xs whitespace-pre-wrap">{last.message}</p>}
-      <p className="text-muted-foreground text-xs">Seu progresso continua salvo. Você pode tentar de novo.</p>
-      <div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={sending}
-          onClick={() => send(() => newBlockAttempt(processId, blockRequest.id))}
-        >
-          {sending ? "Pedindo…" : "Tentar novamente"}
-        </Button>
-      </div>
-      {error && <p className="text-destructive text-sm">{error}</p>}
+      <p className="text-muted-foreground text-xs">Seu progresso continua salvo. Você pode tentar de novo, com a mesma CLI ou outra.</p>
+      <RetryAttempt last={last} retry={(cli) => newBlockAttempt(processId, blockRequest.id, cli)} onChange={onChange} />
     </div>
   );
 }

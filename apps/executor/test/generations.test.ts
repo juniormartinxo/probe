@@ -8,11 +8,11 @@ import {
   claudeResult,
   createTestExecutor,
   createWorkDir,
-  installFakeClaude,
+  installFakeCli,
   installFakeCloak,
   removeTemporaryDirs,
   waitFor,
-  type FakeClaudeBehavior,
+  type FakeCliBehavior,
 } from "./support/test-executor.ts";
 
 let executor: FastifyInstance | undefined;
@@ -24,8 +24,8 @@ afterEach(async () => {
 });
 
 // O executor acha o `cloak` e o `claude` falsos pelo PATH; o `cloak` chama o `claude`.
-function startExecutor(behavior: FakeClaudeBehavior, options: { timeoutMs?: number; workDir?: string } = {}) {
-  const claude = installFakeClaude(behavior);
+function startExecutor(behavior: FakeCliBehavior, options: { timeoutMs?: number; workDir?: string } = {}) {
+  const claude = installFakeCli("claude", behavior);
   const cloak = installFakeCloak();
   executor = createTestExecutor({ pathDirs: [claude.dir, cloak.dir], ...options });
   return Object.assign(claude, { cloak });
@@ -35,6 +35,7 @@ function generationRequest(overrides: Record<string, unknown> = {}) {
   return {
     id: "solicitacao-1",
     operation: "generate_text",
+    cli: "claude",
     model: "sonnet",
     cloakProfile: null,
     prompt: "Proponha um enunciado mais claro para o problema.",
@@ -229,7 +230,7 @@ describe("Cloak", () => {
     ["the directory's profile", null],
     ["an explicit profile", "pessoal"],
   ])("reports Cloak's own error as a Cloak failure, apart from claude's, with %s", async (_case, cloakProfile) => {
-    const claude = installFakeClaude({ stdout: claudeResult("ok") });
+    const claude = installFakeCli("claude", { stdout: claudeResult("ok") });
     const cloak = installFakeCloak({ brokenConfig: true });
     executor = createTestExecutor({ pathDirs: [claude.dir, cloak.dir] });
 
@@ -245,7 +246,7 @@ describe("Cloak", () => {
   });
 
   it("is reported as unavailable when cloak is not installed", async () => {
-    const claude = installFakeClaude({ stdout: claudeResult("ok") });
+    const claude = installFakeCli("claude", { stdout: claudeResult("ok") });
     executor = createTestExecutor({ pathDirs: [claude.dir] });
 
     const response = await generate(generationRequest());
@@ -424,6 +425,8 @@ describe("controlled arguments", () => {
   it.each([
     ["an operation that is not predefined", { operation: "run_command" }, "unknown_operation"],
     ["no operation", { operation: undefined }, "unknown_operation"],
+    ["a CLI that is not supported", { cli: "bash" }, "unknown_cli"],
+    ["no CLI", { cli: undefined }, "unknown_cli"],
     ["a model that looks like a flag", { model: "--dangerously-skip-permissions" }, "invalid_model"],
     ["a model with shell syntax", { model: "sonnet; rm -rf ~" }, "invalid_model"],
     ["no model", { model: undefined }, "invalid_model"],

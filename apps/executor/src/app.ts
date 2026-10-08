@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
-import { runClaude } from "./claude.ts";
+import { runCli } from "./cli.ts";
 import type { Config } from "./config.ts";
 import { credentialChecker } from "./credential.ts";
 import { parseGenerationRequest } from "./generation-request.ts";
@@ -31,7 +31,7 @@ export function buildApp(options: ExecutorOptions, appOptions: { logger?: boolea
     generations.post("/generations", async (request, reply) => {
       const parsed = parseGenerationRequest(request.body);
       if (!parsed.ok) return reply.code(400).send({ error: parsed.error });
-      const { id, model, cloakProfile, prompt } = parsed.request;
+      const { id, cli, model, cloakProfile, prompt } = parsed.request;
       if (running.has(id)) return reply.code(409).send({ error: "generation_in_progress" });
 
       const cancellation = new AbortController();
@@ -42,10 +42,11 @@ export function buildApp(options: ExecutorOptions, appOptions: { logger?: boolea
       });
       let generationDir: string | undefined;
       try {
-        // Diretório vazio por geração: a CLI não acha CLAUDE.md nem configuração de projeto por perto.
+        // Diretório vazio por geração: a CLI não acha instruções nem configuração de projeto por perto.
         // Fica dentro do diretório de trabalho, de onde o Cloak resolve o perfil do diretório.
-        generationDir = await mkdtemp(path.join(options.workDir ?? tmpdir(), "probe-claude-"));
-        const outcome = await runClaude({
+        generationDir = await mkdtemp(path.join(options.workDir ?? tmpdir(), `probe-${cli}-`));
+        const outcome = await runCli({
+          cli,
           model,
           cloakProfile,
           prompt,

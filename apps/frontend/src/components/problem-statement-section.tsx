@@ -10,6 +10,7 @@ import {
   type Refinement,
 } from "@/api";
 import { AttemptList } from "@/components/attempt-list";
+import { RetryAttempt } from "@/components/retry-attempt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -114,13 +115,10 @@ function RefinementStatus({
     <div className="flex flex-col gap-2 rounded-lg border p-4">
       <p className="text-sm">{attemptProblem(last)}</p>
       {last.message && <p className="text-muted-foreground text-xs whitespace-pre-wrap">{last.message}</p>}
-      <p className="text-muted-foreground text-xs">Seu progresso continua salvo. Você pode tentar de novo ou escrever o enunciado.</p>
-      <div>
-        <Button variant="outline" size="sm" disabled={sending} onClick={() => send(newRefinementAttempt)}>
-          {sending ? "Pedindo…" : "Tentar novamente"}
-        </Button>
-      </div>
-      {error && <p className="text-destructive text-sm">{error}</p>}
+      <p className="text-muted-foreground text-xs">
+        Seu progresso continua salvo. Você pode tentar de novo, com a mesma CLI ou outra, ou escrever o enunciado.
+      </p>
+      <RetryAttempt last={last} retry={(cli) => newRefinementAttempt(processId, cli)} onChange={onChange} />
     </div>
   );
 }

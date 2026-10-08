@@ -6,7 +6,9 @@ import { buildApp } from "../../src/app.ts";
 
 export const TOKEN = "credencial-de-teste-0123456789abcdef";
 
-export interface FakeClaudeBehavior {
+export type Cli = "claude" | "codex" | "grok" | "agy";
+
+export interface FakeCliBehavior {
   stdout?: string;
   stderr?: string;
   exitCode?: number;
@@ -17,14 +19,16 @@ export interface FakeClaudeBehavior {
 export interface Invocation {
   argv: string[];
   stdin: string;
+  // Arquivo passado em `--prompt-file`, como estava quando a CLI rodou.
+  promptFile: { path: string; content: string } | null;
   cwd: string;
   cwdEntries: string[];
   pid: number;
-  // CLAUDE_CONFIG_DIR que o claude recebeu: o diretório do perfil que o Cloak escolheu.
+  // Diretório de configuração que a CLI recebeu do Cloak: o dela no perfil escolhido.
   configDir: string | null;
 }
 
-export interface FakeClaude {
+export interface FakeCli {
   dir: string;
   invocation(): Invocation | undefined;
 }
@@ -35,12 +39,12 @@ export function removeTemporaryDirs(): void {
   for (const dir of temporaryDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 }
 
-// Põe um `claude` falso num diretório próprio; o executor o encontra pelo PATH.
-export function installFakeClaude(behavior: FakeClaudeBehavior): FakeClaude {
-  const dir = mkdtempSync(path.join(tmpdir(), "probe-fake-claude-"));
+// Põe uma CLI falsa num diretório próprio; o executor a encontra pelo PATH.
+export function installFakeCli(cli: Cli, behavior: FakeCliBehavior): FakeCli {
+  const dir = mkdtempSync(path.join(tmpdir(), `probe-fake-${cli}-`));
   temporaryDirs.push(dir);
-  const executable = path.join(dir, "claude");
-  copyFileSync(new URL("./fake-claude.cjs", import.meta.url), executable);
+  const executable = path.join(dir, cli);
+  copyFileSync(new URL("./fake-cli.cjs", import.meta.url), executable);
   chmodSync(executable, 0o755);
   writeFileSync(path.join(dir, "behavior.json"), JSON.stringify(behavior));
   const invocationFile = path.join(dir, "invocation.json");
@@ -60,14 +64,16 @@ export interface CloakInvocation {
 export interface FakeCloak {
   dir: string;
   invocations(): CloakInvocation[];
-  // Diretório de configuração do claude no perfil, como o Cloak o passa à CLI.
-  configDirOf(profile: string): string;
+  // Diretório de configuração da CLI no perfil, como o Cloak o passa à CLI.
+  configDirOf(profile: string, cli?: Cli): string;
 }
 
+const allClis: Cli[] = ["claude", "codex", "grok", "agy"];
+
 // Põe um `cloak` falso num diretório próprio. Ele conhece os perfis padrao (o padrão, sem `.cloak`
-// no caminho), pessoal e trabalho; com `brokenConfig`, falha antes de qualquer comando, como o
-// Cloak real com a configuração ilegível.
-export function installFakeCloak({ brokenConfig = false } = {}): FakeCloak {
+// no caminho), pessoal e trabalho, e executa as CLIs registradas em `clis` (todas, por padrão); com
+// `brokenConfig`, falha antes de qualquer comando, como o Cloak real com a configuração ilegível.
+export function installFakeCloak({ brokenConfig = false, clis = allClis } = {}): FakeCloak {
   const dir = mkdtempSync(path.join(tmpdir(), "probe-fake-cloak-"));
   temporaryDirs.push(dir);
   const executable = path.join(dir, "cloak");
@@ -75,12 +81,12 @@ export function installFakeCloak({ brokenConfig = false } = {}): FakeCloak {
   chmodSync(executable, 0o755);
   copyFileSync(new URL("./fake-cloak.cjs", import.meta.url), path.join(dir, "fake-cloak.cjs"));
   const profiles = ["padrao", "pessoal", "trabalho"];
-  writeFileSync(path.join(dir, "cloak.json"), JSON.stringify({ profiles, defaultProfile: "padrao", brokenConfig }));
+  writeFileSync(path.join(dir, "cloak.json"), JSON.stringify({ profiles, defaultProfile: "padrao", brokenConfig, clis }));
   const invocationsFile = path.join(dir, "invocations.json");
   return {
     dir,
     invocations: () => (existsSync(invocationsFile) ? JSON.parse(readFileSync(invocationsFile, "utf8")) : []),
-    configDirOf: (profile) => path.join(dir, "profiles", profile, "claude"),
+    configDirOf: (profile, cli = "claude") => path.join(dir, "profiles", profile, cli),
   };
 }
 
@@ -97,8 +103,8 @@ export function claudeResult(result: string, extra: Record<string, unknown> = {}
   return JSON.stringify({ type: "result", subtype: "success", is_error: false, result, ...extra });
 }
 
-// O PATH do executor tem só os diretórios dados e o do node (o `claude` falso é um script node),
-// para que nenhum teste alcance o `claude` real instalado na máquina.
+// O PATH do executor tem só os diretórios dados e o do node (as CLIs falsas são scripts node),
+// para que nenhum teste alcance as CLIs reais instaladas na máquina.
 export function createTestExecutor(options: { pathDirs: string[]; timeoutMs?: number; workDir?: string }): FastifyInstance {
   return buildApp({
     token: TOKEN,

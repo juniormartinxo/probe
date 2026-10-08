@@ -1,18 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "../../db/database.ts";
 import type { Attempt, AttemptSettings, AttemptStatus } from "../ai/ai-requests.ts";
-import { cloakProfileName, cloakProfileNamed, type Assistant, type CloakProfile } from "../ai/assistant.ts";
+import { cloakProfileName, cloakProfileNamed, clis, isCli, type Assistant, type Cli, type CloakProfile } from "../ai/assistant.ts";
 
 // Configurações não sensíveis, guardadas no banco. Segredos ficam no ambiente do backend e nunca
 // fazem parte delas.
 export interface Settings {
-  // Modelo do claude usado nas novas solicitações à IA.
-  claudeModel: string;
+  // CLI usada nas novas solicitações à IA. Uma nova tentativa pode usar outra, por escolha do usuário.
+  cli: Cli;
+  // Modelo de cada CLI; null enquanto o usuário não escolheu um, e a CLI não pode ser usada.
+  models: Record<Cli, string | null>;
   // Perfil do Cloak com que a CLI roda nas novas solicitações.
   cloakProfile: CloakProfile;
 }
 
-export type SettingsError = "invalid_model" | "invalid_cloak_profile";
+export type SettingsError = "invalid_cli" | "invalid_model" | "model_required" | "invalid_cloak_profile";
 
 // Desfecho de um teste de conexão: a CLI, o modelo e o perfil do Cloak usados e, se não concluiu, por quê.
 export interface ConnectionTest extends Pick<Attempt, "cli" | "model" | "failureReason" | "message" | "usage"> {
@@ -24,16 +26,20 @@ export interface SettingsModule {
   // Dentro de uma transação, passe-a: a leitura fica nela.
   find(trx?: Db): Promise<Settings>;
   // CLI, modelo e perfil do Cloak de uma tentativa que abre agora; as já abertas guardam os seus.
-  forNewAttempt(trx: Db): Promise<AttemptSettings>;
-  save(settings: { claudeModel: unknown; cloakProfile: unknown }): Promise<
+  // Sem `cli`, a CLI da configuração; com ela, a escolhida, se tiver modelo.
+  forNewAttempt(
+    trx: Db,
+    cli?: Cli,
+  ): Promise<{ ok: true; settings: AttemptSettings } | { ok: false; error: "cli_model_not_configured" }>;
+  save(settings: { cli: unknown; models: unknown; cloakProfile: unknown }): Promise<
     { ok: true; settings: Settings } | { ok: false; error: SettingsError }
   >;
   // Chamada paga à IA: só por ação explícita do usuário. Não pertence a nenhum Processo.
   testConnection(signal: AbortSignal): Promise<ConnectionTest>;
 }
 
-// O mesmo formato que o executor aceita: alias ("sonnet") ou nome completo ("claude-opus-5-5[1m]"),
-// começando por letra ou dígito para nunca ser lido como opção da CLI.
+// O mesmo formato que o executor aceita: alias ("sonnet") ou nome completo ("claude-opus-5-5[1m]",
+// "gpt-6-astra"), começando por letra ou dígito para nunca ser lido como opção da CLI.
 const modelPattern = /^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,99}$/;
 
 const isModel = (value: unknown): value is string => typeof value === "string" && modelPattern.test(value);
@@ -54,47 +60,76 @@ function cloakProfileFrom(value: unknown): CloakProfile | undefined {
   return { source: "explicit", name: value.name };
 }
 
+// Um modelo válido ou nenhum para cada CLI.
+function modelsFrom(value: unknown): Record<Cli, string | null> | undefined {
+  if (!isRecord(value)) return undefined;
+  const models = Object.fromEntries(clis.map((cli) => [cli, value[cli]]));
+  return Object.values(models).every((model) => model === null || isModel(model))
+    ? (models as Record<Cli, string | null>)
+    : undefined;
+}
+
 export function settings(deps: { db: Db; assistant: Assistant; defaultAiModel: string }): SettingsModule {
   const { db, assistant, defaultAiModel } = deps;
 
   async function find(trx: Db = db): Promise<Settings> {
-    const row = await trx.selectFrom("settings").select(["claudeModel", "cloakProfileName"]).executeTakeFirst();
+    const row = await trx.selectFrom("settings").selectAll().executeTakeFirst();
+    if (!row) {
+      return {
+        cli: "claude",
+        models: { claude: defaultAiModel, codex: null, grok: null, agy: null },
+        cloakProfile: { source: "directory" },
+      };
+    }
     return {
-      claudeModel: row?.claudeModel ?? defaultAiModel,
-      cloakProfile: cloakProfileNamed(row?.cloakProfileName ?? null),
+      cli: row.cli,
+      models: { claude: row.claudeModel, codex: row.codexModel, grok: row.grokModel, agy: row.agyModel },
+      cloakProfile: cloakProfileNamed(row.cloakProfileName),
     };
   }
 
   return {
     find,
 
-    async forNewAttempt(trx) {
-      const { claudeModel, cloakProfile } = await find(trx);
-      return { cli: assistant.cli, model: claudeModel, cloakProfile };
+    async forNewAttempt(trx, chosen) {
+      const { cli, models, cloakProfile } = await find(trx);
+      const attemptCli = chosen ?? cli;
+      const model = models[attemptCli];
+      if (model === null) return { ok: false, error: "cli_model_not_configured" };
+      return { ok: true, settings: { cli: attemptCli, model, cloakProfile } };
     },
 
     async save(requested) {
-      const { claudeModel } = requested;
-      if (!isModel(claudeModel)) return { ok: false, error: "invalid_model" };
+      const { cli } = requested;
+      if (!isCli(cli)) return { ok: false, error: "invalid_cli" };
+      const models = modelsFrom(requested.models);
+      if (!models) return { ok: false, error: "invalid_model" };
+      // A CLI das novas solicitações precisa de um modelo; as outras podem ficar sem.
+      if (models[cli] === null) return { ok: false, error: "model_required" };
       const profile = cloakProfileFrom(requested.cloakProfile);
       if (!profile) return { ok: false, error: "invalid_cloak_profile" };
-      const name = cloakProfileName(profile);
-      const saved = await db
-        .insertInto("settings")
-        .values({ claudeModel, cloakProfileName: name })
-        .onConflict((oc) => oc.column("id").doUpdateSet({ claudeModel, cloakProfileName: name, updatedAt: new Date() }))
-        .returning(["claudeModel", "cloakProfileName"])
-        .executeTakeFirstOrThrow();
-      return {
-        ok: true,
-        settings: { claudeModel: saved.claudeModel, cloakProfile: cloakProfileNamed(saved.cloakProfileName) },
+      const values = {
+        cli,
+        claudeModel: models.claude,
+        codexModel: models.codex,
+        grokModel: models.grok,
+        agyModel: models.agy,
+        cloakProfileName: cloakProfileName(profile),
       };
+      await db
+        .insertInto("settings")
+        .values(values)
+        .onConflict((oc) => oc.column("id").doUpdateSet({ ...values, updatedAt: new Date() }))
+        .execute();
+      return { ok: true, settings: await find() };
     },
 
     async testConnection(signal) {
-      const { claudeModel: model, cloakProfile } = await find();
-      const outcome = await assistant.testConnection({ id: `connection-test-${randomUUID()}`, model, cloakProfile, signal });
-      const base = { cli: assistant.cli, model, cloakProfile, failureReason: null, message: null, usage: null };
+      const { cli, models, cloakProfile } = await find();
+      // A configuração gravada sempre tem modelo para a CLI escolhida.
+      const model = models[cli]!;
+      const outcome = await assistant.testConnection({ id: `connection-test-${randomUUID()}`, cli, model, cloakProfile, signal });
+      const base = { cli, model, cloakProfile, failureReason: null, message: null, usage: null };
       switch (outcome.status) {
         case "completed":
           return { ...base, status: outcome.status, usage: outcome.usage };

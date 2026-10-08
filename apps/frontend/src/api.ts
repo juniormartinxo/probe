@@ -40,6 +40,10 @@ export type FailureReason =
   | "cli_error"
   | "invalid_output";
 
+// CLIs que o executor chama pelo Cloak. Gemini roda pelo `agy`.
+export const clis = ["claude", "codex", "grok", "agy"] as const;
+export type Cli = (typeof clis)[number];
+
 // Perfil do Cloak com que a CLI roda: o que o Cloak liga ao diretório de trabalho do executor, ou
 // um perfil escolhido pelo nome.
 export type CloakProfile = { source: "directory" } | { source: "explicit"; name: string };
@@ -48,7 +52,7 @@ export interface Attempt {
   id: string;
   number: number;
   status: AttemptStatus;
-  cli: string;
+  cli: Cli;
   model: string;
   // null nas tentativas anteriores ao Cloak.
   cloakProfile: CloakProfile | null;
@@ -279,8 +283,10 @@ export interface ProcessDetail extends ProcessWithConversation {
 
 // Configurações não sensíveis; segredos ficam no ambiente do backend e nunca chegam aqui.
 export interface Settings {
-  // Modelo do claude usado nas novas solicitações à IA.
-  claudeModel: string;
+  // CLI usada nas novas solicitações à IA; uma nova tentativa pode usar outra, por escolha do usuário.
+  cli: Cli;
+  // Modelo de cada CLI; null enquanto não foi escolhido, e a CLI não pode ser usada.
+  models: Record<Cli, string | null>;
   // Perfil do Cloak com que a CLI roda nas novas solicitações.
   cloakProfile: CloakProfile;
 }
@@ -343,9 +349,11 @@ export async function requestRefinement(processId: string): Promise<Refinement> 
   return refinement;
 }
 
-export async function newRefinementAttempt(processId: string): Promise<Refinement> {
+// Nova tentativa da mesma solicitação, com a CLI que o usuário escolheu.
+export async function newRefinementAttempt(processId: string, cli: Cli): Promise<Refinement> {
   const { refinement } = await request<{ refinement: Refinement }>(`${statementPath(processId)}/refinement/attempts`, {
     method: "POST",
+    body: JSON.stringify({ cli }),
   });
   return refinement;
 }
@@ -371,10 +379,10 @@ export async function requestBlock(processId: string): Promise<BlockRequest> {
   return blockRequest;
 }
 
-export async function newBlockAttempt(processId: string, blockRequestId: string): Promise<BlockRequest> {
+export async function newBlockAttempt(processId: string, blockRequestId: string, cli: Cli): Promise<BlockRequest> {
   const { blockRequest } = await request<{ blockRequest: BlockRequest }>(
     `${processPath(processId)}/block-requests/${encodeURIComponent(blockRequestId)}/attempts`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify({ cli }) },
   );
   return blockRequest;
 }
@@ -438,10 +446,15 @@ export async function requestSynthesis(processId: string, blockId: string): Prom
   return synthesisRequest;
 }
 
-export async function newSynthesisAttempt(processId: string, blockId: string, requestId: string): Promise<SynthesisRequest> {
+export async function newSynthesisAttempt(
+  processId: string,
+  blockId: string,
+  requestId: string,
+  cli: Cli,
+): Promise<SynthesisRequest> {
   const { synthesisRequest } = await request<{ synthesisRequest: SynthesisRequest }>(
     `${blockPath(processId, blockId)}/synthesis-requests/${encodeURIComponent(requestId)}/attempts`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify({ cli }) },
   );
   return synthesisRequest;
 }

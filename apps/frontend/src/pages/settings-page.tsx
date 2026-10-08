@@ -2,9 +2,11 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import {
   ApiError,
+  clis,
   getSettings,
   saveSettings,
   testConnection,
+  type Cli,
   type CloakProfile,
   type ConnectionTest,
   type Settings,
@@ -14,10 +16,22 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { attemptProblem, cloakProfileSummary, usageSummary } from "@/refinement";
+import { attemptProblem, cliName, cloakProfileSummary, usageSummary } from "@/refinement";
 
-// Aliases que o claude aceita; um nome completo de modelo também vale.
-const modelSuggestions = ["sonnet", "opus", "haiku"];
+// Sugestões de modelo por CLI; qualquer nome que a CLI aceite em --model também vale.
+const modelSuggestions: Record<Cli, string[]> = {
+  claude: ["sonnet", "opus", "haiku"],
+  codex: [],
+  grok: [],
+  agy: [],
+};
+
+const modelHints: Record<Cli, string> = {
+  claude: "Um alias, como sonnet, opus ou haiku, ou o nome completo do modelo.",
+  codex: "O nome do modelo como o codex aceita em --model.",
+  grok: "O nome do modelo como o grok aceita em --model.",
+  agy: "O nome do modelo como o agy aceita em --model; agy models lista os disponíveis.",
+};
 
 export function SettingsPage() {
   const [saved, setSaved] = useState<Settings>();
@@ -43,7 +57,7 @@ export function SettingsPage() {
       {!loadError && saved === undefined && <p className="text-muted-foreground text-sm">Carregando…</p>}
       {saved !== undefined && (
         <>
-          <ModelCard saved={saved} onSaved={setSaved} />
+          <CliCard saved={saved} onSaved={setSaved} />
           <CloakProfileCard saved={saved} onSaved={setSaved} />
           <ConnectionCard saved={saved} />
         </>
@@ -58,13 +72,20 @@ interface SettingsCardProps {
   onSaved: (settings: Settings) => void;
 }
 
-function ModelCard({ saved: savedSettings, onSaved }: SettingsCardProps) {
-  const savedModel = savedSettings.claudeModel;
-  const [model, setModel] = useState(savedModel);
+function CliCard({ saved: savedSettings, onSaved }: SettingsCardProps) {
+  const [cli, setCli] = useState<Cli>(savedSettings.cli);
+  const [models, setModels] = useState(() =>
+    Object.fromEntries(clis.map((option) => [option, savedSettings.models[option] ?? ""])) as Record<Cli, string>,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState(false);
-  const changed = model.trim() !== savedModel;
+  // Campo vazio é CLI sem modelo escolhido.
+  const requested = Object.fromEntries(clis.map((option) => [option, models[option].trim() || null])) as Record<
+    Cli,
+    string | null
+  >;
+  const changed = cli !== savedSettings.cli || clis.some((option) => requested[option] !== savedSettings.models[option]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -72,16 +93,14 @@ function ModelCard({ saved: savedSettings, onSaved }: SettingsCardProps) {
     setError(undefined);
     setSaved(false);
     try {
-      const settings = await saveSettings({ ...savedSettings, claudeModel: model.trim() });
-      onSaved(settings);
-      setModel(settings.claudeModel);
+      onSaved(await saveSettings({ ...savedSettings, cli, models: requested }));
       setSaved(true);
     } catch (caught) {
-      // O texto fica no campo para corrigir ou tentar de novo.
+      // A escolha fica nos campos para corrigir ou tentar de novo.
       setError(
         caught instanceof ApiError && caught.code === "invalid_model"
-          ? "Modelo inválido. Use um alias, como sonnet, ou o nome completo do modelo, sem espaços."
-          : "Não foi possível salvar. Seu texto continua aqui; tente de novo.",
+          ? "Modelo inválido. Use o alias ou o nome completo do modelo, sem espaços."
+          : "Não foi possível salvar. Sua escolha continua aqui; tente de novo.",
       );
     } finally {
       setSaving(false);
@@ -92,37 +111,65 @@ function ModelCard({ saved: savedSettings, onSaved }: SettingsCardProps) {
     <Card>
       <form onSubmit={handleSubmit} className="contents">
         <CardHeader>
-          <CardTitle>Modelo do claude</CardTitle>
+          <CardTitle>CLI e modelo</CardTitle>
           <CardDescription>
-            Vale para as próximas chamadas à IA, inclusive novas tentativas. Cada tentativa já feita mantém a CLI e o
-            modelo que usou.
+            A CLI marcada atende as próximas chamadas à IA, com o modelo escolhido para ela. Se uma tentativa falhar, você
+            pode tentar de novo com outra CLI que tenha modelo; a troca nunca é automática. Cada tentativa já feita mantém
+            a CLI, o modelo e o perfil que usou.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          <Label htmlFor="claude-model">Modelo</Label>
-          <Input
-            id="claude-model"
-            list="claude-model-suggestions"
-            value={model}
-            onChange={(event) => {
-              setModel(event.target.value);
+        <CardContent className="flex flex-col gap-4">
+          <RadioGroup
+            value={cli}
+            onValueChange={(value) => {
+              setCli(value as Cli);
               setSaved(false);
             }}
-            autoComplete="off"
-            spellCheck={false}
-            aria-invalid={error !== undefined}
-          />
-          <datalist id="claude-model-suggestions">
-            {modelSuggestions.map((suggestion) => (
-              <option key={suggestion} value={suggestion} />
+            className="gap-4"
+          >
+            {clis.map((option) => (
+              <div key={option} className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value={option} id={`cli-${option}`} />
+                  <Label htmlFor={`cli-${option}`} className="font-normal">
+                    {cliName(option)}
+                  </Label>
+                </div>
+                <div className="flex flex-col gap-1 pl-6">
+                  <Label htmlFor={`model-${option}`} className="text-muted-foreground text-xs font-normal">
+                    Modelo
+                  </Label>
+                  <Input
+                    id={`model-${option}`}
+                    list={`model-suggestions-${option}`}
+                    value={models[option]}
+                    placeholder={option === cli ? undefined : "sem modelo: a CLI não é usada"}
+                    onChange={(event) => {
+                      setModels({ ...models, [option]: event.target.value });
+                      setSaved(false);
+                    }}
+                    autoComplete="off"
+                    spellCheck={false}
+                    aria-invalid={error !== undefined}
+                  />
+                  <datalist id={`model-suggestions-${option}`}>
+                    {modelSuggestions[option].map((suggestion) => (
+                      <option key={suggestion} value={suggestion} />
+                    ))}
+                  </datalist>
+                  <p className="text-muted-foreground text-xs">{modelHints[option]}</p>
+                </div>
+              </div>
             ))}
-          </datalist>
-          <p className="text-muted-foreground text-xs">Um alias, como sonnet, opus ou haiku, ou o nome completo do modelo.</p>
+          </RadioGroup>
+          {requested[cli] === null && (
+            <p className="text-muted-foreground text-sm">Escolha um modelo para o {cliName(cli)} antes de salvar.</p>
+          )}
           {error && <p className="text-destructive text-sm">{error}</p>}
-          {saved && <p className="text-muted-foreground text-sm">Modelo salvo.</p>}
+          {saved && <p className="text-muted-foreground text-sm">CLI e modelos salvos.</p>}
         </CardContent>
         <CardFooter className="justify-end">
-          <Button type="submit" disabled={saving || !changed || model.trim() === ""}>
+          <Button type="submit" disabled={saving || !changed || requested[cli] === null}>
             {saving ? "Salvando…" : "Salvar"}
           </Button>
         </CardFooter>
@@ -170,8 +217,8 @@ function CloakProfileCard({ saved: savedSettings, onSaved }: SettingsCardProps) 
         <CardHeader>
           <CardTitle>Perfil do Cloak</CardTitle>
           <CardDescription>
-            O executor chama o claude pelo Cloak, com as contas e credenciais do perfil. Vale para as próximas chamadas à
-            IA; cada tentativa já feita mantém o perfil que usou.
+            O executor chama a CLI pelo Cloak, com as contas e credenciais do perfil. Vale para as próximas chamadas à IA,
+            com qualquer CLI; cada tentativa já feita mantém o perfil que usou.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -251,8 +298,9 @@ function ConnectionCard({ saved }: { saved: Settings }) {
       <CardHeader>
         <CardTitle>Conexão</CardTitle>
         <CardDescription>
-          Pede uma resposta curta ao claude, pelo executor, com o modelo ({saved.claudeModel}) e o perfil do Cloak (
-          {cloakProfileSummary(saved.cloakProfile)}) salvos. É uma chamada paga e só acontece quando você clica.
+          Pede uma resposta curta ao {cliName(saved.cli)}, pelo executor, com o modelo ({saved.models[saved.cli]}) e o
+          perfil do Cloak ({cloakProfileSummary(saved.cloakProfile)}) salvos. É uma chamada paga e só acontece quando
+          você clica.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
@@ -270,7 +318,7 @@ function ConnectionCard({ saved }: { saved: Settings }) {
 }
 
 function ConnectionResult({ result }: { result: ConnectionTest }) {
-  const used = `${result.cli} · ${result.model} · ${cloakProfileSummary(result.cloakProfile)} · ${usageSummary(result.usage)}`;
+  const used = `${cliName(result.cli)} · ${result.model} · ${cloakProfileSummary(result.cloakProfile)} · ${usageSummary(result.usage)}`;
   if (result.status === "completed") {
     return (
       <div className="flex flex-col gap-1 rounded-lg border p-4">

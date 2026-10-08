@@ -180,7 +180,12 @@ export interface StageConfirmationTable {
 // Linha única de configurações não sensíveis.
 export interface SettingsTable {
   id: Generated<boolean>;
-  claudeModel: string;
+  cli: Cli;
+  // Modelo de cada CLI; null enquanto o usuário não escolheu um.
+  claudeModel: string | null;
+  codexModel: string | null;
+  grokModel: string | null;
+  agyModel: string | null;
   // Nome do perfil do Cloak escolhido; null é o perfil do diretório.
   cloakProfileName: string | null;
   updatedAt: Generated<Date>;
