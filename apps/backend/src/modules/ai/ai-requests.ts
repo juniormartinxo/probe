@@ -5,7 +5,7 @@ import type { AssistantOutcome, Cli, FailureReason, AttemptContext, Usage } from
 
 // Operações que o backend pede à IA. Cada uma tem a sua solicitação; uma nova chance depois de
 // uma falha é uma nova tentativa da mesma solicitação.
-export type Operation = "refine_problem_statement";
+export type Operation = "refine_problem_statement" | "generate_block";
 
 export type AttemptStatus = "running" | "completed" | "failed" | "timed_out" | "canceled" | "interrupted";
 
@@ -60,15 +60,7 @@ function attemptOf(row: AttemptRow): Attempt {
   };
 }
 
-// O tipo de `result` é o que a própria operação validou antes de gravar.
-export async function findAiRequest<T>(db: Db, processId: string, operation: Operation): Promise<AiRequest<T> | null> {
-  const request = await db
-    .selectFrom("aiRequests")
-    .select(["id", "operation"])
-    .where("processId", "=", processId)
-    .where("operation", "=", operation)
-    .executeTakeFirst();
-  if (!request) return null;
+async function withAttempts<T>(db: Db, request: { id: string; operation: Operation }): Promise<AiRequest<T>> {
   const rows = await db
     .selectFrom("aiRequestAttempts")
     .selectAll()
@@ -82,6 +74,30 @@ export async function findAiRequest<T>(db: Db, processId: string, operation: Ope
     attempts: rows.map(attemptOf),
     result: completed ? { attemptId: completed.id, finishedAt: completed.finishedAt!, value: completed.result as T } : null,
   };
+}
+
+// O tipo de `result` é o que a própria operação validou antes de gravar.
+export async function findAiRequest<T>(db: Db, processId: string, operation: Operation): Promise<AiRequest<T> | null> {
+  const request = await db
+    .selectFrom("aiRequests")
+    .select(["id", "operation"])
+    .where("processId", "=", processId)
+    .where("operation", "=", operation)
+    .executeTakeFirst();
+  return request ? withAttempts<T>(db, request) : null;
+}
+
+// Para operações que um Processo pede mais de uma vez, na ordem em que foram pedidas.
+export async function listAiRequests<T>(db: Db, processId: string, operation: Operation): Promise<AiRequest<T>[]> {
+  const requests = await db
+    .selectFrom("aiRequests")
+    .select(["id", "operation"])
+    .where("processId", "=", processId)
+    .where("operation", "=", operation)
+    .orderBy("createdAt")
+    .orderBy("id")
+    .execute();
+  return Promise.all(requests.map((request) => withAttempts<T>(db, request)));
 }
 
 function usageColumns(usage: Usage | null) {
@@ -120,6 +136,8 @@ export interface AttemptSettings {
   cli: Cli;
   model: string;
 }
+
+export type OnCompleted<T> = (trx: Db, attemptId: string, result: T) => Promise<void>;
 
 export interface OpenedAttempt {
   id: string;
@@ -167,7 +185,13 @@ export class AiRequestRunner {
   }
 
   // Dispara a geração de uma tentativa aberta, depois de a transação que a abriu ser gravada.
-  run<T>({ id: attemptId, model }: OpenedAttempt, generate: (context: AttemptContext) => Promise<AssistantOutcome<T>>): void {
+  // `onCompleted` grava o que o resultado produz na mesma transação que conclui a tentativa: ou os
+  // dois ficam, ou a tentativa termina interrompida.
+  run<T>(
+    { id: attemptId, model }: OpenedAttempt,
+    generate: (context: AttemptContext) => Promise<AssistantOutcome<T>>,
+    onCompleted?: OnCompleted<T>,
+  ): void {
     const cancellation = new AbortController();
     const done = generate({ id: attemptId, model, signal: cancellation.signal })
       .catch((error: unknown): AssistantOutcome<T> => {
@@ -175,7 +199,7 @@ export class AiRequestRunner {
         return { status: "interrupted", message: error instanceof Error ? error.message : String(error) };
       })
       // Encerrada pelo desligamento do backend, a tentativa fica interrompida, qualquer que seja o desfecho.
-      .then((outcome) => this.finish(attemptId, cancellation.signal.aborted ? shutdownOutcome : outcome))
+      .then((outcome) => this.finish(attemptId, cancellation.signal.aborted ? shutdownOutcome : outcome, onCompleted))
       // Se o banco recusou o desfecho, a tentativa ao menos sai de "running" para aceitar uma nova;
       // se nem isso grava (banco fora do ar), o próximo início do backend a interrompe.
       .catch(async (error: unknown) => {
@@ -188,13 +212,17 @@ export class AiRequestRunner {
     this.inFlight.set(attemptId, { cancellation, done });
   }
 
-  private async finish(attemptId: string, outcome: AssistantOutcome<unknown>): Promise<void> {
-    await this.db
-      .updateTable("aiRequestAttempts")
-      .set({ ...outcomeColumns(outcome), finishedAt: databaseClock })
-      .where("id", "=", attemptId)
-      .where("status", "=", "running")
-      .execute();
+  private async finish<T>(attemptId: string, outcome: AssistantOutcome<T>, onCompleted?: OnCompleted<T>): Promise<void> {
+    await this.db.transaction().execute(async (trx) => {
+      const finished = await trx
+        .updateTable("aiRequestAttempts")
+        .set({ ...outcomeColumns(outcome), finishedAt: databaseClock })
+        .where("id", "=", attemptId)
+        .where("status", "=", "running")
+        .returning("id")
+        .executeTakeFirst();
+      if (finished && outcome.status === "completed") await onCompleted?.(trx, attemptId, outcome.result);
+    });
   }
 
   // Tentativas que ficaram "running" sem ninguém para recebê-las (o backend caiu) passam a

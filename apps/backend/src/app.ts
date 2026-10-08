@@ -2,6 +2,8 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { Db } from "./db/database.ts";
 import { AiRequestRunner } from "./modules/ai/ai-requests.ts";
 import type { Assistant } from "./modules/ai/assistant.ts";
+import { answers } from "./modules/process/answers.ts";
+import { blocks } from "./modules/process/blocks.ts";
 import { problemStatements } from "./modules/process/problem-statement.ts";
 import { processRoutes } from "./modules/process/routes.ts";
 
@@ -24,7 +26,12 @@ export function buildApp({ db, assistant, aiModel }: AppDependencies, options: {
     async (api) => {
       api.get("/health", async () => ({ status: "ok" }));
       await api.register(
-        processRoutes({ db, problemStatements: problemStatements({ db, assistant, runner, aiModel }) }),
+        processRoutes({
+          db,
+          problemStatements: problemStatements({ db, assistant, runner, aiModel }),
+          blocks: blocks({ db, assistant, runner, aiModel }),
+          answers: answers({ db }),
+        }),
       );
     },
     { prefix: "/api" },

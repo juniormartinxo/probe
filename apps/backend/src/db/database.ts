@@ -1,7 +1,7 @@
 import { CamelCasePlugin, Kysely, PostgresDialect, type Generated } from "kysely";
 import pg from "pg";
 import type { AttemptStatus, Operation } from "../modules/ai/ai-requests.ts";
-import type { Cli, FailureReason } from "../modules/ai/assistant.ts";
+import type { AnswerType, Cli, FailureReason } from "../modules/ai/assistant.ts";
 import type { StatementOrigin } from "../modules/process/problem-statement.ts";
 import type { ProcessStatus } from "../modules/process/process.ts";
 import type { Stage } from "../modules/process/stage.ts";
@@ -11,6 +11,7 @@ export interface ProcessTable {
   originalDescription: string;
   status: Generated<ProcessStatus>;
   currentStage: Generated<Stage>;
+  stagePointsVersion: number;
   createdAt: Generated<Date>;
 }
 
@@ -55,12 +56,55 @@ export interface ProblemStatementTable {
   confirmedAt: Generated<Date>;
 }
 
+export interface BlockTable {
+  id: Generated<string>;
+  processId: string;
+  number: number;
+  stage: Stage;
+  attemptId: string;
+  createdAt: Generated<Date>;
+}
+
+export interface QuestionTable {
+  id: Generated<string>;
+  blockId: string;
+  position: number;
+  wording: string;
+  subject: string;
+  contextRelation: string;
+  rationale: string | null;
+  stagePoints: string[];
+  answerType: AnswerType;
+  choices: string[];
+}
+
+export interface AnswerVersionTable {
+  id: Generated<string>;
+  questionId: string;
+  number: number;
+  selectedChoices: number[] | null;
+  text: string | null;
+  createdAt: Generated<Date>;
+}
+
+export interface AnswerDraftTable {
+  questionId: string;
+  basedOnVersionId: string | null;
+  selectedChoices: number[] | null;
+  text: string | null;
+  updatedAt: Generated<Date>;
+}
+
 export interface Database {
   processes: ProcessTable;
   conversations: ConversationTable;
   aiRequests: AiRequestTable;
   aiRequestAttempts: AiRequestAttemptTable;
   problemStatements: ProblemStatementTable;
+  blocks: BlockTable;
+  questions: QuestionTable;
+  answerVersions: AnswerVersionTable;
+  answerDrafts: AnswerDraftTable;
 }
 
 export type Db = Kysely<Database>;

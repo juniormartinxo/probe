@@ -1,7 +1,8 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AttemptContext } from "../src/modules/ai/assistant.ts";
+import type { AttemptContext, BlockInput } from "../src/modules/ai/assistant.ts";
 import { createExecutorAssistant } from "../src/modules/ai/executor-assistant.ts";
+import { stagePointsOf } from "../src/modules/process/stage-points.ts";
 import { waitFor } from "./support/test-app.ts";
 
 const TOKEN = "credencial-de-teste-0123456789abcdef";
@@ -101,6 +102,130 @@ describe("refinement through the executor", () => {
     const outcome = await refine(url);
 
     expect(outcome).toEqual({ status: "failed", reason: "invalid_output", message: expect.any(String), usage });
+  });
+});
+
+const blockInput: BlockInput = {
+  stage: "P",
+  originalDescription: description,
+  problemStatement: "O deploy leva 40 minutos e bloqueia o time de manhã.",
+  openStagePoints: stagePointsOf(1, "P"),
+};
+
+const blockQuestions = [
+  {
+    wording: "A demora é o problema ou sintoma?",
+    subject: "Sintoma ou causa",
+    contextRelation: "O enunciado fala da demora, não da causa.",
+    rationale: "Separar sintoma de problema.",
+    stagePoints: ["real_problem"],
+    answerType: "single_choice",
+    choices: ["É o problema", "É sintoma"],
+  },
+  {
+    wording: "O que a demora causou?",
+    subject: "Efeitos",
+    contextRelation: "O time perde a manhã.",
+    stagePoints: ["consequence", "urgency"],
+    answerType: "multiple_choice",
+    choices: ["Atrasos", "Horas extras", "Reclamações"],
+  },
+  {
+    wording: "Por que agora?",
+    subject: "Por que agora",
+    contextRelation: "O problema é antigo.",
+    rationale: "",
+    stagePoints: ["urgency"],
+    answerType: "free_text",
+  },
+];
+
+function generateBlock(url: string) {
+  return createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).generateBlock(blockInput, attemptContext());
+}
+
+const answering = (output: string) => () => ({ id: "tentativa-1", status: "completed", output, usage: null });
+
+describe("Block generation through the executor", () => {
+  it("sends the problem and the open Stage Points in the prompt", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify({ questions: blockQuestions })));
+
+    await generateBlock(url);
+
+    const { operation, prompt } = requests[0]!.body as { operation: string; prompt: string };
+    expect(operation).toBe("generate_text");
+    expect(prompt).toContain(blockInput.problemStatement);
+    expect(prompt).toContain(description);
+    for (const point of blockInput.openStagePoints) {
+      expect(prompt).toContain(point.key);
+      expect(prompt).toContain(point.name);
+    }
+  });
+
+  it("brings the questions, each with the Points it serves and its kind of answer", async () => {
+    const { url } = await startExecutor(answering("```json\n" + JSON.stringify({ questions: blockQuestions }) + "\n```"));
+
+    const outcome = await generateBlock(url);
+
+    expect(outcome).toEqual({
+      status: "completed",
+      usage: null,
+      result: {
+        questions: [
+          {
+            wording: "A demora é o problema ou sintoma?",
+            subject: "Sintoma ou causa",
+            contextRelation: "O enunciado fala da demora, não da causa.",
+            rationale: "Separar sintoma de problema.",
+            stagePoints: ["real_problem"],
+            answerType: "single_choice",
+            choices: ["É o problema", "É sintoma"],
+          },
+          {
+            wording: "O que a demora causou?",
+            subject: "Efeitos",
+            contextRelation: "O time perde a manhã.",
+            rationale: null,
+            stagePoints: ["consequence", "urgency"],
+            answerType: "multiple_choice",
+            choices: ["Atrasos", "Horas extras", "Reclamações"],
+          },
+          {
+            wording: "Por que agora?",
+            subject: "Por que agora",
+            contextRelation: "O problema é antigo.",
+            rationale: null,
+            stagePoints: ["urgency"],
+            answerType: "free_text",
+            choices: [],
+          },
+        ],
+      },
+    });
+  });
+
+  const withFirst = (changes: Record<string, unknown>) =>
+    JSON.stringify({ questions: [{ ...blockQuestions[0], ...changes }, ...blockQuestions.slice(1)] });
+
+  it.each([
+    ["no questions", JSON.stringify({ questions: [] })],
+    ["a truncated answer", JSON.stringify({ questions: blockQuestions }).slice(0, 80)],
+    ["a question without wording", withFirst({ wording: undefined })],
+    ["a question without subject", withFirst({ subject: " " })],
+    ["a question without its relation to the context", withFirst({ contextRelation: undefined })],
+    ["a question that serves no Point", withFirst({ stagePoints: [] })],
+    ["a Point that is not open in the Stage", withFirst({ stagePoints: ["deadline"] })],
+    ["an unknown kind of answer", withFirst({ answerType: "scale" })],
+    ["a choice question with a single choice", withFirst({ choices: ["É o problema"] })],
+    ["a choice question with a blank choice", withFirst({ choices: ["É o problema", " "] })],
+    ["a choice question with repeated choices", withFirst({ choices: ["É o problema", "É o problema"] })],
+    ["free text with choices", withFirst({ answerType: "free_text" })],
+  ])("never takes %s as a completed Block", async (_case, output) => {
+    const { url } = await startExecutor(answering(output));
+
+    const outcome = await generateBlock(url);
+
+    expect(outcome).toMatchObject({ status: "failed", reason: "invalid_output" });
   });
 });
 

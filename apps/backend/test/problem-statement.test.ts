@@ -66,7 +66,7 @@ describe("refinement", () => {
         missingInformation: ["Com que frequência o deploy é feito?"],
       },
     });
-    expect(assistant.attempts[0]!.input).toEqual({ originalDescription: description });
+    expect(assistant.refinement.attempts[0]!.input).toEqual({ originalDescription: description });
     const process = await getProcess(id);
     expect(process.problemStatement).toBeNull();
     expect(process.originalDescription).toBe(description);
@@ -196,7 +196,7 @@ function newAttempt(id: string) {
 describe("AI request", () => {
   it("records the attempt with its CLI, model and the usage the CLI reported", async () => {
     const usage = { inputTokens: 812, outputTokens: 95, cacheCreationInputTokens: null, cacheReadInputTokens: 0, costUsd: 0.0123 };
-    assistant.willRespond(completed(defaultProposal, usage));
+    assistant.refinement.willRespond(completed(defaultProposal, usage));
     const id = await createProcess();
 
     await requestRefinement(id);
@@ -216,7 +216,7 @@ describe("AI request", () => {
         finishedAt: expect.any(String),
       },
     ]);
-    expect(assistant.attempts[0]!.context).toMatchObject({ id: refinement.proposal.id, model: TEST_MODEL });
+    expect(assistant.refinement.attempts[0]!.context).toMatchObject({ id: refinement.proposal.id, model: TEST_MODEL });
   });
 
   it("keeps usage unknown, not zero, when the CLI does not report it", async () => {
@@ -236,7 +236,7 @@ describe("AI request", () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: "refinement_already_requested" });
     await settledRefinement(id);
-    expect(assistant.attempts).toHaveLength(1);
+    expect(assistant.refinement.attempts).toHaveLength(1);
   });
 });
 
@@ -249,7 +249,7 @@ describe("refinement request", () => {
 
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: "problem_statement_confirmed" });
-    expect(assistant.attempts).toHaveLength(0);
+    expect(assistant.refinement.attempts).toHaveLength(0);
   });
 
   it.each([
@@ -259,7 +259,7 @@ describe("refinement request", () => {
     const response = await requestRefinement(id);
 
     expect(response.statusCode).toBe(404);
-    expect(assistant.attempts).toHaveLength(0);
+    expect(assistant.refinement.attempts).toHaveLength(0);
   });
 });
 
@@ -269,7 +269,7 @@ describe("CLI failure", () => {
     ["rate limited", "cli_rate_limited", "API Error: 429 rate_limit_error"],
     ["not authenticated", "cli_unauthenticated", "Invalid API key · Please run /login"],
   ] as const)("when the CLI is %s, is reported and leaves the Process as it was", async (_case, reason, message) => {
-    assistant.willRespond({ status: "failed", reason, message, usage: null });
+    assistant.refinement.willRespond({ status: "failed", reason, message, usage: null });
     const id = await createProcess();
 
     await requestRefinement(id);
@@ -286,7 +286,7 @@ describe("CLI failure", () => {
   });
 
   it("when the CLI times out, is reported as timed out", async () => {
-    assistant.willRespond({ status: "timed_out" });
+    assistant.refinement.willRespond({ status: "timed_out" });
     const id = await createProcess();
 
     await requestRefinement(id);
@@ -295,7 +295,7 @@ describe("CLI failure", () => {
   });
 
   it("accepts a new attempt of the same request", async () => {
-    assistant.willRespond({ status: "timed_out" });
+    assistant.refinement.willRespond({ status: "timed_out" });
     const id = await createProcess();
     await requestRefinement(id);
     const failed = await settledRefinement(id);
@@ -322,11 +322,11 @@ describe("CLI failure", () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: "refinement_completed" });
     expect((await settledRefinement(id)).attempts).toHaveLength(1);
-    expect(assistant.attempts).toHaveLength(1);
+    expect(assistant.refinement.attempts).toHaveLength(1);
   });
 
   it("refuses a new attempt while an attempt is running", async () => {
-    assistant.willHold();
+    assistant.refinement.willHold();
     const id = await createProcess();
     await requestRefinement(id);
 
@@ -334,7 +334,7 @@ describe("CLI failure", () => {
 
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: "attempt_in_progress" });
-    expect(assistant.attempts).toHaveLength(1);
+    expect(assistant.refinement.attempts).toHaveLength(1);
   });
 
   it("refuses a new attempt before a refinement was requested", async () => {
@@ -347,7 +347,7 @@ describe("CLI failure", () => {
   });
 
   it("refuses a new attempt once the problem statement is confirmed", async () => {
-    assistant.willRespond({ status: "failed", reason: "cli_error", message: "erro", usage: null });
+    assistant.refinement.willRespond({ status: "failed", reason: "cli_error", message: "erro", usage: null });
     const id = await createProcess();
     await requestRefinement(id);
     await settledRefinement(id);
@@ -362,10 +362,10 @@ describe("CLI failure", () => {
 
 describe("interrupted request", () => {
   it("shows as interrupted after the backend shuts down mid-attempt, and is not sent again", async () => {
-    assistant.willHold();
+    assistant.refinement.willHold();
     const id = await createProcess();
     await requestRefinement(id);
-    await waitFor(() => assistant.attempts.length === 1);
+    await waitFor(() => assistant.refinement.attempts.length === 1);
 
     await testApp.close();
     testApp = await createTestApp({ assistant });
@@ -376,20 +376,20 @@ describe("interrupted request", () => {
       proposal: null,
       attempts: [{ number: 1, status: "interrupted", message: expect.any(String), finishedAt: expect.any(String) }],
     });
-    expect(assistant.attempts[0]!.context.signal.aborted).toBe(true);
-    expect(assistant.attempts).toHaveLength(1);
+    expect(assistant.refinement.attempts[0]!.context.signal.aborted).toBe(true);
+    expect(assistant.refinement.attempts).toHaveLength(1);
   });
 
   it("shows as interrupted after the backend crashed mid-attempt, ignoring an answer that arrives later", async () => {
-    assistant.willHold();
+    assistant.refinement.willHold();
     const id = await createProcess();
     await requestRefinement(id);
-    await waitFor(() => assistant.attempts.length === 1);
+    await waitFor(() => assistant.refinement.attempts.length === 1);
     const crashed = testApp;
 
     // Um backend novo sobe sem que o anterior tenha encerrado as suas tentativas.
     testApp = await createTestApp({ assistant: new FakeAssistant() });
-    assistant.attempts[0]!.respond(completed());
+    assistant.refinement.attempts[0]!.respond(completed());
     await crashed.close();
 
     const process = await getProcess(id);
@@ -398,10 +398,10 @@ describe("interrupted request", () => {
   });
 
   it("accepts a new attempt of the same request", async () => {
-    assistant.willHold();
+    assistant.refinement.willHold();
     const id = await createProcess();
     await requestRefinement(id);
-    await waitFor(() => assistant.attempts.length === 1);
+    await waitFor(() => assistant.refinement.attempts.length === 1);
     await testApp.close();
     testApp = await createTestApp({ assistant });
 
@@ -441,13 +441,13 @@ describe("result that cannot be saved", () => {
 
 describe("late answer", () => {
   it("does not touch a problem statement the user confirmed while the AI was still working", async () => {
-    assistant.willHold();
+    assistant.refinement.willHold();
     const id = await createProcess();
     await requestRefinement(id);
-    await waitFor(() => assistant.attempts.length === 1);
+    await waitFor(() => assistant.refinement.attempts.length === 1);
     await confirm(id, { statement: "O deploy bloqueia o time de manhã." });
 
-    assistant.attempts[0]!.respond(completed());
+    assistant.refinement.attempts[0]!.respond(completed());
 
     const refinement = await settledRefinement(id);
     expect(refinement).toMatchObject({
@@ -462,12 +462,12 @@ describe("late answer", () => {
   });
 
   it("cannot be confirmed once the problem statement is established", async () => {
-    assistant.willHold();
+    assistant.refinement.willHold();
     const id = await createProcess();
     await requestRefinement(id);
-    await waitFor(() => assistant.attempts.length === 1);
+    await waitFor(() => assistant.refinement.attempts.length === 1);
     await confirm(id, { statement: "O deploy bloqueia o time de manhã." });
-    assistant.attempts[0]!.respond(completed());
+    assistant.refinement.attempts[0]!.respond(completed());
     const { proposal } = await settledRefinement(id);
 
     const response = await confirm(id, { statement: proposal.statement, proposalId: proposal.id });

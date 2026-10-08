@@ -1,5 +1,6 @@
 import http from "node:http";
 import type { Assistant, AssistantOutcome, FailureReason, AttemptContext, Usage } from "./assistant.ts";
+import { blockPrompt, parseGeneratedBlock } from "./generate-block.ts";
 import { parseStatementProposal, refinementPrompt } from "./refine-problem-statement.ts";
 
 export interface ExecutorSettings {
@@ -156,21 +157,34 @@ export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSett
     return sent.ok ? outcomeOf(sent.response) : sent.outcome;
   }
 
+  // Gera o texto e o lê no formato da operação; o que não se lê nunca chega como concluído.
+  async function generate<T>(
+    prompt: string,
+    parse: (output: string) => T | undefined,
+    context: AttemptContext,
+  ): Promise<AssistantOutcome<T>> {
+    const outcome = await generateText(prompt, context);
+    if (outcome.status !== "completed") return outcome;
+    const result = parse(outcome.result);
+    if (!result) {
+      return {
+        status: "failed",
+        reason: "invalid_output",
+        message: "A resposta da IA veio incompleta ou fora do formato esperado.",
+        usage: outcome.usage,
+      };
+    }
+    return { status: "completed", result, usage: outcome.usage };
+  }
+
   return {
     cli: "claude",
-    async refineProblemStatement({ originalDescription }, context) {
-      const outcome = await generateText(refinementPrompt(originalDescription), context);
-      if (outcome.status !== "completed") return outcome;
-      const result = parseStatementProposal(outcome.result);
-      if (!result) {
-        return {
-          status: "failed",
-          reason: "invalid_output",
-          message: "A resposta da IA veio incompleta ou fora do formato esperado.",
-          usage: outcome.usage,
-        };
-      }
-      return { status: "completed", result, usage: outcome.usage };
+    refineProblemStatement({ originalDescription }, context) {
+      return generate(refinementPrompt(originalDescription), parseStatementProposal, context);
+    },
+    generateBlock(input, context) {
+      const openKeys = input.openStagePoints.map((point) => point.key);
+      return generate(blockPrompt(input), (output) => parseGeneratedBlock(output, openKeys), context);
     },
   };
 }
