@@ -17,6 +17,7 @@ process.stdin.on("end", () => {
     cwd: process.cwd(),
     cwdEntries: fs.readdirSync(process.cwd()),
     pid: process.pid,
+    configDir: process.env.CLAUDE_CONFIG_DIR ?? null,
   };
   fs.writeFileSync(path.join(__dirname, "invocation.json"), JSON.stringify(invocation));
   setTimeout(() => {

@@ -1,10 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { SettingsModule } from "./settings.ts";
 
-// O modelo pedido, como veio; se é um modelo válido, o módulo decide.
-function settingsFrom(body: unknown): { claudeModel: unknown } {
-  if (typeof body !== "object" || body === null) return { claudeModel: undefined };
-  return { claudeModel: (body as Record<string, unknown>).claudeModel };
+// O modelo e o perfil do Cloak pedidos, como vieram; se são válidos, o módulo decide.
+function settingsFrom(body: unknown): { claudeModel: unknown; cloakProfile: unknown } {
+  if (typeof body !== "object" || body === null) return { claudeModel: undefined, cloakProfile: undefined };
+  const { claudeModel, cloakProfile } = body as Record<string, unknown>;
+  return { claudeModel, cloakProfile };
 }
 
 export const settingsRoutes =

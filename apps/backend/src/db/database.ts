@@ -1,7 +1,7 @@
 import { CamelCasePlugin, Kysely, PostgresDialect, type Generated } from "kysely";
 import pg from "pg";
 import type { AttemptStatus, Operation } from "../modules/ai/ai-requests.ts";
-import type { AnswerType, Cli, FailureReason } from "../modules/ai/assistant.ts";
+import type { AnswerType, Cli, CloakProfile, FailureReason } from "../modules/ai/assistant.ts";
 import type { PendencyReason } from "../modules/process/pendencies.ts";
 import type { StatementOrigin } from "../modules/process/problem-statement.ts";
 import type { CoverageStatus } from "../modules/process/stage-point-coverage.ts";
@@ -40,6 +40,9 @@ export interface AiRequestAttemptTable {
   status: AttemptStatus;
   cli: Cli;
   model: string;
+  // Perfil do Cloak com que a CLI foi chamada; os dois null em tentativas anteriores ao Cloak.
+  cloakProfileSource: CloakProfile["source"] | null;
+  cloakProfileName: string | null;
   // Resultado validado da operação, só em tentativas concluídas.
   result: unknown;
   failureReason: FailureReason | null;
@@ -139,6 +142,8 @@ export interface PendencyTable {
 export interface SettingsTable {
   id: Generated<boolean>;
   claudeModel: string;
+  // Nome do perfil do Cloak escolhido; null é o perfil do diretório.
+  cloakProfileName: string | null;
   updatedAt: Generated<Date>;
 }
 

@@ -5,6 +5,17 @@ import type { Stage } from "../process/stage.ts";
 
 export type Cli = "claude";
 
+// Perfil do Cloak com que a CLI roda: o que o Cloak liga ao diretório de trabalho do executor, ou
+// um perfil escolhido pelo nome. As contas e credenciais da CLI são as do perfil.
+export type CloakProfile = { source: "directory" } | { source: "explicit"; name: string };
+
+// Fora do domínio (banco, executor), o perfil do diretório é a ausência de um nome.
+export const cloakProfileName = (profile: CloakProfile): string | null =>
+  profile.source === "explicit" ? profile.name : null;
+
+export const cloakProfileNamed = (name: string | null): CloakProfile =>
+  name === null ? { source: "directory" } : { source: "explicit", name };
+
 // Consumo como a CLI informou; o que ela não informou fica null, nunca zero.
 export interface Usage {
   inputTokens: number | null;
@@ -17,8 +28,15 @@ export interface Usage {
 export type FailureReason =
   | "executor_unavailable"
   | "executor_error"
+  | "cloak_unavailable"
+  | "cloak_profile_not_found"
+  // Outro erro do próprio Cloak, como a configuração dele ilegível.
+  | "cloak_error"
+  // O perfil do Cloak não está autenticado na CLI.
+  | "cloak_unauthenticated"
   | "cli_unavailable"
   | "cli_rate_limited"
+  // Só em tentativas anteriores ao Cloak.
   | "cli_unauthenticated"
   | "cli_error"
   | "invalid_output";
@@ -36,6 +54,7 @@ export interface AttemptContext {
   // Identifica a tentativa no executor; permite cancelá-la.
   id: string;
   model: string;
+  cloakProfile: CloakProfile;
   signal: AbortSignal;
 }
 

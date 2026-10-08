@@ -1,5 +1,12 @@
 import http from "node:http";
-import type { Assistant, AssistantOutcome, FailureReason, AttemptContext, Usage } from "./assistant.ts";
+import {
+  cloakProfileName,
+  type Assistant,
+  type AssistantOutcome,
+  type AttemptContext,
+  type FailureReason,
+  type Usage,
+} from "./assistant.ts";
 import { blockPrompt, parseGeneratedBlock } from "./generate-block.ts";
 import { parseStatementProposal, refinementPrompt } from "./refine-problem-statement.ts";
 import { parseGeneratedSynthesis, synthesisPrompt } from "./synthesize-block.ts";
@@ -99,11 +106,23 @@ function usageFrom(value: unknown): Usage | null {
   };
 }
 
-// O executor só distingue "a CLI falhou"; limite de uso e autenticação são lidos da mensagem.
+const relayedReasons = [
+  "cloak_unavailable",
+  "cloak_profile_not_found",
+  "cloak_error",
+  "cli_unavailable",
+  "invalid_output",
+] as const;
+
+const isRelayedReason = (reason: unknown): reason is (typeof relayedReasons)[number] =>
+  relayedReasons.some((relayed) => relayed === reason);
+
+// Das falhas da CLI, o executor só distingue "a CLI falhou"; limite de uso e autenticação são
+// lidos da mensagem. A CLI roda pelo Cloak: sem autenticação, é o perfil que precisa de login.
 function cliFailureReason(reason: unknown, message: string): FailureReason {
-  if (reason === "cli_unavailable" || reason === "invalid_output") return reason;
+  if (isRelayedReason(reason)) return reason;
   if (/\b429\b|rate[_ ]?limit|usage limit/i.test(message)) return "cli_rate_limited";
-  if (/\b401\b|invalid api key|\/login|not logged in|authenticat|oauth token/i.test(message)) return "cli_unauthenticated";
+  if (/\b401\b|invalid api key|\/login|not logged in|authenticat|oauth token/i.test(message)) return "cloak_unauthenticated";
   return "cli_error";
 }
 
@@ -137,7 +156,7 @@ function outcomeOf({ status, body }: Response): AssistantOutcome<string> {
 }
 
 export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSettings): Assistant {
-  async function generateText(prompt: string, { id, model, signal }: AttemptContext): Promise<AssistantOutcome<string>> {
+  async function generateText(prompt: string, { id, model, cloakProfile, signal }: AttemptContext): Promise<AssistantOutcome<string>> {
     if (!token) {
       return {
         status: "failed",
@@ -154,7 +173,8 @@ export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSett
         usage: null,
       };
     }
-    const sent = await post(new URL("/generations", url), token, { id, operation: "generate_text", model, prompt }, {
+    const body = { id, operation: "generate_text", model, cloakProfile: cloakProfileName(cloakProfile), prompt };
+    const sent = await post(new URL("/generations", url), token, body, {
       signal,
       deadline: AbortSignal.timeout(deadlineMs),
     });

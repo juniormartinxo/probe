@@ -63,9 +63,14 @@ _Code_: `AiRequest`
 _Avoid_: Chamada, job, prompt
 
 **Tentativa**:
-Cada execução de uma Solicitação à IA, com estado, CLI, modelo e consumo quando a CLI o informa. Uma nova Tentativa só é aberta pelo usuário e nunca depois de uma que trouxe resultado.
+Cada execução de uma Solicitação à IA, com estado, CLI, modelo, Perfil do Cloak e consumo quando a CLI o informa. Uma nova Tentativa só é aberta pelo usuário e nunca depois de uma que trouxe resultado.
 _Code_: `Attempt`
 _Avoid_: Retry, execução, chamada
+
+**Perfil do Cloak**:
+Conjunto de contas e credenciais das CLIs, administrado no host pelo Cloak, com que o executor chama a CLI. É o perfil do diretório (o que o Cloak liga ao diretório de trabalho do executor) ou um perfil escolhido pelo nome; a escolha vale para novas Tentativas, e cada Tentativa registra o que usou.
+_Code_: `CloakProfile` (`directory`, `explicit`)
+_Avoid_: Conta, credencial, login
 
 ## Perguntas e respostas
 
