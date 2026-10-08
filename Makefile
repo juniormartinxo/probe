@@ -33,7 +33,7 @@ help:
 	  '  make migrate-down  Desfaz a última migration aplicada.' \
 	  '  make frontend      Inicia o Vite e abre localhost (5173 ou a próxima porta livre) no navegador.' \
 	  '  make executor      Inicia o executor (chama o claude) no WSL; exige PROBE_EXECUTOR_TOKEN.' \
-	  '  make dev           Sobe backend e banco e inicia o frontend.' \
+	  '  make dev           Sobe backend e banco e inicia o executor e o frontend juntos.' \
 	  '  make test          Roda os testes (o backend usa o banco probe_test do serviço db).' \
 	  '  make typecheck     Verifica os tipos de todos os pacotes.' \
 	  '  make build         Verifica os tipos, compila o frontend e constrói a imagem do backend.' \
@@ -70,8 +70,9 @@ frontend: install
 executor: install
 	$(PNPM) --filter @probe/executor start
 
+# O executor e o Vite rodam lado a lado; Ctrl+C encerra os dois.
 dev: up
-	$(MAKE) frontend
+	$(MAKE) --jobs=2 executor frontend
 
 test: install
 	$(COMPOSE) up --detach --wait db
