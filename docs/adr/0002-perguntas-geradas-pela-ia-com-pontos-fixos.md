@@ -9,3 +9,7 @@ Não existe catálogo de Perguntas do framework. A IA formula todas as Perguntas
 ## Consequences
 
 Relações entre Perguntas só existem depois que as Perguntas são geradas; não há relações "explícitas do framework". Uma Pergunta é imutável depois de apresentada: uma reformulação é uma Pergunta nova, ligada à anterior.
+
+## Adendo (PRB-22): Ausência registrada
+
+Nos Pontos em que "não há" é uma resposta (prazo, sistemas e APIs envolvidos, na Etapa R), o usuário pode registrar explicitamente a ausência. A Ausência registrada conta como cobertura do Ponto sem passar por um Bloco: como o Ponto inaplicável, é uma declaração do usuário, sem resposta para a IA sugerir nem para o Jev avaliar. Quais Pontos admitem ausência é decidido na lista de Pontos da etapa, pela aplicação.

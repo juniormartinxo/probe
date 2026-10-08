@@ -139,8 +139,17 @@ export function processApi(current: () => TestApp) {
     return response.json().stageAssessment;
   }
 
+  // Processo com a Etapa P confirmada (com a Avaliação do Jev): a Etapa R é a atual.
+  async function processInStageR() {
+    const { id, block } = await processWithClosedPoints();
+    const stageAssessment = await assess(id);
+    expect((await confirmStage(id, { stageAssessmentId: stageAssessment.id })).statusCode).toBe(201);
+    return { id, block };
+  }
+
   return {
     inject,
+    processInStageR,
     getProcess,
     createProcess,
     confirmStatement,

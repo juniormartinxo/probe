@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { stageNames } from "../ai/prompt-parts.ts";
+import { hasAny } from "../process/constraints-and-preferences.ts";
 import type { StagePoint } from "../process/stage-points.ts";
 import type { AssessmentChoice, CoverageInput } from "./assessor.ts";
 
@@ -8,6 +9,7 @@ import type { AssessmentChoice, CoverageInput } from "./assessor.ts";
 // em cada Avaliação.
 const PREAMBLE =
   "O estado traz o enunciado de um problema e as respostas que a pessoa confirmou numa Etapa do framework PROBE. " +
+  "Quando o estado traz Restrições e Preferências que a pessoa registrou, elas contam como respostas. " +
   "Julgue apenas pelo texto explícito das respostas; não use conhecimento externo para completar o que falta.";
 
 // {nome} e {pede} vêm do Ponto da etapa, mantido pela aplicação (ADR 0002).
@@ -47,6 +49,10 @@ export function coverageRequest(input: CoverageInput): {
       enunciado: input.problemStatement,
       etapa: `${input.stage} (${stageNames[input.stage]})`,
       respostas: input.answers.map(({ ref, wording, answer }) => ({ pergunta: `[${ref}] ${wording}`, resposta: answer })),
+      ...(hasAny(input) && {
+        restricoes: input.constraints.map(({ statement, scope, unit }) => ({ restricao: statement, escopo: scope, unidade: unit })),
+        preferencias: input.preferences.map(({ statement, scope, unit }) => ({ preferencia: statement, escopo: scope, unidade: unit })),
+      }),
     },
     questions: Object.fromEntries(
       input.stagePoints.map((point) => [point.key, { type: "choice", instructions: instructionFor(point), criteria: { ...CRITERIA } }]),

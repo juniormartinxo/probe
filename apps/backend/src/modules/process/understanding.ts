@@ -1,5 +1,6 @@
 import { describeAnswer } from "./answers.ts";
 import type { StageWork } from "./blocks.ts";
+import { inForceOf, statementsOf, type ConstraintsAndPreferencesState, type ItemStatements } from "./constraints-and-preferences.ts";
 import type { Pendency, PendencyReason } from "./pendencies.ts";
 import type { ProblemStatement } from "./problem-statement.ts";
 import type { StagePointState } from "./stage-point-coverage.ts";
@@ -7,11 +8,12 @@ import type { Stage } from "./stage.ts";
 
 // Resumo do entendimento atual do Processo, consultável a qualquer momento: o que foi confirmado, o
 // que ainda é provisório e o que está pendente. É montado do que está gravado, sem chamar a IA.
-export interface Understanding {
+export interface Understanding extends ItemStatements {
   originalDescription: string;
   problemStatement: string | null;
   currentStage: Stage;
-  stagePoints: Pick<StagePointState, "key" | "name" | "status" | "justification">[];
+  stagePoints: Pick<StagePointState, "key" | "name" | "status" | "justification" | "absence">[];
+  // Restrições e Preferências: as em vigor.
   blocks: {
     number: number;
     // A síntese que o usuário confirmou; null enquanto não há.
@@ -29,12 +31,19 @@ export function understandingOf(process: {
   stagePoints: StageWork["stagePoints"];
   blocks: StageWork["blocks"];
   pendencies: Pendency[];
-}): Understanding {
+} & ConstraintsAndPreferencesState): Understanding {
   return {
     originalDescription: process.originalDescription,
     problemStatement: process.problemStatement?.statement ?? null,
     currentStage: process.currentStage,
-    stagePoints: process.stagePoints.map(({ key, name, status, justification }) => ({ key, name, status, justification })),
+    stagePoints: process.stagePoints.map(({ key, name, status, justification, absence }) => ({
+      key,
+      name,
+      status,
+      justification,
+      absence,
+    })),
+    ...statementsOf(inForceOf(process)),
     blocks: process.blocks.map((block) => ({
       number: block.number,
       synthesis: block.synthesis?.synthesis ?? null,

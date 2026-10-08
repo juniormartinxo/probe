@@ -1,5 +1,6 @@
 // Porta da IA. A implementação real chama o executor; nos testes, uma versão falsa a substitui.
 
+import type { ItemStatements } from "../process/constraints-and-preferences.ts";
 import type { StagePoint } from "../process/stage-points.ts";
 import type { Stage } from "../process/stage.ts";
 
@@ -110,12 +111,20 @@ export interface AmbiguousAnswer {
   reason: string;
 }
 
-// O que a IA recebe para gerar um Bloco: o problema, os Pontos ainda abertos da Etapa e o que já
-// foi perguntado, para não perguntar de novo.
-export interface BlockInput {
+// Respostas confirmadas de uma Etapa anterior, já confirmada: o contexto com que a IA trabalha na atual.
+export interface ConfirmedStageAnswers {
+  stage: Stage;
+  answers: { ref: string; wording: string; answer: string }[];
+}
+
+// O que a IA recebe para gerar um Bloco: o problema, as Etapas já confirmadas, as Restrições e
+// Preferências em vigor, os Pontos ainda abertos da Etapa e o que já foi perguntado, para não
+// perguntar de novo.
+export interface BlockInput extends ItemStatements {
   stage: Stage;
   originalDescription: string;
   problemStatement: string;
+  confirmedStages: ConfirmedStageAnswers[];
   openStagePoints: StagePoint[];
   askedQuestions: AskedQuestion[];
   // Sínteses dos Blocos anteriores da Etapa, como o usuário as confirmou.
@@ -129,6 +138,7 @@ export interface SynthesisInput {
   stage: Stage;
   originalDescription: string;
   problemStatement: string;
+  confirmedStages: ConfirmedStageAnswers[];
   openStagePoints: StagePoint[];
   blockNumber: number;
   // As Perguntas do Bloco sintetizado.

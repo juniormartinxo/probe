@@ -85,6 +85,10 @@ describe("Block", () => {
       stage: "P",
       originalDescription: description,
       problemStatement: statement,
+      // Na Etapa P, nenhuma Etapa confirmada antes e nenhuma Restrição ou Preferência.
+      confirmedStages: [],
+      constraints: [],
+      preferences: [],
       openStagePoints: process.openStagePoints,
       askedQuestions: [],
       confirmedSyntheses: [],

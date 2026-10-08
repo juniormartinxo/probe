@@ -42,6 +42,8 @@ describe("Jev Assessment of a Stage", () => {
         { ref: "1.2", wording: block.questions[1].wording, answer: "Atraso nas entregas" },
         { ref: "1.3", wording: block.questions[2].wording, answer: "A diretoria cobrou na última reunião." },
       ],
+      constraints: [],
+      preferences: [],
     });
     const answered = (await api.getProcess(id)).blocks[0].questions.map(
       (question: { answer: { current: { id: string } } }) => question.answer.current.id,

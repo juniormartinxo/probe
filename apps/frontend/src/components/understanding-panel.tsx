@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { getUnderstanding, type Understanding } from "@/api";
-import { stageName } from "@/stages";
-
-const statusText = { open: "aberto", covered: "coberto", inapplicable: "inaplicável" } as const;
+import { itemDetails } from "@/components/constraints-and-preferences";
+import { stageName, stagePointStatusText } from "@/stages";
 
 // Resumo do entendimento atual do Processo, consultável a qualquer momento. É lido ao abrir o painel,
 // a partir do que está gravado; não chama a IA.
@@ -50,12 +49,34 @@ function UnderstandingView({ understanding }: { understanding: Understanding }) 
         <ul className="flex flex-col gap-0.5">
           {understanding.stagePoints.map((point) => (
             <li key={point.key}>
-              {point.name}: {statusText[point.status]}
+              {point.name}: {stagePointStatusText[point.status]}
               {point.justification && <span className="text-muted-foreground"> ({point.justification})</span>}
+              {point.status === "absent" && <span className="text-muted-foreground"> ({point.absence})</span>}
             </li>
           ))}
         </ul>
       </div>
+      {understanding.constraints.length + understanding.preferences.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-2">
+          {[
+            { title: "Restrições (inegociáveis)", items: understanding.constraints },
+            { title: "Preferências (negociáveis)", items: understanding.preferences },
+          ].map(({ title, items }) => (
+            <div key={title}>
+              <p className="text-muted-foreground text-xs">{title}</p>
+              <ul className="flex flex-col gap-0.5">
+                {items.length === 0 && <li className="text-muted-foreground">Nenhuma.</li>}
+                {items.map((item, index) => (
+                  <li key={index}>
+                    {item.statement}
+                    {itemDetails(item) && <span className="text-muted-foreground"> ({itemDetails(item)})</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
       {understanding.blocks.map((block) => (
         <div key={block.number} className="flex flex-col gap-1">
           <p className="text-muted-foreground text-xs">Bloco {block.number}</p>

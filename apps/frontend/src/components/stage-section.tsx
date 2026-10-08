@@ -3,6 +3,7 @@ import {
   ApiError,
   declareInapplicable,
   newBlockAttempt,
+  recordAbsence,
   requestBlock,
   type BlockRequest,
   type ProcessDetail,
@@ -11,6 +12,7 @@ import {
 import { AttemptList } from "@/components/attempt-list";
 import { NewAttempt } from "@/components/new-attempt";
 import { BlockSynthesis } from "@/components/block-synthesis";
+import { ConstraintsAndPreferences } from "@/components/constraints-and-preferences";
 import { Questionnaire } from "@/components/questionnaire";
 import { ConfirmedStages, StageConfirmationPanel } from "@/components/stage-confirmation";
 import { Badge } from "@/components/ui/badge";
@@ -18,10 +20,10 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { attemptProblem } from "@/refinement";
-import { stageName } from "@/stages";
+import { stageName, stagePointStatusText } from "@/stages";
 
-// Etapa atual: os Pontos (abertos, cobertos ou inaplicáveis), as Pendências e os Blocos de
-// Perguntas da IA, cada um com a sua síntese. Só aparece depois da Confirmação do enunciado.
+// Etapa atual: os Pontos (abertos, cobertos, inaplicáveis ou com a ausência registrada), as
+// Restrições e Preferências, as Pendências e os Blocos de Perguntas da IA, cada um com a sua síntese. Só aparece depois da Confirmação do enunciado.
 // `onChange` recarrega o Processo depois de cada ação.
 export function StageSection({ process, onChange }: { process: ProcessDetail; onChange: () => void }) {
   const blockRequest = process.blockRequests.at(-1) ?? null;
@@ -38,6 +40,7 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
         Etapa {process.currentStage} · {stageName(process.currentStage)}
       </h2>
       <StagePoints processId={process.id} points={process.stagePoints} onChange={onChange} />
+      <ConstraintsAndPreferences process={process} onChange={onChange} />
       <OpenPendencies process={process} />
       {process.blocks.map((block) => (
         <div key={block.id} className="flex flex-col gap-2">
@@ -64,8 +67,6 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
   );
 }
 
-const statusText = { open: "aberto", covered: "coberto", inapplicable: "inaplicável" } as const;
-
 function StagePoints({
   processId,
   points,
@@ -81,7 +82,7 @@ function StagePoints({
       <p className="text-xs font-medium">
         Pontos da Etapa{" "}
         <span className="text-muted-foreground font-normal">
-          · {open.length === 0 ? "todos cobertos ou inaplicáveis" : `${open.length} ainda abertos`}
+          · {open.length === 0 ? "nenhum aberto" : `${open.length} ainda abertos`}
         </span>
       </p>
       <ul className="flex flex-col gap-2">
@@ -95,23 +96,28 @@ function StagePoints({
 
 function StagePointItem({ processId, point, onChange }: { processId: string; point: StagePointState; onChange: () => void }) {
   const [declaring, setDeclaring] = useState(false);
+  const [confirmingAbsence, setConfirmingAbsence] = useState(false);
   const [justification, setJustification] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    await close(
+      () => declareInapplicable(processId, point.key, justification),
+      "Não foi possível declarar o Ponto inaplicável. A justificativa continua aqui; tente de novo.",
+    );
+  }
+
+  async function close(action: () => Promise<unknown>, failure: string) {
     setSaving(true);
     setError(undefined);
     try {
-      await declareInapplicable(processId, point.key, justification);
+      await action();
       setDeclaring(false);
+      setConfirmingAbsence(false);
     } catch (caught) {
-      setError(
-        caught instanceof ApiError && caught.code === "stage_point_closed"
-          ? "Este Ponto já não está aberto."
-          : "Não foi possível declarar o Ponto inaplicável. A justificativa continua aqui; tente de novo.",
-      );
+      setError(caught instanceof ApiError && caught.code === "stage_point_closed" ? "Este Ponto já não está aberto." : failure);
     } finally {
       setSaving(false);
       onChange();
@@ -121,14 +127,50 @@ function StagePointItem({ processId, point, onChange }: { processId: string; poi
   return (
     <li className="flex flex-col gap-1.5 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={point.status === "open" ? "outline" : "secondary"}>{statusText[point.status]}</Badge>
+        <Badge variant={point.status === "open" ? "outline" : "secondary"}>{stagePointStatusText[point.status]}</Badge>
         <span title={point.description}>{point.name}</span>
-        {point.status === "open" && !declaring && (
-          <Button variant="ghost" size="sm" className="ml-auto h-7 text-xs" onClick={() => setDeclaring(true)}>
-            Declarar inaplicável
-          </Button>
+        {point.status === "open" && !declaring && !confirmingAbsence && (
+          <div className="ml-auto flex gap-1">
+            {point.absence && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={saving}
+                title="A ausência registrada conta como cobertura do Ponto."
+                onClick={() => setConfirmingAbsence(true)}
+              >
+                {point.absence}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="h-7 text-xs" disabled={saving} onClick={() => setDeclaring(true)}>
+              Declarar inaplicável
+            </Button>
+          </div>
         )}
       </div>
+      {confirmingAbsence && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs">
+            Registrar “{point.absence}” para este Ponto? A ausência conta como cobertura e não pode ser desfeita.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={() => setConfirmingAbsence(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={saving}
+              onClick={() => close(() => recordAbsence(processId, point.key), "Não foi possível registrar a ausência; tente de novo.")}
+            >
+              {saving ? "Registrando…" : "Confirmar"}
+            </Button>
+          </div>
+        </div>
+      )}
+      {point.status === "absent" && <p className="text-muted-foreground text-xs">{point.absence}</p>}
+      {!declaring && error && <p className="text-destructive text-xs">{error}</p>}
       {point.status === "inapplicable" && (
         <p className="text-muted-foreground text-xs whitespace-pre-wrap">Justificativa: {point.justification}</p>
       )}

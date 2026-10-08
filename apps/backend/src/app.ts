@@ -6,6 +6,7 @@ import type { Assessor } from "./modules/assessments/assessor.ts";
 import { stageAssessments } from "./modules/assessments/stage-assessments.ts";
 import { answers } from "./modules/process/answers.ts";
 import { blocks } from "./modules/process/blocks.ts";
+import { constraintsAndPreferences } from "./modules/process/constraints-and-preferences.ts";
 import { pendencies } from "./modules/process/pendencies.ts";
 import { problemStatements } from "./modules/process/problem-statement.ts";
 import { processRoutes } from "./modules/process/routes.ts";
@@ -46,6 +47,7 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
           stagePointCoverage: stagePointCoverage({ db }),
           stageAssessments: stageAssessments({ db, assessor }),
           stageConfirmations: stageConfirmations({ db }),
+          constraintsAndPreferences: constraintsAndPreferences({ db }),
         }),
       );
       await api.register(settingsRoutes({ settings }));
