@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AttemptContext, BlockInput } from "../src/modules/ai/assistant.ts";
+import type { AttemptContext, BlockInput, SynthesisInput } from "../src/modules/ai/assistant.ts";
 import { createExecutorAssistant } from "../src/modules/ai/executor-assistant.ts";
 import { stagePointsOf } from "../src/modules/process/stage-points.ts";
 import { waitFor } from "./support/test-app.ts";
@@ -110,6 +110,9 @@ const blockInput: BlockInput = {
   originalDescription: description,
   problemStatement: "O deploy leva 40 minutos e bloqueia o time de manhã.",
   openStagePoints: stagePointsOf(1, "P"),
+  askedQuestions: [],
+  confirmedSyntheses: [],
+  ambiguousAnswers: [],
 };
 
 const blockQuestions = [
@@ -178,6 +181,7 @@ describe("Block generation through the executor", () => {
             contextRelation: "O enunciado fala da demora, não da causa.",
             rationale: "Separar sintoma de problema.",
             stagePoints: ["real_problem"],
+            reformulates: null,
             answerType: "single_choice",
             choices: ["É o problema", "É sintoma"],
           },
@@ -187,6 +191,7 @@ describe("Block generation through the executor", () => {
             contextRelation: "O time perde a manhã.",
             rationale: null,
             stagePoints: ["consequence", "urgency"],
+            reformulates: null,
             answerType: "multiple_choice",
             choices: ["Atrasos", "Horas extras", "Reclamações"],
           },
@@ -196,6 +201,7 @@ describe("Block generation through the executor", () => {
             contextRelation: "O problema é antigo.",
             rationale: null,
             stagePoints: ["urgency"],
+            reformulates: null,
             answerType: "free_text",
             choices: [],
           },
@@ -226,6 +232,137 @@ describe("Block generation through the executor", () => {
     const outcome = await generateBlock(url);
 
     expect(outcome).toMatchObject({ status: "failed", reason: "invalid_output" });
+  });
+});
+
+const askedBefore = [
+  { ref: "1.1", wording: "A demora é o problema ou sintoma?", stagePoints: ["real_problem"], answer: "É sintoma", unknown: false },
+  { ref: "1.2", wording: "Por que agora?", stagePoints: ["urgency"], answer: null, unknown: true },
+];
+
+describe("Block generation after earlier Blocks, through the executor", () => {
+  const laterInput: BlockInput = {
+    ...blockInput,
+    openStagePoints: stagePointsOf(1, "P").filter((point) => point.key !== "real_problem"),
+    askedQuestions: askedBefore,
+    confirmedSyntheses: ["A demora é sintoma de testes lentos."],
+    ambiguousAnswers: [{ question: "1.1", reason: "Não disse do quê." }],
+  };
+  const generateLater = (url: string) =>
+    createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).generateBlock(laterInput, attemptContext());
+  const reformulation = (reformulates: unknown) =>
+    JSON.stringify({
+      questions: [
+        {
+          wording: "A demora é sintoma de quê?",
+          subject: "Causa",
+          contextRelation: "Você disse que a demora é sintoma.",
+          stagePoints: ["consequence"],
+          reformulates,
+          answerType: "free_text",
+        },
+      ],
+    });
+
+  it("sends what was already asked and answered, the confirmed syntheses and the ambiguous answers", async () => {
+    const { url, requests } = await startExecutor(answering(reformulation(null)));
+
+    await generateLater(url);
+
+    const { prompt } = requests[0]!.body as { prompt: string };
+    expect(prompt).toContain("[1.1]");
+    expect(prompt).toContain("É sintoma");
+    expect(prompt).toContain("a pessoa registrou que não sabe");
+    expect(prompt).toContain("A demora é sintoma de testes lentos.");
+    expect(prompt).toContain("Não disse do quê.");
+    expect(prompt).not.toContain("- real_problem:");
+  });
+
+  it("brings a reformulation pointing to the question it reformulates", async () => {
+    const { url } = await startExecutor(answering(reformulation("1.1")));
+
+    const outcome = await generateLater(url);
+
+    expect(outcome).toMatchObject({ status: "completed", result: { questions: [{ reformulates: "1.1" }] } });
+  });
+
+  it.each([
+    ["a question that was never asked", "3.1"],
+    ["a reference that is not text", 11],
+  ])("never takes a reformulation of %s as a completed Block", async (_case, reformulates) => {
+    const { url } = await startExecutor(answering(reformulation(reformulates)));
+
+    expect(await generateLater(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
+  });
+});
+
+const synthesisInput: SynthesisInput = {
+  stage: "P",
+  originalDescription: description,
+  problemStatement: "O deploy leva 40 minutos e bloqueia o time de manhã.",
+  openStagePoints: stagePointsOf(1, "P").filter((point) => point.key !== "real_problem"),
+  blockNumber: 2,
+  questions: [
+    { ref: "2.1", wording: "O que a demora causou?", stagePoints: ["consequence"], answer: "Atrasos; Horas extras", unknown: false },
+    { ref: "2.2", wording: "Por que agora?", stagePoints: ["urgency"], answer: "A diretoria cobrou.", unknown: false },
+  ],
+  earlierQuestions: [askedBefore[0]!],
+};
+
+const synthesisJson = {
+  synthesis: "A demora causa atrasos e horas extras; a diretoria cobrou.",
+  coverage: [
+    { stagePoint: "consequence", covered: true, reason: "Atrasos e horas extras." },
+    { stagePoint: "urgency", covered: false, reason: "A cobrança não diz por que agora." },
+  ],
+  ambiguousAnswers: [{ question: "2.2", reason: "Não diz quando a diretoria cobrou." }],
+};
+
+function synthesize(url: string) {
+  return createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).synthesizeBlock(synthesisInput, attemptContext());
+}
+
+describe("Block synthesis through the executor", () => {
+  it("sends the Block's answers, the earlier ones and the open Points in the prompt", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify(synthesisJson)));
+
+    await synthesize(url);
+
+    const { operation, prompt } = requests[0]!.body as { operation: string; prompt: string };
+    expect(operation).toBe("generate_text");
+    expect(prompt).toContain(description);
+    expect(prompt).toContain(synthesisInput.problemStatement);
+    expect(prompt).toContain("[2.1] (Pontos: consequence) O que a demora causou?\nResposta: Atrasos; Horas extras");
+    expect(prompt).toContain("[1.1]");
+    expect(prompt).toContain("- consequence:");
+    expect(prompt).not.toContain("- real_problem:");
+  });
+
+  it("brings the synthesis, the coverage it suggests for each open Point and the ambiguous answers", async () => {
+    const { url } = await startExecutor(answering("```json\n" + JSON.stringify(synthesisJson) + "\n```"));
+
+    expect(await synthesize(url)).toEqual({ status: "completed", usage: null, result: synthesisJson });
+  });
+
+  const withChanges = (changes: Record<string, unknown>) => JSON.stringify({ ...synthesisJson, ...changes });
+  const [consequence, urgency] = synthesisJson.coverage;
+
+  it.each([
+    ["prose instead of JSON", "As respostas mostram que a demora atrasa entregas."],
+    ["a truncated answer", JSON.stringify(synthesisJson).slice(0, 70)],
+    ["no synthesis", withChanges({ synthesis: " " })],
+    ["no coverage", withChanges({ coverage: undefined })],
+    ["an open Point without suggestion", withChanges({ coverage: [consequence] })],
+    ["coverage of a Point that is not open", withChanges({ coverage: [consequence, urgency, { ...urgency, stagePoint: "real_problem" }] })],
+    ["the same Point twice", withChanges({ coverage: [consequence, urgency, consequence] })],
+    ["coverage that is not true or false", withChanges({ coverage: [consequence, { ...urgency, covered: "sim" }] })],
+    ["coverage without a reason", withChanges({ coverage: [consequence, { ...urgency, reason: "" }] })],
+    ["an ambiguous answer outside the Block", withChanges({ ambiguousAnswers: [{ question: "1.1", reason: "Vago." }] })],
+    ["an ambiguous answer without a reason", withChanges({ ambiguousAnswers: [{ question: "2.1" }] })],
+  ])("never takes %s as a completed synthesis", async (_case, output) => {
+    const { url } = await startExecutor(answering(output));
+
+    expect(await synthesize(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
   });
 });
 

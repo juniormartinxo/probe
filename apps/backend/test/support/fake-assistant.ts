@@ -4,7 +4,9 @@ import type {
   AttemptContext,
   BlockInput,
   GeneratedBlock,
+  GeneratedSynthesis,
   StatementProposal,
+  SynthesisInput,
   Usage,
 } from "../../src/modules/ai/assistant.ts";
 
@@ -22,6 +24,7 @@ export const defaultBlock: GeneratedBlock = {
       contextRelation: "O enunciado fala da demora do deploy, mas não do que a provoca.",
       rationale: "Separar o sintoma do problema real evita resolver a coisa errada.",
       stagePoints: ["real_problem"],
+      reformulates: null,
       answerType: "single_choice",
       choices: ["A demora é o problema em si", "A demora é sintoma de outra coisa", "Não sei"],
     },
@@ -31,6 +34,7 @@ export const defaultBlock: GeneratedBlock = {
       contextRelation: "O time perde a manhã esperando o deploy.",
       rationale: null,
       stagePoints: ["consequence", "urgency"],
+      reformulates: null,
       answerType: "multiple_choice",
       choices: ["Atraso nas entregas", "Horas extras", "Clientes reclamando"],
     },
@@ -40,10 +44,23 @@ export const defaultBlock: GeneratedBlock = {
       contextRelation: "O problema existe há algum tempo.",
       rationale: "A urgência define quanto esforço cabe agora.",
       stagePoints: ["urgency"],
+      reformulates: null,
       answerType: "free_text",
       choices: [],
     },
   ],
+};
+
+// Síntese padrão do primeiro Bloco: sugere cobertos o problema real e a consequência, e aberta a
+// urgência.
+export const defaultSynthesis: GeneratedSynthesis = {
+  synthesis: "A demora do deploy é sintoma de outra coisa e já atrasou entregas; a diretoria cobrou uma solução.",
+  coverage: [
+    { stagePoint: "real_problem", covered: true, reason: "A pessoa disse que a demora é sintoma de outra coisa." },
+    { stagePoint: "consequence", covered: true, reason: "As entregas já atrasaram." },
+    { stagePoint: "urgency", covered: false, reason: "A cobrança da diretoria não explica por que agora." },
+  ],
+  ambiguousAnswers: [],
 };
 
 export function completed<T = StatementProposal>(
@@ -96,6 +113,7 @@ export class FakeAssistant implements Assistant {
   readonly cli = "claude";
   readonly refinement = new Script<{ originalDescription: string }, StatementProposal>(() => completed());
   readonly block = new Script<BlockInput, GeneratedBlock>(() => completed(defaultBlock));
+  readonly synthesis = new Script<SynthesisInput, GeneratedSynthesis>(() => completed(defaultSynthesis));
   readonly connection = new Script<null, string>(() => completed("ok"));
 
   refineProblemStatement(input: { originalDescription: string }, context: AttemptContext) {
@@ -104,6 +122,10 @@ export class FakeAssistant implements Assistant {
 
   generateBlock(input: BlockInput, context: AttemptContext) {
     return this.block.run(input, context);
+  }
+
+  synthesizeBlock(input: SynthesisInput, context: AttemptContext) {
+    return this.synthesis.run(input, context);
   }
 
   testConnection(context: AttemptContext) {

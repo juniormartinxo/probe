@@ -84,6 +84,29 @@ Cada resposta possível que a IA oferece numa Pergunta de alternativa única ou 
 _Code_: `choice`
 _Avoid_: Opção, escolha, item
 
+**Reformulação**:
+Pergunta nova, num Bloco novo, que refaz uma Pergunta já apresentada (por exemplo, cuja resposta ficou ambígua). Fica ligada à original; a resposta dada à original continua associada ao texto que o usuário viu.
+_Code_: `reformulates`
+_Avoid_: Edição da pergunta, nova versão da pergunta
+
+**Síntese do Bloco**:
+Resumo, feito pela IA, do que as respostas de um Bloco dizem, com a sugestão de quais Pontos da etapa ainda abertos elas cobrem. É sugestão até a Confirmação da síntese de bloco, que confirma em conjunto as respostas do Bloco (até lá provisórias) e os Pontos que o usuário dá por cobertos.
+_Code_: `synthesis` (`SynthesisProposal`, `ConfirmedSynthesis`)
+_Avoid_: Resumo do bloco, conclusão do bloco
+
+**Ponto coberto**:
+Ponto da etapa que o usuário confirmou como respondido, na Confirmação da síntese de um Bloco. Sugestão da IA não cobre nada sozinha.
+_Code_: `covered`
+
+**Ponto inaplicável**:
+Ponto da etapa que o usuário declarou não se aplicar ao caso, com justificativa obrigatória.
+_Code_: `inapplicable`
+_Avoid_: Ponto ignorado, ponto pulado
+
+**Resumo do entendimento**:
+Visão consultável, a qualquer momento, do que o Processo já estabeleceu: enunciado, Pontos, sínteses confirmadas, respostas que valem e Pendências abertas. É montado do que está gravado, sem chamar a IA.
+_Code_: `Understanding`
+
 **Rascunho**:
 O que o usuário preencheu numa Pergunta e ainda não salvou como Versão, completo ou não; guarda a Versão sobre a qual a alteração começou.
 _Code_: `AnswerDraft`

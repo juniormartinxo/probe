@@ -2,6 +2,7 @@ import http from "node:http";
 import type { Assistant, AssistantOutcome, FailureReason, AttemptContext, Usage } from "./assistant.ts";
 import { blockPrompt, parseGeneratedBlock } from "./generate-block.ts";
 import { parseStatementProposal, refinementPrompt } from "./refine-problem-statement.ts";
+import { parseGeneratedSynthesis, synthesisPrompt } from "./synthesize-block.ts";
 
 export interface ExecutorSettings {
   url: string;
@@ -186,8 +187,10 @@ export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSett
       return generate(refinementPrompt(originalDescription), parseStatementProposal, context);
     },
     generateBlock(input, context) {
-      const openKeys = input.openStagePoints.map((point) => point.key);
-      return generate(blockPrompt(input), (output) => parseGeneratedBlock(output, openKeys), context);
+      return generate(blockPrompt(input), (output) => parseGeneratedBlock(output, input), context);
+    },
+    synthesizeBlock(input, context) {
+      return generate(synthesisPrompt(input), (output) => parseGeneratedSynthesis(output, input), context);
     },
     testConnection(context) {
       // Qualquer resposta não vazia mostra que a CLI respondeu com o modelo pedido.

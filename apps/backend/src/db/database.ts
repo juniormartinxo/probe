@@ -2,7 +2,10 @@ import { CamelCasePlugin, Kysely, PostgresDialect, type Generated } from "kysely
 import pg from "pg";
 import type { AttemptStatus, Operation } from "../modules/ai/ai-requests.ts";
 import type { AnswerType, Cli, FailureReason } from "../modules/ai/assistant.ts";
+import type { PendencyReason } from "../modules/process/pendencies.ts";
 import type { StatementOrigin } from "../modules/process/problem-statement.ts";
+import type { CoverageStatus } from "../modules/process/stage-point-coverage.ts";
+import type { SynthesisOrigin } from "../modules/process/syntheses.ts";
 import type { ProcessStatus } from "../modules/process/process.ts";
 import type { Stage } from "../modules/process/stage.ts";
 
@@ -25,6 +28,8 @@ export interface AiRequestTable {
   id: Generated<string>;
   processId: string;
   operation: Operation;
+  // Bloco que a solicitação sintetiza; só nas de síntese.
+  blockId: string | null;
   createdAt: Generated<Date>;
 }
 
@@ -76,6 +81,8 @@ export interface QuestionTable {
   stagePoints: string[];
   answerType: AnswerType;
   choices: string[];
+  // A Pergunta que esta reformula, se for uma reformulação.
+  reformulatesQuestionId: Generated<string | null>;
 }
 
 export interface AnswerVersionTable {
@@ -95,6 +102,39 @@ export interface AnswerDraftTable {
   updatedAt: Generated<Date>;
 }
 
+export interface AttemptAnswerVersionTable {
+  attemptId: string;
+  answerVersionId: string;
+}
+
+export interface BlockSynthesisTable {
+  blockId: string;
+  synthesis: string;
+  origin: SynthesisOrigin;
+  proposalId: string;
+  confirmedAt: Generated<Date>;
+}
+
+export interface StagePointCoverageTable {
+  processId: string;
+  stage: Stage;
+  stagePoint: string;
+  status: CoverageStatus;
+  blockId: string | null;
+  justification: string | null;
+  recordedAt: Generated<Date>;
+}
+
+export interface PendencyTable {
+  id: Generated<string>;
+  processId: string;
+  reason: PendencyReason;
+  questionId: string;
+  openedAt: Generated<Date>;
+  resolvedAt: Date | null;
+  resolvedByAnswerVersionId: string | null;
+}
+
 // Linha única de configurações não sensíveis.
 export interface SettingsTable {
   id: Generated<boolean>;
@@ -112,6 +152,10 @@ export interface Database {
   questions: QuestionTable;
   answerVersions: AnswerVersionTable;
   answerDrafts: AnswerDraftTable;
+  attemptAnswerVersions: AttemptAnswerVersionTable;
+  blockSyntheses: BlockSynthesisTable;
+  stagePointCoverage: StagePointCoverageTable;
+  pendencies: PendencyTable;
   settings: SettingsTable;
 }
 

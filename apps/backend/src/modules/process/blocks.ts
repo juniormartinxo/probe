@@ -1,17 +1,22 @@
 import type { Db } from "../../db/database.ts";
 import { listAiRequests, type AiRequestRunner, type Attempt, type AttemptStatus, type OnCompleted } from "../ai/ai-requests.ts";
 import type {
+  AmbiguousAnswer,
   AnswerType,
   Assistant,
   AssistantOutcome,
   AttemptContext,
   BlockInput,
   GeneratedBlock,
+  GeneratedSynthesis,
 } from "../ai/assistant.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 import { answersOf, type AnswerDraft, type Answer } from "./answers.ts";
-import { findStagePoint, stagePointsOf, type StagePoint } from "./stage-points.ts";
+import { stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
+import { askedQuestionOf, stageQuestions } from "./stage-questions.ts";
+import { findStagePoint, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
+import { synthesesOf, type BlockSynthesisState } from "./syntheses.ts";
 
 // Solicitação à IA de um Bloco de Perguntas; `blockId` é o Bloco que a tentativa concluída gerou.
 export interface BlockRequest {
@@ -29,13 +34,17 @@ export interface Question {
   contextRelation: string;
   rationale: string | null;
   stagePoints: Pick<StagePoint, "key" | "name">[];
+  // A Pergunta original, quando esta é uma reformulação dela.
+  reformulates: { questionId: string; blockNumber: number; number: number; wording: string } | null;
   answerType: AnswerType;
   choices: string[];
   answer: Answer | null;
   draft: AnswerDraft | null;
+  // O usuário registrou que não sabe a informação (há uma Pendência aberta).
+  unknown: boolean;
 }
 
-export interface Block {
+export interface Block extends BlockSynthesisState {
   id: string;
   number: number;
   stage: Stage;
@@ -44,7 +53,9 @@ export interface Block {
 }
 
 export interface StageWork {
-  // Pontos da Etapa atual ainda não cobertos.
+  // Pontos da Etapa atual, cada um aberto, coberto ou inaplicável.
+  stagePoints: StagePointState[];
+  // Os Pontos da Etapa atual ainda abertos.
   openStagePoints: StagePoint[];
   blockRequests: BlockRequest[];
   blocks: Block[];
@@ -52,12 +63,18 @@ export interface StageWork {
 
 export type BlocksClosed = "process_not_found" | "process_not_open";
 
-export type BlockRequestError = BlocksClosed | "problem_statement_not_confirmed" | "block_already_requested";
+export type BlockRequestError =
+  | BlocksClosed
+  | "problem_statement_not_confirmed"
+  | "block_already_requested"
+  | "synthesis_not_confirmed"
+  | "no_open_stage_points";
 
 export type NewBlockAttemptError = BlocksClosed | "block_request_not_found" | "attempt_in_progress" | "block_generated";
 
 export interface Blocks {
-  // Pede à IA um Bloco para os Pontos abertos da Etapa atual. Nesta fatia, só o primeiro Bloco.
+  // Pede à IA um Bloco novo para os Pontos abertos da Etapa atual, depois de confirmada a síntese de
+  // cada Bloco anterior da Etapa.
   request(processId: string): Promise<{ ok: true; blockRequest: BlockRequest } | { ok: false; error: BlockRequestError }>;
   // Nova tentativa da mesma solicitação, depois de uma tentativa que não trouxe Bloco.
   newAttempt(
@@ -69,15 +86,26 @@ export interface Blocks {
 
 const OPERATION = "generate_block";
 
-// Trava o Processo para a transação e monta o que a IA recebe para gerar o Bloco; `blockInput` é
-// null enquanto o enunciado do problema não foi confirmado.
+interface PreparedBlock {
+  input: BlockInput;
+  // As Versões de resposta que o pedido envia à IA.
+  usedVersionIds: string[];
+  // Referência ("1.2") de cada Pergunta já feita na Etapa, para ligar as reformulações.
+  questionIdsByRef: Map<string, string>;
+  // Blocos da Etapa ainda sem síntese confirmada.
+  unsynthesized: number;
+}
+
+// Trava o Processo para a transação e monta o que a IA recebe para gerar o Bloco: os Pontos ainda
+// abertos e o que já foi perguntado, respondido e sintetizado na Etapa. `prepared` é null enquanto o
+// enunciado do problema não foi confirmado.
 async function lockOpenProcess(
   trx: Db,
   processId: string,
-): Promise<{ ok: true; blockInput: BlockInput | null } | { ok: false; error: BlocksClosed }> {
+): Promise<{ ok: true; prepared: PreparedBlock | null } | { ok: false; error: BlocksClosed }> {
   const process = await trx
     .selectFrom("processes")
-    .select(["status", "currentStage", "stagePointsVersion", "originalDescription"])
+    .select(["id", "status", "currentStage", "stagePointsVersion", "originalDescription"])
     .where("id", "=", processId)
     .forUpdate()
     .executeTakeFirst();
@@ -88,23 +116,47 @@ async function lockOpenProcess(
     .select("statement")
     .where("processId", "=", processId)
     .executeTakeFirst();
+  if (!confirmed) return { ok: true, prepared: null };
+  const stage = process.currentStage;
+  const questions = await stageQuestions(trx, processId, stage);
+  const syntheses = await trx
+    .selectFrom("blocks")
+    .leftJoin("blockSyntheses", "blockSyntheses.blockId", "blocks.id")
+    .leftJoin("aiRequestAttempts", "aiRequestAttempts.id", "blockSyntheses.proposalId")
+    .select(["blocks.number", "blockSyntheses.synthesis", "aiRequestAttempts.result"])
+    .where("blocks.processId", "=", processId)
+    .where("blocks.stage", "=", stage)
+    .orderBy("blocks.number")
+    .execute();
+  const confirmedSyntheses = syntheses.filter((row) => row.synthesis !== null);
+  const ambiguousAnswers: AmbiguousAnswer[] = confirmedSyntheses.flatMap(
+    (row) => (row.result as GeneratedSynthesis).ambiguousAnswers,
+  );
   return {
     ok: true,
-    blockInput: confirmed
-      ? {
-          stage: process.currentStage,
-          originalDescription: process.originalDescription,
-          problemStatement: confirmed.statement,
-          // A cobertura de Pontos chega com a síntese do Bloco; até lá, todos seguem abertos.
-          openStagePoints: stagePointsOf(process.stagePointsVersion, process.currentStage),
-        }
-      : null,
+    prepared: {
+      input: {
+        stage,
+        originalDescription: process.originalDescription,
+        problemStatement: confirmed.statement,
+        openStagePoints: (await stagePointStates(trx, process, stage))
+          .filter((point) => point.status === "open")
+          .map(({ key, name, description }) => ({ key, name, description })),
+        askedQuestions: questions.map(askedQuestionOf),
+        confirmedSyntheses: confirmedSyntheses.map((row) => row.synthesis!),
+        ambiguousAnswers,
+      },
+      usedVersionIds: questions.flatMap((question) => (question.currentVersionId ? [question.currentVersionId] : [])),
+      questionIdsByRef: new Map(questions.map((question) => [question.ref, question.id])),
+      unsynthesized: syntheses.length - confirmedSyntheses.length,
+    },
   };
 }
 
-// Grava o Bloco que a tentativa concluída trouxe, na ordem em que a IA formulou as Perguntas.
+// Grava o Bloco que a tentativa concluída trouxe, na ordem em que a IA formulou as Perguntas, com
+// cada reformulação ligada à Pergunta original.
 const saveBlock =
-  (processId: string, stage: Stage): OnCompleted<GeneratedBlock> =>
+  (processId: string, stage: Stage, questionIdsByRef: Map<string, string>): OnCompleted<GeneratedBlock> =>
   async (trx, attemptId, { questions }) => {
     const previous = await trx
       .selectFrom("blocks")
@@ -118,7 +170,14 @@ const saveBlock =
       .executeTakeFirstOrThrow();
     await trx
       .insertInto("questions")
-      .values(questions.map((question, position) => ({ blockId: block.id, position, ...question })))
+      .values(
+        questions.map(({ reformulates, ...question }, position) => ({
+          blockId: block.id,
+          position,
+          ...question,
+          reformulatesQuestionId: reformulates === null ? null : questionIdsByRef.get(reformulates)!,
+        })),
+      )
       .execute();
   };
 
@@ -141,19 +200,26 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
   }
 
   // Os Pontos são da aplicação, não da IA (ADR 0002): um Bloco com Pergunta que sirva a um Ponto
-  // fora dos abertos é recusado, qualquer que seja a implementação do Assistant.
+  // fora dos abertos, ou que reformule uma Pergunta que não foi feita, é recusado, qualquer que seja a
+  // implementação do Assistant.
   async function generateBlock(input: BlockInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedBlock>> {
     const outcome = await assistant.generateBlock(input, context);
     if (outcome.status !== "completed") return outcome;
-    const open = new Set(input.openStagePoints.map((point) => point.key));
-    const outside = outcome.result.questions.flatMap((question) => question.stagePoints).filter((key) => !open.has(key));
-    if (outside.length === 0) return outcome;
-    return {
+    const failed = (message: string): AssistantOutcome<GeneratedBlock> => ({
       status: "failed",
       reason: "invalid_output",
-      message: `A IA indicou Pontos da etapa que não estão em aberto: ${outside.join(", ")}.`,
+      message,
       usage: outcome.usage,
-    };
+    });
+    const open = new Set(input.openStagePoints.map((point) => point.key));
+    const outside = outcome.result.questions.flatMap((question) => question.stagePoints).filter((key) => !open.has(key));
+    if (outside.length > 0) return failed(`A IA indicou Pontos da etapa que não estão em aberto: ${outside.join(", ")}.`);
+    const asked = new Set(input.askedQuestions.map((question) => question.ref));
+    const unknown = outcome.result.questions.flatMap(({ reformulates }) =>
+      reformulates !== null && !asked.has(reformulates) ? [reformulates] : [],
+    );
+    if (unknown.length > 0) return failed(`A IA reformulou Perguntas que não foram feitas: ${unknown.join(", ")}.`);
+    return outcome;
   }
 
   // Abre uma tentativa, com o Processo travado até a transação terminar, e só depois de gravá-la
@@ -162,55 +228,70 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
     processId: string,
     prepare: (
       trx: Db,
-      blockInput: BlockInput | null,
-    ) => Promise<{ ok: true; aiRequestId: string; input: BlockInput } | { ok: false; error: E }>,
+      prepared: PreparedBlock | null,
+    ) => Promise<{ ok: true; aiRequestId: string; prepared: PreparedBlock } | { ok: false; error: E }>,
   ): Promise<{ ok: true; blockRequest: BlockRequest } | { ok: false; error: E | BlocksClosed }> {
     const opened = await db.transaction().execute(async (trx) => {
       const process = await lockOpenProcess(trx, processId);
       if (!process.ok) return process;
-      const prepared = await prepare(trx, process.blockInput);
-      if (!prepared.ok) return prepared;
+      const ready = await prepare(trx, process.prepared);
+      if (!ready.ok) return ready;
       // O modelo é o configurado no momento em que a tentativa abre; as já abertas guardam o seu.
       const { claudeModel } = await settings.find(trx);
-      const attempt = await runner.openAttempt(trx, prepared.aiRequestId, { cli: assistant.cli, model: claudeModel });
-      return { ok: true, attempt, aiRequestId: prepared.aiRequestId, input: prepared.input } as const;
+      const attempt = await runner.openAttempt(
+        trx,
+        ready.aiRequestId,
+        { cli: assistant.cli, model: claudeModel },
+        ready.prepared.usedVersionIds,
+      );
+      return { ok: true, attempt, aiRequestId: ready.aiRequestId, prepared: ready.prepared } as const;
     });
     if (!opened.ok) return opened;
-    const { attempt, aiRequestId, input } = opened;
+    const { attempt, aiRequestId, prepared } = opened;
+    const { input } = prepared;
     try {
       // Lido antes de disparar a geração: a resposta mostra a tentativa recém-aberta.
       const blockRequest = (await findBlockRequests(processId)).find((request) => request.id === aiRequestId)!;
       return { ok: true, blockRequest };
     } finally {
       // Aberta, a tentativa sempre segue, mesmo que a leitura falhe: nunca fica "running" à toa.
-      runner.run(attempt, (context) => generateBlock(input, context), saveBlock(processId, input.stage));
+      runner.run(
+        attempt,
+        (context) => generateBlock(input, context),
+        saveBlock(processId, input.stage, prepared.questionIdsByRef),
+      );
     }
   }
 
   return {
     async request(processId) {
-      return startAttempt(processId, async (trx, input) => {
-        if (!input) return { ok: false, error: "problem_statement_not_confirmed" } as const;
-        if ((await listAiRequests(trx, processId, OPERATION)).length > 0) {
+      return startAttempt(processId, async (trx, prepared) => {
+        if (!prepared) return { ok: false, error: "problem_statement_not_confirmed" } as const;
+        // Uma solicitação que ainda não trouxe Bloco segue com novas tentativas, não com outra solicitação.
+        const requests = await listAiRequests(trx, processId, OPERATION);
+        if (requests.some((request) => request.status !== "completed")) {
           return { ok: false, error: "block_already_requested" } as const;
         }
+        // Perguntas novas só depois de o usuário confirmar o que o Bloco anterior entendeu.
+        if (prepared.unsynthesized > 0) return { ok: false, error: "synthesis_not_confirmed" } as const;
+        if (prepared.input.openStagePoints.length === 0) return { ok: false, error: "no_open_stage_points" } as const;
         const request = await trx
           .insertInto("aiRequests")
           .values({ processId, operation: OPERATION })
           .returning("id")
           .executeTakeFirstOrThrow();
-        return { ok: true, aiRequestId: request.id, input } as const;
+        return { ok: true, aiRequestId: request.id, prepared } as const;
       });
     },
 
     async newAttempt(processId, blockRequestId) {
-      return startAttempt(processId, async (trx, input) => {
+      return startAttempt(processId, async (trx, prepared) => {
         const request = (await listAiRequests(trx, processId, OPERATION)).find(({ id }) => id === blockRequestId);
         // Uma solicitação de Bloco só existe depois da Confirmação do enunciado: sem ela, não há o que tentar.
-        if (!request || !input) return { ok: false, error: "block_request_not_found" } as const;
+        if (!request || !prepared) return { ok: false, error: "block_request_not_found" } as const;
         if (request.status === "running") return { ok: false, error: "attempt_in_progress" } as const;
         if (request.status === "completed") return { ok: false, error: "block_generated" } as const;
-        return { ok: true, aiRequestId: request.id, input } as const;
+        return { ok: true, aiRequestId: request.id, prepared } as const;
       });
     },
 
@@ -227,7 +308,19 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       const questionRows = blockRows.length
         ? await db
             .selectFrom("questions")
-            .select(["id", "blockId", "wording", "subject", "contextRelation", "rationale", "stagePoints", "answerType", "choices"])
+            .select([
+              "id",
+              "blockId",
+              "position",
+              "wording",
+              "subject",
+              "contextRelation",
+              "rationale",
+              "stagePoints",
+              "reformulatesQuestionId",
+              "answerType",
+              "choices",
+            ])
             .where(
               "blockId",
               "in",
@@ -236,28 +329,47 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
             .orderBy("position")
             .execute()
         : [];
-      const answers = await answersOf(
-        db,
-        questionRows.map((question) => question.id),
-      );
+      const questionIds = questionRows.map((question) => question.id);
+      const answers = await answersOf(db, questionIds);
+      const unknown = questionIds.length
+        ? await db
+            .selectFrom("pendencies")
+            .select("questionId")
+            .where("questionId", "in", questionIds)
+            .where("reason", "=", "unknown_information")
+            .where("resolvedAt", "is", null)
+            .execute()
+        : [];
+      const syntheses = await synthesesOf(db, process, blockRows);
+      const stagePoints = await stagePointStates(db, process, process.currentStage);
+      const reformulated = (id: string | null): Question["reformulates"] => {
+        const original = id === null ? undefined : questionRows.find((question) => question.id === id);
+        if (!original) return null;
+        const block = blockRows.find((item) => item.id === original.blockId)!;
+        return { questionId: original.id, blockNumber: block.number, number: original.position + 1, wording: original.wording };
+      };
       return {
-        openStagePoints: stagePointsOf(process.stagePointsVersion, process.currentStage),
+        stagePoints,
+        openStagePoints: stagePoints
+          .filter((point) => point.status === "open")
+          .map(({ key, name, description }) => ({ key, name, description })),
         blockRequests,
-        blocks: blockRows.map((block) => {
-          return {
-            ...block,
-            questions: questionRows
-              .filter((question) => question.blockId === block.id)
-              .map(({ blockId: _blockId, stagePoints, ...question }) => ({
-                ...question,
-                stagePoints: stagePoints.map((key) => ({
-                  key,
-                  name: findStagePoint(process.stagePointsVersion, block.stage, key)?.name ?? key,
-                })),
-                ...answers.get(question.id)!,
+        blocks: blockRows.map((block) => ({
+          ...block,
+          questions: questionRows
+            .filter((question) => question.blockId === block.id)
+            .map(({ blockId: _blockId, position: _position, stagePoints: keys, reformulatesQuestionId, ...question }) => ({
+              ...question,
+              stagePoints: keys.map((key) => ({
+                key,
+                name: findStagePoint(process.stagePointsVersion, block.stage, key)?.name ?? key,
               })),
-          };
-        }),
+              reformulates: reformulated(reformulatesQuestionId),
+              ...answers.get(question.id)!,
+              unknown: unknown.some((pendency) => pendency.questionId === question.id),
+            })),
+          ...syntheses.get(block.id)!,
+        })),
       };
     },
   };

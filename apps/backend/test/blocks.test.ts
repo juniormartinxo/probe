@@ -86,6 +86,9 @@ describe("Block", () => {
       originalDescription: description,
       problemStatement: statement,
       openStagePoints: process.openStagePoints,
+      askedQuestions: [],
+      confirmedSyntheses: [],
+      ambiguousAnswers: [],
     });
     expect(assistant.block.attempts[0]!.context.model).toBe(TEST_MODEL);
     const [block] = process.blocks;
@@ -99,10 +102,12 @@ describe("Block", () => {
         contextRelation: "O enunciado fala da demora do deploy, mas não do que a provoca.",
         rationale: "Separar o sintoma do problema real evita resolver a coisa errada.",
         stagePoints: [{ key: "real_problem", name: "Problema real versus sintoma" }],
+        reformulates: null,
         answerType: "single_choice",
         choices: ["A demora é o problema em si", "A demora é sintoma de outra coisa", "Não sei"],
         answer: null,
         draft: null,
+        unknown: false,
       },
       {
         id: expect.any(String),
@@ -114,10 +119,12 @@ describe("Block", () => {
           { key: "consequence", name: "Consequência de não resolver" },
           { key: "urgency", name: "Motivo da urgência" },
         ],
+        reformulates: null,
         answerType: "multiple_choice",
         choices: ["Atraso nas entregas", "Horas extras", "Clientes reclamando"],
         answer: null,
         draft: null,
+        unknown: false,
       },
       {
         id: expect.any(String),
@@ -126,10 +133,12 @@ describe("Block", () => {
         contextRelation: "O problema existe há algum tempo.",
         rationale: "A urgência define quanto esforço cabe agora.",
         stagePoints: [{ key: "urgency", name: "Motivo da urgência" }],
+        reformulates: null,
         answerType: "free_text",
         choices: [],
         answer: null,
         draft: null,
+        unknown: false,
       },
     ]);
   });
@@ -160,7 +169,8 @@ describe("Block", () => {
     expect(assistant.block.attempts).toHaveLength(0);
   });
 
-  it("is requested only once in this slice", async () => {
+  it("is not requested again while the previous request has not brought its Block", async () => {
+    assistant.block.willHold();
     const id = await createProcess();
     await confirmStatement(id);
     await requestBlock(id);
@@ -169,7 +179,20 @@ describe("Block", () => {
 
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: "block_already_requested" });
-    expect((await settledBlockRequest(id)).blocks).toHaveLength(1);
+    expect(assistant.block.attempts).toHaveLength(1);
+  });
+
+  it("is not requested again before the previous Block's synthesis is confirmed", async () => {
+    const id = await createProcess();
+    await confirmStatement(id);
+    await requestBlock(id);
+    await settledBlockRequest(id);
+
+    const response = await requestBlock(id);
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: "synthesis_not_confirmed" });
+    expect((await getProcess(id)).blocks).toHaveLength(1);
     expect(assistant.block.attempts).toHaveLength(1);
   });
 
@@ -324,7 +347,7 @@ describe("Answer", () => {
     expect(response.statusCode).toBe(201);
     const { answer: saved } = await questionOf(questions.id, question.id);
     expect(saved).toEqual({
-      current: { id: response.json().answerVersion.id, number: 1, ...recorded, createdAt: expect.any(String) },
+      current: { id: response.json().answerVersion.id, number: 1, ...recorded, createdAt: expect.any(String), confirmed: false },
       previous: [],
     });
   });

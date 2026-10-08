@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   discardDraft,
+  markUnknown,
   recordAnswer,
   saveDraft,
   type AnswerValue,
@@ -172,7 +173,7 @@ export function Questionnaire({
                     "relative flex size-7 items-center justify-center rounded-md border text-xs font-medium",
                     position === index
                       ? "bg-primary text-primary-foreground border-primary"
-                      : item.answer
+                      : item.answer || item.unknown
                         ? "bg-secondary"
                         : "text-muted-foreground",
                   )}
@@ -259,6 +260,20 @@ function QuestionView({
     }
   }
 
+  async function registerUnknown() {
+    setSaving(true);
+    setError(undefined);
+    try {
+      await markUnknown(processId, question.id);
+    } catch (caught) {
+      // Respondida ou já registrada em outra aba: o estado recarregado mostra o que vale.
+      if (!(caught instanceof ApiError && caught.status === 409)) setError("Não foi possível registrar que você não sabe.");
+    } finally {
+      setSaving(false);
+      onChange();
+    }
+  }
+
   async function discard() {
     setSaving(true);
     setError(undefined);
@@ -281,6 +296,14 @@ function QuestionView({
         <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{question.subject}</p>
         <CardTitle className="text-base">{question.wording}</CardTitle>
         <p className="text-muted-foreground text-sm">{question.contextRelation}</p>
+        {question.reformulates && (
+          <p className="text-muted-foreground text-xs">
+            <span className="font-medium">
+              Reformula a Pergunta {question.reformulates.number} do Bloco {question.reformulates.blockNumber}:
+            </span>{" "}
+            “{question.reformulates.wording}”. A resposta dada lá continua ligada ao texto que você viu.
+          </p>
+        )}
         {question.rationale && (
           <p className="text-muted-foreground text-xs">
             <span className="font-medium">Por que perguntamos:</span> {question.rationale}
@@ -298,6 +321,16 @@ function QuestionView({
       <AnswerInput question={question} value={edit.value} onChange={onEdit} disabled={saving} />
 
       {question.answer && <SavedAnswer question={question} />}
+
+      {question.unknown && (
+        <div className="flex flex-col gap-1 rounded-md border border-dashed p-3 text-sm">
+          <Badge variant="outline">Informação desconhecida</Badge>
+          <p className="text-muted-foreground text-xs">
+            Você registrou que não sabe. Isso fica visível como Pendência; se souber depois, responda aqui e ela se
+            resolve.
+          </p>
+        </div>
+      )}
 
       {superseded && (
         <div className="border-destructive/50 flex flex-col gap-2 rounded-md border p-3 text-sm">
@@ -325,6 +358,11 @@ function QuestionView({
           {(changed || question.draft) && (
             <Button variant="ghost" size="sm" disabled={saving} onClick={discard}>
               Descartar rascunho
+            </Button>
+          )}
+          {!question.answer && !question.unknown && (
+            <Button variant="ghost" size="sm" disabled={saving} onClick={registerUnknown}>
+              Não sei
             </Button>
           )}
           <Button
@@ -422,7 +460,8 @@ function SavedAnswer({ question }: { question: Question }) {
   return (
     <div className="bg-muted/50 flex flex-col gap-1 rounded-md p-3 text-sm">
       <p className="text-muted-foreground text-xs">
-        Resposta salva · Versão {current.number} · {formatDate(current.createdAt)}
+        Resposta salva · Versão {current.number} · {formatDate(current.createdAt)} ·{" "}
+        {current.confirmed ? "confirmada pela síntese do Bloco" : "provisória até a síntese do Bloco ser confirmada"}
       </p>
       <p className="whitespace-pre-wrap">{describe(question, current)}</p>
       {previous.length > 0 && (

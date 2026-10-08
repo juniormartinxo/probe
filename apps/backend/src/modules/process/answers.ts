@@ -1,6 +1,7 @@
 import { sql } from "kysely";
 import type { Db } from "../../db/database.ts";
 import type { AnswerType } from "../ai/assistant.ts";
+import { resolveUnknownInformation } from "./pendencies.ts";
 
 // Cada estado registrado de uma resposta. Traz os índices das alternativas escolhidas ou o texto
 // livre, conforme a Pergunta.
@@ -10,6 +11,9 @@ export interface AnswerVersion {
   selectedChoices: number[] | null;
   text: string | null;
   createdAt: Date;
+  // Confirmada em conjunto com as outras respostas do Bloco, pela Confirmação da síntese de bloco.
+  // Até lá, a resposta é provisória.
+  confirmed: boolean;
 }
 
 // A resposta de uma Pergunta: a Versão que vale e as superadas, da mais recente para a mais antiga.
@@ -40,7 +44,21 @@ export async function answersOf(db: Db, questionIds: string[]): Promise<Map<stri
     .where("questionId", "in", questionIds)
     .orderBy("number", "desc")
     .execute();
-  for (const { questionId, ...version } of versions) {
+  const confirmed = versions.length
+    ? await db
+        .selectFrom("attemptAnswerVersions")
+        .innerJoin("blockSyntheses", "blockSyntheses.proposalId", "attemptAnswerVersions.attemptId")
+        .select("attemptAnswerVersions.answerVersionId")
+        .where(
+          "attemptAnswerVersions.answerVersionId",
+          "in",
+          versions.map((version) => version.id),
+        )
+        .execute()
+    : [];
+  const confirmedIds = new Set(confirmed.map((row) => row.answerVersionId));
+  for (const { questionId, ...row } of versions) {
+    const version = { ...row, confirmed: confirmedIds.has(row.id) };
     const entry = found.get(questionId)!;
     if (entry.answer) entry.answer.previous.push(version);
     else entry.answer = { current: version, previous: [] };
@@ -52,6 +70,15 @@ export async function answersOf(db: Db, questionIds: string[]): Promise<Map<stri
     .execute();
   for (const { questionId, ...draft } of drafts) found.get(questionId)!.draft = draft;
   return found;
+}
+
+// A Versão descrita em texto, como o usuário a vê: as alternativas escolhidas ou o texto livre.
+export function describeAnswer(
+  { choices }: { choices: string[] },
+  { selectedChoices, text }: Pick<AnswerVersion, "selectedChoices" | "text">,
+): string {
+  if (text !== null) return text;
+  return (selectedChoices ?? []).map((choice) => choices[choice]).join("; ");
 }
 
 // Valor de uma resposta ou rascunho como chega do usuário: índices de alternativas ou texto livre.
@@ -152,8 +179,10 @@ export function answers({ db }: { db: Db }): Answers {
           .insertInto("answerVersions")
           .values({ questionId, number: (current?.number ?? 0) + 1, ...complete })
           .returning(["id", "number", "selectedChoices", "text", "createdAt"])
-          .executeTakeFirstOrThrow();
+          .executeTakeFirstOrThrow()
+          .then((row) => ({ ...row, confirmed: false }));
         await trx.deleteFrom("answerDrafts").where("questionId", "=", questionId).execute();
+        await resolveUnknownInformation(trx, questionId, answerVersion.id);
         return { ok: true, answerVersion } as const;
       });
     },

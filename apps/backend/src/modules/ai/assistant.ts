@@ -59,6 +59,8 @@ export interface GeneratedQuestion {
   // Por que a Pergunta está sendo feita, quando a IA julga necessário dizer.
   rationale: string | null;
   stagePoints: string[];
+  // Referência (`ref`) da Pergunta já feita que esta reformula, se for uma reformulação.
+  reformulates: string | null;
   answerType: AnswerType;
   choices: string[];
 }
@@ -67,12 +69,62 @@ export interface GeneratedBlock {
   questions: GeneratedQuestion[];
 }
 
-// O que a IA recebe para gerar um Bloco: o problema e os Pontos ainda abertos da Etapa.
+// Pergunta já feita no Processo, como a IA a recebe: a resposta que vale, descrita em texto, ou o
+// registro de que o usuário não sabe.
+export interface AskedQuestion {
+  // "2.1": Pergunta 1 do Bloco 2. É como a IA se refere a ela.
+  ref: string;
+  wording: string;
+  stagePoints: string[];
+  answer: string | null;
+  unknown: boolean;
+}
+
+// Resposta que a IA apontou como ambígua ao sintetizar um Bloco, pela referência da Pergunta.
+export interface AmbiguousAnswer {
+  question: string;
+  reason: string;
+}
+
+// O que a IA recebe para gerar um Bloco: o problema, os Pontos ainda abertos da Etapa e o que já
+// foi perguntado, para não perguntar de novo.
 export interface BlockInput {
   stage: Stage;
   originalDescription: string;
   problemStatement: string;
   openStagePoints: StagePoint[];
+  askedQuestions: AskedQuestion[];
+  // Sínteses dos Blocos anteriores da Etapa, como o usuário as confirmou.
+  confirmedSyntheses: string[];
+  // Respostas que as sínteses confirmadas apontaram como ambíguas: candidatas a reformulação.
+  ambiguousAnswers: AmbiguousAnswer[];
+}
+
+// O que a IA recebe para sintetizar um Bloco e sugerir a cobertura dos Pontos ainda abertos.
+export interface SynthesisInput {
+  stage: Stage;
+  originalDescription: string;
+  problemStatement: string;
+  openStagePoints: StagePoint[];
+  blockNumber: number;
+  // As Perguntas do Bloco sintetizado.
+  questions: AskedQuestion[];
+  // As Perguntas dos Blocos anteriores da Etapa.
+  earlierQuestions: AskedQuestion[];
+}
+
+// Sugestão da IA sobre um Ponto aberto: se as respostas já o cobrem, e por quê.
+export interface CoverageSuggestion {
+  stagePoint: string;
+  covered: boolean;
+  reason: string;
+}
+
+export interface GeneratedSynthesis {
+  synthesis: string;
+  // Uma sugestão para cada Ponto aberto.
+  coverage: CoverageSuggestion[];
+  ambiguousAnswers: AmbiguousAnswer[];
 }
 
 export interface Assistant {
@@ -82,6 +134,7 @@ export interface Assistant {
     context: AttemptContext,
   ): Promise<AssistantOutcome<StatementProposal>>;
   generateBlock(input: BlockInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedBlock>>;
+  synthesizeBlock(input: SynthesisInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedSynthesis>>;
   // Pedido mínimo à CLI, só para saber se a cadeia até ela funciona; o resultado é a resposta crua.
   testConnection(context: AttemptContext): Promise<AssistantOutcome<string>>;
 }
