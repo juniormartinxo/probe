@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "kysely";
-import { FakeAssistant } from "./support/fake-assistant.ts";
+import { FakeAssistant, completed, defaultBlock } from "./support/fake-assistant.ts";
 import { TEST_MODEL, createTestApp, resetDatabase, waitFor, type TestApp } from "./support/test-app.ts";
 
 let assistant: FakeAssistant;
@@ -94,18 +94,20 @@ describe("Block", () => {
     expect(block.questions).toEqual([
       {
         id: expect.any(String),
-        subject: "Sintoma ou causa",
+        wording: "A demora do deploy é o problema em si ou sintoma de outra coisa?",
+      subject: "Sintoma ou causa",
         contextRelation: "O enunciado fala da demora do deploy, mas não do que a provoca.",
         rationale: "Separar o sintoma do problema real evita resolver a coisa errada.",
         stagePoints: [{ key: "real_problem", name: "Problema real versus sintoma" }],
         answerType: "single_choice",
-        options: ["A demora é o problema em si", "A demora é sintoma de outra coisa", "Não sei"],
+        choices: ["A demora é o problema em si", "A demora é sintoma de outra coisa", "Não sei"],
         answer: null,
         draft: null,
       },
       {
         id: expect.any(String),
-        subject: "Efeitos da demora",
+        wording: "O que a demora do deploy já causou?",
+      subject: "Efeitos da demora",
         contextRelation: "O time perde a manhã esperando o deploy.",
         rationale: null,
         stagePoints: [
@@ -113,22 +115,38 @@ describe("Block", () => {
           { key: "urgency", name: "Motivo da urgência" },
         ],
         answerType: "multiple_choice",
-        options: ["Atraso nas entregas", "Horas extras", "Clientes reclamando"],
+        choices: ["Atraso nas entregas", "Horas extras", "Clientes reclamando"],
         answer: null,
         draft: null,
       },
       {
         id: expect.any(String),
-        subject: "Por que agora",
+        wording: "Por que resolver isso agora, e não daqui a seis meses?",
+      subject: "Por que agora",
         contextRelation: "O problema existe há algum tempo.",
         rationale: "A urgência define quanto esforço cabe agora.",
         stagePoints: [{ key: "urgency", name: "Motivo da urgência" }],
         answerType: "free_text",
-        options: [],
+        choices: [],
         answer: null,
         draft: null,
       },
     ]);
+  });
+
+  it("is refused when a question serves a Point that is not open in the Stage, whatever the AI says", async () => {
+    const [first, ...rest] = defaultBlock.questions;
+    assistant.block.willRespond(completed({ questions: [{ ...first!, stagePoints: ["deadline"] }, ...rest] }));
+    const id = await createProcess();
+    await confirmStatement(id);
+
+    await requestBlock(id);
+
+    const process = await settledBlockRequest(id);
+    expect(process.blockRequests).toMatchObject([
+      { status: "failed", blockId: null, attempts: [{ failureReason: "invalid_output", message: expect.any(String) }] },
+    ]);
+    expect(process.blocks).toEqual([]);
   });
 
   it("is not requested before the problem statement is confirmed", async () => {
@@ -294,9 +312,9 @@ async function questionOf(id: string, questionId: string) {
 
 describe("Answer", () => {
   it.each([
-    ["a single choice", "single", { selectedOptions: [1] }, { selectedOptions: [1], text: null }],
-    ["a multiple choice", "multiple", { selectedOptions: [0, 2] }, { selectedOptions: [0, 2], text: null }],
-    ["free text", "free", { text: "A diretoria cobrou na última reunião." }, { selectedOptions: null, text: "A diretoria cobrou na última reunião." }],
+    ["a single choice", "single", { selectedChoices: [1] }, { selectedChoices: [1], text: null }],
+    ["a multiple choice", "multiple", { selectedChoices: [0, 2] }, { selectedChoices: [0, 2], text: null }],
+    ["free text", "free", { text: "A diretoria cobrou na última reunião." }, { selectedChoices: null, text: "A diretoria cobrou na última reunião." }],
   ] as const)("to %s is recorded as the first Version", async (_case, which, value, recorded) => {
     const questions = await processWithBlock();
     const question = questions[which];
@@ -325,37 +343,37 @@ describe("Answer", () => {
 
   it("changed from a superseded Version is refused, keeping the Version that holds", async () => {
     const { id, single } = await processWithBlock();
-    const first = (await answer(id, single.id, { selectedOptions: [0], basedOnVersionId: null })).json().answerVersion;
+    const first = (await answer(id, single.id, { selectedChoices: [0], basedOnVersionId: null })).json().answerVersion;
     // Outra aba altera a resposta a partir da primeira Versão.
-    const second = (await answer(id, single.id, { selectedOptions: [1], basedOnVersionId: first.id })).json().answerVersion;
+    const second = (await answer(id, single.id, { selectedChoices: [1], basedOnVersionId: first.id })).json().answerVersion;
 
-    const response = await answer(id, single.id, { selectedOptions: [2], basedOnVersionId: first.id });
+    const response = await answer(id, single.id, { selectedChoices: [2], basedOnVersionId: first.id });
 
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: "superseded_version" });
     const { answer: saved } = await questionOf(id, single.id);
-    expect(saved.current).toMatchObject({ id: second.id, selectedOptions: [1] });
+    expect(saved.current).toMatchObject({ id: second.id, selectedChoices: [1] });
     expect(saved.previous).toHaveLength(1);
   });
 
   it("given as first answer is refused when the question was answered meanwhile", async () => {
     const { id, multiple } = await processWithBlock();
-    await answer(id, multiple.id, { selectedOptions: [0], basedOnVersionId: null });
+    await answer(id, multiple.id, { selectedChoices: [0], basedOnVersionId: null });
 
-    const response = await answer(id, multiple.id, { selectedOptions: [1], basedOnVersionId: null });
+    const response = await answer(id, multiple.id, { selectedChoices: [1], basedOnVersionId: null });
 
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: "superseded_version" });
   });
 
   it.each([
-    ["two options to a single choice", "single", { selectedOptions: [0, 1] }],
-    ["no option to a single choice", "single", { selectedOptions: [] }],
-    ["an option that does not exist", "single", { selectedOptions: [3] }],
-    ["no option to a multiple choice", "multiple", { selectedOptions: [] }],
-    ["the same option twice", "multiple", { selectedOptions: [1, 1] }],
+    ["two choices to a single choice", "single", { selectedChoices: [0, 1] }],
+    ["no choice to a single choice", "single", { selectedChoices: [] }],
+    ["a choice that does not exist", "single", { selectedChoices: [3] }],
+    ["no choice to a multiple choice", "multiple", { selectedChoices: [] }],
+    ["the same choice twice", "multiple", { selectedChoices: [1, 1] }],
     ["text to a choice", "multiple", { text: "Atraso nas entregas" }],
-    ["options to free text", "free", { selectedOptions: [0] }],
+    ["choices to free text", "free", { selectedChoices: [0] }],
     ["blank text", "free", { text: "  \n " }],
   ] as const)("is refused when giving %s", async (_case, which, value) => {
     const questions = await processWithBlock();
@@ -369,10 +387,10 @@ describe("Answer", () => {
 
   it.each([
     ["no value", { basedOnVersionId: null }],
-    ["options and text at once", { selectedOptions: [0], text: "Sim", basedOnVersionId: null }],
-    ["a negative option", { selectedOptions: [-1], basedOnVersionId: null }],
-    ["no base Version", { selectedOptions: [0] }],
-    ["a malformed base Version", { selectedOptions: [0], basedOnVersionId: "versao" }],
+    ["choices and text at once", { selectedChoices: [0], text: "Sim", basedOnVersionId: null }],
+    ["a negative choice", { selectedChoices: [-1], basedOnVersionId: null }],
+    ["no base Version", { selectedChoices: [0] }],
+    ["a malformed base Version", { selectedChoices: [0], basedOnVersionId: "versao" }],
   ])("is refused when sent with %s", async (_case, payload) => {
     const { id, single } = await processWithBlock();
 
@@ -385,7 +403,7 @@ describe("Answer", () => {
     const other = await processWithBlock();
     const id = await createProcess();
 
-    const response = await answer(id, other.single.id, { selectedOptions: [0], basedOnVersionId: null });
+    const response = await answer(id, other.single.id, { selectedChoices: [0], basedOnVersionId: null });
 
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({ error: "question_not_found" });
@@ -395,8 +413,8 @@ describe("Answer", () => {
     const { id, single, free } = await processWithBlock();
     const before = (await getProcess(id)).blocks;
 
-    const first = (await answer(id, single.id, { selectedOptions: [0], basedOnVersionId: null })).json().answerVersion;
-    await answer(id, single.id, { selectedOptions: [1], basedOnVersionId: first.id });
+    const first = (await answer(id, single.id, { selectedChoices: [0], basedOnVersionId: null })).json().answerVersion;
+    await answer(id, single.id, { selectedChoices: [1], basedOnVersionId: first.id });
     await answer(id, free.id, { text: "Cobrança da diretoria.", basedOnVersionId: null });
 
     const withoutAnswers = (blocks: { questions: Record<string, unknown>[] }[]) =>
@@ -418,33 +436,33 @@ describe("Draft", () => {
     const { id, single, free } = await processWithBlock();
 
     expect((await saveDraft(id, free.id, { text: "A diretoria co", basedOnVersionId: null })).statusCode).toBe(200);
-    expect((await saveDraft(id, single.id, { selectedOptions: [2], basedOnVersionId: null })).statusCode).toBe(200);
+    expect((await saveDraft(id, single.id, { selectedChoices: [2], basedOnVersionId: null })).statusCode).toBe(200);
     await testApp.close();
     testApp = await createTestApp({ assistant });
 
     expect((await questionOf(id, free.id)).draft).toEqual({
       basedOnVersionId: null,
-      selectedOptions: null,
+      selectedChoices: null,
       text: "A diretoria co",
       updatedAt: expect.any(String),
     });
-    expect((await questionOf(id, single.id)).draft).toMatchObject({ selectedOptions: [2], text: null });
+    expect((await questionOf(id, single.id)).draft).toMatchObject({ selectedChoices: [2], text: null });
     expect((await questionOf(id, free.id)).answer).toBeNull();
   });
 
   it("keeps only the latest content", async () => {
     const { id, multiple } = await processWithBlock();
-    await saveDraft(id, multiple.id, { selectedOptions: [0], basedOnVersionId: null });
+    await saveDraft(id, multiple.id, { selectedChoices: [0], basedOnVersionId: null });
 
-    await saveDraft(id, multiple.id, { selectedOptions: [0, 2], basedOnVersionId: null });
+    await saveDraft(id, multiple.id, { selectedChoices: [0, 2], basedOnVersionId: null });
 
-    expect((await questionOf(id, multiple.id)).draft).toMatchObject({ selectedOptions: [0, 2] });
+    expect((await questionOf(id, multiple.id)).draft).toMatchObject({ selectedChoices: [0, 2] });
   });
 
   it("may be incomplete", async () => {
     const { id, multiple, free } = await processWithBlock();
 
-    expect((await saveDraft(id, multiple.id, { selectedOptions: [], basedOnVersionId: null })).statusCode).toBe(200);
+    expect((await saveDraft(id, multiple.id, { selectedChoices: [], basedOnVersionId: null })).statusCode).toBe(200);
     expect((await saveDraft(id, free.id, { text: "", basedOnVersionId: null })).statusCode).toBe(200);
   });
 
@@ -494,9 +512,9 @@ describe("Draft", () => {
 
   it.each([
     ["text to a choice", "single", { text: "Não sei", basedOnVersionId: null }],
-    ["two options to a single choice", "single", { selectedOptions: [0, 1], basedOnVersionId: null }],
-    ["an option that does not exist", "multiple", { selectedOptions: [5], basedOnVersionId: null }],
-    ["options to free text", "free", { selectedOptions: [0], basedOnVersionId: null }],
+    ["two choices to a single choice", "single", { selectedChoices: [0, 1], basedOnVersionId: null }],
+    ["a choice that does not exist", "multiple", { selectedChoices: [5], basedOnVersionId: null }],
+    ["choices to free text", "free", { selectedChoices: [0], basedOnVersionId: null }],
     ["a Version of another question", "free", { text: "Texto", basedOnVersionId: "00000000-0000-4000-8000-000000000000" }],
   ] as const)("is refused with %s", async (_case, which, payload) => {
     const questions = await processWithBlock();

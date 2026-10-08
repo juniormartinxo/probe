@@ -39,6 +39,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("id", "uuid", (col) => col.primaryKey().defaultTo(sql`gen_random_uuid()`))
     .addColumn("block_id", "uuid", (col) => col.notNull().references("blocks.id").onDelete("cascade"))
     .addColumn("position", "integer", (col) => col.notNull())
+    .addColumn("wording", "text", (col) => col.notNull())
     .addColumn("subject", "text", (col) => col.notNull())
     .addColumn("context_relation", "text", (col) => col.notNull())
     .addColumn("rationale", "text")
@@ -47,10 +48,10 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("answer_type", "text", (col) =>
       col.notNull().check(sql`answer_type in ('single_choice', 'multiple_choice', 'free_text')`),
     )
-    .addColumn("options", sql`text[]`, (col) => col.notNull())
+    .addColumn("choices", sql`text[]`, (col) => col.notNull())
     .addCheckConstraint(
-      "questions_options",
-      sql`(answer_type = 'free_text' and cardinality(options) = 0) or (answer_type <> 'free_text' and cardinality(options) >= 2)`,
+      "questions_choices",
+      sql`(answer_type = 'free_text' and cardinality(choices) = 0) or (answer_type <> 'free_text' and cardinality(choices) >= 2)`,
     )
     .addUniqueConstraint("questions_position", ["block_id", "position"])
     .execute();
@@ -63,10 +64,10 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("question_id", "uuid", (col) => col.notNull().references("questions.id").onDelete("cascade"))
     .addColumn("number", "integer", (col) => col.notNull())
     // Índices das alternativas escolhidas, ou o texto livre; nunca os dois.
-    .addColumn("selected_options", sql`integer[]`)
+    .addColumn("selected_choices", sql`integer[]`)
     .addColumn("text", "text")
     .addColumn("created_at", "timestamptz", (col) => col.notNull().defaultTo(sql`clock_timestamp()`))
-    .addCheckConstraint("answer_versions_value", sql`(selected_options is null) <> (text is null)`)
+    .addCheckConstraint("answer_versions_value", sql`(selected_choices is null) <> (text is null)`)
     .addUniqueConstraint("answer_versions_number", ["question_id", "number"])
     .execute();
   await forbidUpdate("answer_versions").execute(db);
@@ -77,7 +78,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .createTable("answer_drafts")
     .addColumn("question_id", "uuid", (col) => col.primaryKey().references("questions.id").onDelete("cascade"))
     .addColumn("based_on_version_id", "uuid", (col) => col.references("answer_versions.id").onDelete("cascade"))
-    .addColumn("selected_options", sql`integer[]`)
+    .addColumn("selected_choices", sql`integer[]`)
     .addColumn("text", "text")
     .addColumn("updated_at", "timestamptz", (col) => col.notNull().defaultTo(sql`clock_timestamp()`))
     .execute();

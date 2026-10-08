@@ -7,7 +7,7 @@ import type { AnswerType } from "../ai/assistant.ts";
 export interface AnswerVersion {
   id: string;
   number: number;
-  selectedOptions: number[] | null;
+  selectedChoices: number[] | null;
   text: string | null;
   createdAt: Date;
 }
@@ -21,7 +21,7 @@ export interface Answer {
 // O que o usuário preencheu e ainda não salvou, e a Versão sobre a qual começou a alterar.
 export interface AnswerDraft {
   basedOnVersionId: string | null;
-  selectedOptions: number[] | null;
+  selectedChoices: number[] | null;
   text: string | null;
   updatedAt: Date;
 }
@@ -36,7 +36,7 @@ export async function answersOf(db: Db, questionIds: string[]): Promise<Map<stri
   if (questionIds.length === 0) return found;
   const versions = await db
     .selectFrom("answerVersions")
-    .select(["id", "questionId", "number", "selectedOptions", "text", "createdAt"])
+    .select(["id", "questionId", "number", "selectedChoices", "text", "createdAt"])
     .where("questionId", "in", questionIds)
     .orderBy("number", "desc")
     .execute();
@@ -47,7 +47,7 @@ export async function answersOf(db: Db, questionIds: string[]): Promise<Map<stri
   }
   const drafts = await db
     .selectFrom("answerDrafts")
-    .select(["questionId", "basedOnVersionId", "selectedOptions", "text", "updatedAt"])
+    .select(["questionId", "basedOnVersionId", "selectedChoices", "text", "updatedAt"])
     .where("questionId", "in", questionIds)
     .execute();
   for (const { questionId, ...draft } of drafts) found.get(questionId)!.draft = draft;
@@ -55,7 +55,7 @@ export async function answersOf(db: Db, questionIds: string[]): Promise<Map<stri
 }
 
 // Valor de uma resposta ou rascunho como chega do usuário: índices de alternativas ou texto livre.
-export type AnswerValue = { selectedOptions: number[] } | { text: string };
+export type AnswerValue = { selectedChoices: number[] } | { text: string };
 
 export interface AnswerChange {
   value: AnswerValue;
@@ -87,36 +87,29 @@ export interface Answers {
 
 interface QuestionShape {
   answerType: AnswerType;
-  options: string[];
+  choices: string[];
 }
 
-// Normaliza a resposta conforme o tipo da Pergunta, ou a recusa. Alternativas ficam em ordem.
-function completeValue(
-  { answerType, options }: QuestionShape,
+type StoredValue = { selectedChoices: number[]; text: null } | { selectedChoices: null; text: string };
+
+// Lê o valor conforme o tipo da Pergunta, ou o recusa; alternativas ficam em ordem. Uma resposta
+// precisa estar completa; um rascunho pode estar incompleto, mas não ser de outro tipo.
+function valueFor(
+  { answerType, choices }: QuestionShape,
   value: AnswerValue,
-): { selectedOptions: number[]; text: null } | { selectedOptions: null; text: string } | undefined {
+  { complete }: { complete: boolean },
+): StoredValue | undefined {
   if (answerType === "free_text") {
-    if (!("text" in value) || value.text.trim() === "") return undefined;
-    return { selectedOptions: null, text: value.text.trim() };
+    if (!("text" in value)) return undefined;
+    if (!complete) return { selectedChoices: null, text: value.text };
+    return value.text.trim() === "" ? undefined : { selectedChoices: null, text: value.text.trim() };
   }
-  if (!("selectedOptions" in value)) return undefined;
-  const selected = [...value.selectedOptions].sort((a, b) => a - b);
-  if (selected.some((option, index) => option >= options.length || selected[index - 1] === option)) return undefined;
-  if (answerType === "single_choice" ? selected.length !== 1 : selected.length === 0) return undefined;
-  return { selectedOptions: selected, text: null };
-}
-
-// Um rascunho pode estar incompleto, mas não pode ser de outro tipo de resposta.
-function draftValue(
-  { answerType, options }: QuestionShape,
-  value: AnswerValue,
-): { selectedOptions: number[]; text: null } | { selectedOptions: null; text: string } | undefined {
-  if (answerType === "free_text") return "text" in value ? { selectedOptions: null, text: value.text } : undefined;
-  if (!("selectedOptions" in value)) return undefined;
-  const selected = [...new Set(value.selectedOptions)].sort((a, b) => a - b);
-  if (selected.some((option) => option >= options.length)) return undefined;
-  if (answerType === "single_choice" && selected.length > 1) return undefined;
-  return { selectedOptions: selected, text: null };
+  if (!("selectedChoices" in value)) return undefined;
+  const selected = [...value.selectedChoices].sort((a, b) => a - b);
+  if (selected.some((choice, index) => choice >= choices.length || selected[index - 1] === choice)) return undefined;
+  const most = answerType === "single_choice" ? 1 : choices.length;
+  if (selected.length > most || (complete && selected.length === 0)) return undefined;
+  return { selectedChoices: selected, text: null };
 }
 
 // Trava o Processo para a transação e encontra nele a Pergunta.
@@ -131,7 +124,7 @@ async function lockQuestion(
   const question = await trx
     .selectFrom("questions")
     .innerJoin("blocks", "blocks.id", "questions.blockId")
-    .select(["questions.answerType", "questions.options"])
+    .select(["questions.answerType", "questions.choices"])
     .where("questions.id", "=", questionId)
     .where("blocks.processId", "=", processId)
     .executeTakeFirst();
@@ -145,7 +138,7 @@ export function answers({ db }: { db: Db }): Answers {
       return db.transaction().execute(async (trx) => {
         const locked = await lockQuestion(trx, processId, questionId);
         if (!locked.ok) return locked;
-        const complete = completeValue(locked.question, value);
+        const complete = valueFor(locked.question, value, { complete: true });
         if (!complete) return { ok: false, error: "invalid_answer" } as const;
         const current = await trx
           .selectFrom("answerVersions")
@@ -158,7 +151,7 @@ export function answers({ db }: { db: Db }): Answers {
         const answerVersion = await trx
           .insertInto("answerVersions")
           .values({ questionId, number: (current?.number ?? 0) + 1, ...complete })
-          .returning(["id", "number", "selectedOptions", "text", "createdAt"])
+          .returning(["id", "number", "selectedChoices", "text", "createdAt"])
           .executeTakeFirstOrThrow();
         await trx.deleteFrom("answerDrafts").where("questionId", "=", questionId).execute();
         return { ok: true, answerVersion } as const;
@@ -170,7 +163,7 @@ export function answers({ db }: { db: Db }): Answers {
       return db.transaction().execute(async (trx) => {
         const locked = await lockQuestion(trx, processId, questionId);
         if (!locked.ok) return locked;
-        const content = draftValue(locked.question, value);
+        const content = valueFor(locked.question, value, { complete: false });
         if (!content) return { ok: false, error: "invalid_draft" } as const;
         if (basedOnVersionId !== null) {
           const base = await trx
@@ -186,7 +179,7 @@ export function answers({ db }: { db: Db }): Answers {
           .insertInto("answerDrafts")
           .values({ questionId, ...row })
           .onConflict((oc) => oc.column("questionId").doUpdateSet(row))
-          .returning(["basedOnVersionId", "selectedOptions", "text", "updatedAt"])
+          .returning(["basedOnVersionId", "selectedChoices", "text", "updatedAt"])
           .executeTakeFirstOrThrow();
         return { ok: true, draft } as const;
       });

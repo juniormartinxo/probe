@@ -79,6 +79,15 @@ Conjunto de Perguntas que a IA gera de uma vez para um ou mais Pontos da etapa a
 _Code_: `Block`
 _Avoid_: Grupo, seção, página
 
+**Alternativa de resposta**:
+Cada resposta possível que a IA oferece numa Pergunta de alternativa única ou múltipla. Não tem relação com Opção.
+_Code_: `choice`
+_Avoid_: Opção, escolha, item
+
+**Rascunho**:
+O que o usuário preencheu numa Pergunta e ainda não salvou como Versão, completo ou não; guarda a Versão sobre a qual a alteração começou.
+_Code_: `AnswerDraft`
+
 **Resposta herdada**:
 Resposta copiada de outro Processo num Desdobramento, que só vale no Processo novo depois de reconfirmada.
 _Code_: `InheritedAnswer`

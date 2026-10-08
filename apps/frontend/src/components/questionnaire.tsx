@@ -28,13 +28,13 @@ interface Edit {
   basedOnVersionId: string | null;
 }
 
-type Stored = Pick<AnswerVersion, "selectedOptions" | "text">;
+type Stored = Pick<AnswerVersion, "selectedChoices" | "text">;
 
 const emptyValue = (question: Question): AnswerValue =>
-  question.answerType === "free_text" ? { text: "" } : { selectedOptions: [] };
+  question.answerType === "free_text" ? { text: "" } : { selectedChoices: [] };
 
 const valueOf = (question: Question, stored: Stored): AnswerValue =>
-  question.answerType === "free_text" ? { text: stored.text ?? "" } : { selectedOptions: stored.selectedOptions ?? [] };
+  question.answerType === "free_text" ? { text: stored.text ?? "" } : { selectedChoices: stored.selectedChoices ?? [] };
 
 // Como a Pergunta está guardada: o rascunho, senão a resposta que vale, senão nada.
 function storedEdit(question: Question): Edit {
@@ -50,9 +50,9 @@ const answeredValue = (question: Question): AnswerValue =>
 
 function sameValue(a: AnswerValue, b: AnswerValue): boolean {
   if ("text" in a && "text" in b) return a.text.trim() === b.text.trim();
-  if ("selectedOptions" in a && "selectedOptions" in b) {
-    const sorted = (options: number[]) => [...options].sort((x, y) => x - y).join(",");
-    return sorted(a.selectedOptions) === sorted(b.selectedOptions);
+  if ("selectedChoices" in a && "selectedChoices" in b) {
+    const sorted = (choices: number[]) => [...choices].sort((x, y) => x - y).join(",");
+    return sorted(a.selectedChoices) === sorted(b.selectedChoices);
   }
   return false;
 }
@@ -60,13 +60,13 @@ function sameValue(a: AnswerValue, b: AnswerValue): boolean {
 function isComplete(question: Question, value: AnswerValue): boolean {
   if ("text" in value) return value.text.trim() !== "";
   return question.answerType === "single_choice"
-    ? value.selectedOptions.length === 1
-    : value.selectedOptions.length > 0;
+    ? value.selectedChoices.length === 1
+    : value.selectedChoices.length > 0;
 }
 
 function describe(question: Question, stored: Stored): string {
   if (stored.text !== null) return stored.text;
-  return (stored.selectedOptions ?? []).map((option) => question.options[option]).join("; ");
+  return (stored.selectedChoices ?? []).map((choice) => question.choices[choice]).join("; ");
 }
 
 // Bloco de Perguntas no estilo de um questionário: uma Pergunta por vez, com navegação livre entre
@@ -86,30 +86,44 @@ export function Questionnaire({
   const pending = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; edit: Edit }>());
   const inFlight = useRef(new Map<string, Promise<void>>());
 
+  // Um envio por vez para cada Pergunta, na ordem: um rascunho antigo nunca chega depois de um novo.
   function persist(questionId: string, edit: Edit) {
-    const saving = saveDraft(processId, questionId, edit.value, edit.basedOnVersionId).then(
-      () => setDraftFailed(false),
-      () => setDraftFailed(true),
-    );
+    const previous = inFlight.current.get(questionId) ?? Promise.resolve();
+    const saving = previous
+      .then(() => saveDraft(processId, questionId, edit.value, edit.basedOnVersionId))
+      .then(
+        () => setDraftFailed(false),
+        () => setDraftFailed(true),
+      );
     inFlight.current.set(questionId, saving);
   }
 
-  // Guarda já os rascunhos que esperavam a pausa na digitação.
-  function flush() {
+  // Guarda já os rascunhos que esperavam a pausa na digitação. Com a página fechando, não há como
+  // esperar a fila: o envio sai direto, e o navegador o completa mesmo depois de a página sumir.
+  function flush({ unloading = false } = {}) {
     for (const [questionId, { timer, edit }] of pending.current) {
       clearTimeout(timer);
-      persist(questionId, edit);
+      if (unloading)
+        saveDraft(processId, questionId, edit.value, edit.basedOnVersionId, { keepalive: true }).catch(() => {});
+      else persist(questionId, edit);
     }
     pending.current.clear();
   }
 
-  // Ao sair da página, nada do que foi preenchido se perde.
+  // Ao sair do Bloco ou fechar a página, nada do que foi preenchido se perde.
   const flushRef = useRef(flush);
   flushRef.current = flush;
-  useEffect(() => () => flushRef.current(), []);
+  useEffect(() => {
+    const onPageHide = () => flushRef.current({ unloading: true });
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      flushRef.current();
+    };
+  }, []);
 
-  // Cancela o rascunho que ia ser guardado e espera o que já foi enviado, antes de salvar a resposta
-  // ou descartar o rascunho; senão ele chegaria depois e o recriaria.
+  // Cancela o rascunho que ia ser guardado e espera a fila do que já foi enviado, antes de salvar a
+  // resposta ou descartar o rascunho; senão um envio chegaria depois e o recriaria.
   async function settleDraft(questionId: string) {
     const waiting = pending.current.get(questionId);
     if (waiting) clearTimeout(waiting.timer);
@@ -219,7 +233,12 @@ function QuestionView({
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
-  const [superseded, setSuperseded] = useState(false);
+  // A Versão de base que o servidor recusou por já estar superada; undefined sem recusa.
+  const [refusedBase, setRefusedBase] = useState<string | null>();
+  const superseded = refusedBase !== undefined;
+  // Só se salva sobre a Versão que vale depois que a recarga a trouxe.
+  const currentId = question.answer?.current.id ?? null;
+  const reloaded = superseded && currentId !== refusedBase;
   const changed = !sameValue(edit.value, answeredValue(question));
 
   async function save(basedOnVersionId: string | null) {
@@ -228,10 +247,10 @@ function QuestionView({
     try {
       await settleDraft();
       const version = await recordAnswer(processId, question.id, edit.value, basedOnVersionId);
-      setSuperseded(false);
+      setRefusedBase(undefined);
       onSettled({ value: valueOf(question, version), basedOnVersionId: version.id });
     } catch (caught) {
-      if (caught instanceof ApiError && caught.code === "superseded_version") setSuperseded(true);
+      if (caught instanceof ApiError && caught.code === "superseded_version") setRefusedBase(basedOnVersionId);
       // O que está nos campos fica para uma nova tentativa.
       else setError("Não foi possível salvar a resposta. O que você preencheu continua aqui; tente de novo.");
     } finally {
@@ -246,7 +265,7 @@ function QuestionView({
     try {
       await settleDraft();
       await discardDraft(processId, question.id);
-      setSuperseded(false);
+      setRefusedBase(undefined);
       onSettled({ value: answeredValue(question), basedOnVersionId: question.answer?.current.id ?? null });
     } catch {
       setError("Não foi possível descartar o rascunho.");
@@ -259,7 +278,8 @@ function QuestionView({
   return (
     <CardContent className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <CardTitle className="text-base">{question.subject}</CardTitle>
+        <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{question.subject}</p>
+        <CardTitle className="text-base">{question.wording}</CardTitle>
         <p className="text-muted-foreground text-sm">{question.contextRelation}</p>
         {question.rationale && (
           <p className="text-muted-foreground text-xs">
@@ -286,7 +306,7 @@ function QuestionView({
             o que você preencheu continua nos campos.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" disabled={saving} onClick={() => save(question.answer?.current.id ?? null)}>
+            <Button size="sm" disabled={saving || !reloaded} onClick={() => save(currentId)}>
               Salvar como nova Versão
             </Button>
             <Button size="sm" variant="ghost" disabled={saving} onClick={discard}>
@@ -331,7 +351,7 @@ function AnswerInput({
   onChange: (value: AnswerValue) => void;
   disabled: boolean;
 }) {
-  const id = (option: number) => `${question.id}-${option}`;
+  const id = (choice: number) => `${question.id}-${choice}`;
 
   if ("text" in value) {
     return (
@@ -350,18 +370,18 @@ function AnswerInput({
     );
   }
 
-  const selected = value.selectedOptions;
+  const selected = value.selectedChoices;
   if (question.answerType === "single_choice") {
     return (
       <RadioGroup
         value={selected[0] === undefined ? "" : String(selected[0])}
-        onValueChange={(option) => onChange({ selectedOptions: [Number(option)] })}
+        onValueChange={(choice) => onChange({ selectedChoices: [Number(choice)] })}
         disabled={disabled}
       >
-        {question.options.map((label, option) => (
-          <div key={option} className="flex items-center gap-2">
-            <RadioGroupItem value={String(option)} id={id(option)} />
-            <Label htmlFor={id(option)} className="font-normal">
+        {question.choices.map((label, choice) => (
+          <div key={choice} className="flex items-center gap-2">
+            <RadioGroupItem value={String(choice)} id={id(choice)} />
+            <Label htmlFor={id(choice)} className="font-normal">
               {label}
             </Label>
           </div>
@@ -373,22 +393,22 @@ function AnswerInput({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-xs">Marque uma ou mais alternativas.</p>
-      {question.options.map((label, option) => (
-        <div key={option} className="flex items-center gap-2">
+      {question.choices.map((label, choice) => (
+        <div key={choice} className="flex items-center gap-2">
           <Checkbox
-            id={id(option)}
-            checked={selected.includes(option)}
+            id={id(choice)}
+            checked={selected.includes(choice)}
             disabled={disabled}
             onCheckedChange={(checked) =>
               onChange({
-                selectedOptions:
+                selectedChoices:
                   checked === true
-                    ? [...selected, option].sort((a, b) => a - b)
-                    : selected.filter((item) => item !== option),
+                    ? [...selected, choice].sort((a, b) => a - b)
+                    : selected.filter((item) => item !== choice),
               })
             }
           />
-          <Label htmlFor={id(option)} className="font-normal">
+          <Label htmlFor={id(choice)} className="font-normal">
             {label}
           </Label>
         </div>

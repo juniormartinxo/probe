@@ -14,8 +14,8 @@ export interface AppDependencies {
   aiModel: string;
 }
 
-export function buildApp({ db, assistant, aiModel }: AppDependencies, options: { logger?: boolean } = {}): FastifyInstance {
-  const app = Fastify({ logger: options.logger ?? false });
+export function buildApp({ db, assistant, aiModel }: AppDependencies, choices: { logger?: boolean } = {}): FastifyInstance {
+  const app = Fastify({ logger: choices.logger ?? false });
   const runner = new AiRequestRunner(db, app.log);
 
   // Ao subir, o que ficou em andamento de uma execução anterior não tem mais quem o receba.

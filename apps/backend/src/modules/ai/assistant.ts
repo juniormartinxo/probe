@@ -51,13 +51,16 @@ export type AnswerType = "single_choice" | "multiple_choice" | "free_text";
 // Pergunta como a IA a formulou, servindo a um ou mais Pontos da etapa (pelas chaves). Só as
 // Perguntas de alternativa têm alternativas.
 export interface GeneratedQuestion {
+  // A pergunta como é feita ao usuário.
+  wording: string;
+  // Do que a Pergunta trata, em poucas palavras.
   subject: string;
   contextRelation: string;
   // Por que a Pergunta está sendo feita, quando a IA julga necessário dizer.
   rationale: string | null;
   stagePoints: string[];
   answerType: AnswerType;
-  options: string[];
+  choices: string[];
 }
 
 export interface GeneratedBlock {

@@ -1,8 +1,15 @@
 import type { Db } from "../../db/database.ts";
 import { listAiRequests, type AiRequestRunner, type Attempt, type AttemptStatus, type OnCompleted } from "../ai/ai-requests.ts";
-import type { AnswerType, Assistant, BlockInput, GeneratedBlock } from "../ai/assistant.ts";
+import type {
+  AnswerType,
+  Assistant,
+  AssistantOutcome,
+  AttemptContext,
+  BlockInput,
+  GeneratedBlock,
+} from "../ai/assistant.ts";
 import { answersOf, type AnswerDraft, type Answer } from "./answers.ts";
-import { stagePointsOf, type StagePoint } from "./stage-points.ts";
+import { findStagePoint, stagePointsOf, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
 
 // Solicitação à IA de um Bloco de Perguntas; `blockId` é o Bloco que a tentativa concluída gerou.
@@ -16,12 +23,13 @@ export interface BlockRequest {
 // Pergunta como foi apresentada, com a resposta e o rascunho do usuário.
 export interface Question {
   id: string;
+  wording: string;
   subject: string;
   contextRelation: string;
   rationale: string | null;
   stagePoints: Pick<StagePoint, "key" | "name">[];
   answerType: AnswerType;
-  options: string[];
+  choices: string[];
   answer: Answer | null;
   draft: AnswerDraft | null;
 }
@@ -47,23 +55,25 @@ export type BlockRequestError = BlocksClosed | "problem_statement_not_confirmed"
 
 export type NewBlockAttemptError = BlocksClosed | "block_request_not_found" | "attempt_in_progress" | "block_generated";
 
-type Result<T, E> = { ok: true } & T | { ok: false; error: E };
-
 export interface Blocks {
   // Pede à IA um Bloco para os Pontos abertos da Etapa atual. Nesta fatia, só o primeiro Bloco.
-  request(processId: string): Promise<Result<{ blockRequest: BlockRequest }, BlockRequestError>>;
+  request(processId: string): Promise<{ ok: true; blockRequest: BlockRequest } | { ok: false; error: BlockRequestError }>;
   // Nova tentativa da mesma solicitação, depois de uma tentativa que não trouxe Bloco.
-  newAttempt(processId: string, blockRequestId: string): Promise<Result<{ blockRequest: BlockRequest }, NewBlockAttemptError>>;
+  newAttempt(
+    processId: string,
+    blockRequestId: string,
+  ): Promise<{ ok: true; blockRequest: BlockRequest } | { ok: false; error: NewBlockAttemptError }>;
   find(process: { id: string; currentStage: Stage; stagePointsVersion: number }): Promise<StageWork>;
 }
 
 const OPERATION = "generate_block";
 
-// Trava o Processo para a transação e monta o que a IA recebe para gerar o Bloco.
+// Trava o Processo para a transação e monta o que a IA recebe para gerar o Bloco; `blockInput` é
+// null enquanto o enunciado do problema não foi confirmado.
 async function lockOpenProcess(
   trx: Db,
   processId: string,
-): Promise<Result<{ input: BlockInput | null }, BlocksClosed>> {
+): Promise<{ ok: true; blockInput: BlockInput | null } | { ok: false; error: BlocksClosed }> {
   const process = await trx
     .selectFrom("processes")
     .select(["status", "currentStage", "stagePointsVersion", "originalDescription"])
@@ -79,7 +89,7 @@ async function lockOpenProcess(
     .executeTakeFirst();
   return {
     ok: true,
-    input: confirmed
+    blockInput: confirmed
       ? {
           stage: process.currentStage,
           originalDescription: process.originalDescription,
@@ -129,16 +139,35 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
     }));
   }
 
+  // Os Pontos são da aplicação, não da IA (ADR 0002): um Bloco com Pergunta que sirva a um Ponto
+  // fora dos abertos é recusado, qualquer que seja a implementação do Assistant.
+  async function generateBlock(input: BlockInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedBlock>> {
+    const outcome = await assistant.generateBlock(input, context);
+    if (outcome.status !== "completed") return outcome;
+    const open = new Set(input.openStagePoints.map((point) => point.key));
+    const outside = outcome.result.questions.flatMap((question) => question.stagePoints).filter((key) => !open.has(key));
+    if (outside.length === 0) return outcome;
+    return {
+      status: "failed",
+      reason: "invalid_output",
+      message: `A IA indicou Pontos da etapa que não estão em aberto: ${outside.join(", ")}.`,
+      usage: outcome.usage,
+    };
+  }
+
   // Abre uma tentativa, com o Processo travado até a transação terminar, e só depois de gravá-la
   // dispara a geração. `prepare` diz a que solicitação ela pertence, ou por que não pode abrir.
   async function startAttempt<E extends string>(
     processId: string,
-    prepare: (trx: Db, input: BlockInput | null) => Promise<Result<{ aiRequestId: string; input: BlockInput }, E>>,
-  ): Promise<Result<{ blockRequest: BlockRequest }, E | BlocksClosed>> {
+    prepare: (
+      trx: Db,
+      blockInput: BlockInput | null,
+    ) => Promise<{ ok: true; aiRequestId: string; input: BlockInput } | { ok: false; error: E }>,
+  ): Promise<{ ok: true; blockRequest: BlockRequest } | { ok: false; error: E | BlocksClosed }> {
     const opened = await db.transaction().execute(async (trx) => {
       const process = await lockOpenProcess(trx, processId);
       if (!process.ok) return process;
-      const prepared = await prepare(trx, process.input);
+      const prepared = await prepare(trx, process.blockInput);
       if (!prepared.ok) return prepared;
       const attempt = await runner.openAttempt(trx, prepared.aiRequestId, { cli: assistant.cli, model: aiModel });
       return { ok: true, attempt, aiRequestId: prepared.aiRequestId, input: prepared.input } as const;
@@ -151,7 +180,7 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       return { ok: true, blockRequest };
     } finally {
       // Aberta, a tentativa sempre segue, mesmo que a leitura falhe: nunca fica "running" à toa.
-      runner.run(attempt, (context) => assistant.generateBlock(input, context), saveBlock(processId, input.stage));
+      runner.run(attempt, (context) => generateBlock(input, context), saveBlock(processId, input.stage));
     }
   }
 
@@ -174,7 +203,7 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
     async newAttempt(processId, blockRequestId) {
       return startAttempt(processId, async (trx, input) => {
         const request = (await listAiRequests(trx, processId, OPERATION)).find(({ id }) => id === blockRequestId);
-        // Uma solicitação de Bloco só existe depois da Confirmação do enunciado.
+        // Uma solicitação de Bloco só existe depois da Confirmação do enunciado: sem ela, não há o que tentar.
         if (!request || !input) return { ok: false, error: "block_request_not_found" } as const;
         if (request.status === "running") return { ok: false, error: "attempt_in_progress" } as const;
         if (request.status === "completed") return { ok: false, error: "block_generated" } as const;
@@ -192,7 +221,7 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       const questionRows = blockRows.length
         ? await db
             .selectFrom("questions")
-            .select(["id", "blockId", "subject", "contextRelation", "rationale", "stagePoints", "answerType", "options"])
+            .select(["id", "blockId", "wording", "subject", "contextRelation", "rationale", "stagePoints", "answerType", "choices"])
             .where(
               "blockId",
               "in",
@@ -209,17 +238,16 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
         openStagePoints: stagePointsOf(process.stagePointsVersion, process.currentStage),
         blockRequests: await findBlockRequests(process.id),
         blocks: blockRows.map((block) => {
-          const points = stagePointsOf(process.stagePointsVersion, block.stage);
           return {
             ...block,
             questions: questionRows
               .filter((question) => question.blockId === block.id)
               .map(({ blockId: _blockId, stagePoints, ...question }) => ({
                 ...question,
-                stagePoints: stagePoints.map((key) => {
-                  const point = points.find((candidate) => candidate.key === key);
-                  return { key, name: point?.name ?? key };
-                }),
+                stagePoints: stagePoints.map((key) => ({
+                  key,
+                  name: findStagePoint(process.stagePointsVersion, block.stage, key)?.name ?? key,
+                })),
                 ...answers.get(question.id)!,
               })),
           };

@@ -82,12 +82,12 @@ export interface StagePoint {
 export type AnswerType = "single_choice" | "multiple_choice" | "free_text";
 
 // Índices das alternativas escolhidas ou texto livre, conforme a Pergunta.
-export type AnswerValue = { selectedOptions: number[] } | { text: string };
+export type AnswerValue = { selectedChoices: number[] } | { text: string };
 
 export interface AnswerVersion {
   id: string;
   number: number;
-  selectedOptions: number[] | null;
+  selectedChoices: number[] | null;
   text: string | null;
   createdAt: string;
 }
@@ -100,19 +100,21 @@ export interface Answer {
 
 export interface AnswerDraft {
   basedOnVersionId: string | null;
-  selectedOptions: number[] | null;
+  selectedChoices: number[] | null;
   text: string | null;
   updatedAt: string;
 }
 
 export interface Question {
   id: string;
+  // A pergunta como é feita ao usuário; `subject` diz do que ela trata.
+  wording: string;
   subject: string;
   contextRelation: string;
   rationale: string | null;
   stagePoints: { key: string; name: string }[];
   answerType: AnswerType;
-  options: string[];
+  choices: string[];
   answer: Answer | null;
   draft: AnswerDraft | null;
 }
@@ -239,22 +241,28 @@ export async function recordAnswer(
   value: AnswerValue,
   basedOnVersionId: string | null,
 ): Promise<AnswerVersion> {
-  const { answerVersion } = await request<{ answerVersion: AnswerVersion }>(`${answerPath(processId, questionId)}/versions`, {
-    method: "POST",
-    body: JSON.stringify({ ...value, basedOnVersionId }),
-  });
+  const { answerVersion } = await request<{ answerVersion: AnswerVersion }>(
+    `${answerPath(processId, questionId)}/versions`,
+    {
+      method: "POST",
+      body: JSON.stringify({ ...value, basedOnVersionId }),
+    },
+  );
   return answerVersion;
 }
 
+// `keepalive` deixa o envio terminar mesmo que a página esteja sendo fechada.
 export async function saveDraft(
   processId: string,
   questionId: string,
   value: AnswerValue,
   basedOnVersionId: string | null,
+  { keepalive = false }: { keepalive?: boolean } = {},
 ): Promise<AnswerDraft> {
   const { draft } = await request<{ draft: AnswerDraft }>(`${answerPath(processId, questionId)}/draft`, {
     method: "PUT",
     body: JSON.stringify({ ...value, basedOnVersionId }),
+    keepalive,
   });
   return draft;
 }

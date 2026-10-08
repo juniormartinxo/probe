@@ -23,13 +23,13 @@ function confirmationFrom(body: unknown): StatementConfirmation | undefined {
   return { statement, proposalId };
 }
 
-const isOptionIndex = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0;
+const isChoiceIndex = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0;
 
 // Alternativas escolhidas ou texto livre, nunca os dois. Se casam com a Pergunta, o módulo decide.
 function answerValueFrom(body: Record<string, unknown>): AnswerValue | undefined {
-  const { selectedOptions, text } = body;
-  if (selectedOptions !== undefined && text !== undefined) return undefined;
-  if (Array.isArray(selectedOptions) && selectedOptions.every(isOptionIndex)) return { selectedOptions };
+  const { selectedChoices, text } = body;
+  if (selectedChoices !== undefined && text !== undefined) return undefined;
+  if (Array.isArray(selectedChoices) && selectedChoices.every(isChoiceIndex)) return { selectedChoices };
   if (typeof text === "string") return { text };
   return undefined;
 }

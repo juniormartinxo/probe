@@ -95,3 +95,7 @@ export function stagePointsOf(version: number, stage: Stage): StagePoint[] {
   if (!list) throw new Error(`Lista de Pontos da etapa desconhecida: versão ${version}.`);
   return list[stage];
 }
+
+export function findStagePoint(version: number, stage: Stage, key: string): StagePoint | undefined {
+  return stagePointsOf(version, stage).find((point) => point.key === key);
+}

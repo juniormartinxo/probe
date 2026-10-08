@@ -17,28 +17,31 @@ export const defaultProposal: StatementProposal = {
 export const defaultBlock: GeneratedBlock = {
   questions: [
     {
+      wording: "A demora do deploy é o problema em si ou sintoma de outra coisa?",
       subject: "Sintoma ou causa",
       contextRelation: "O enunciado fala da demora do deploy, mas não do que a provoca.",
       rationale: "Separar o sintoma do problema real evita resolver a coisa errada.",
       stagePoints: ["real_problem"],
       answerType: "single_choice",
-      options: ["A demora é o problema em si", "A demora é sintoma de outra coisa", "Não sei"],
+      choices: ["A demora é o problema em si", "A demora é sintoma de outra coisa", "Não sei"],
     },
     {
+      wording: "O que a demora do deploy já causou?",
       subject: "Efeitos da demora",
       contextRelation: "O time perde a manhã esperando o deploy.",
       rationale: null,
       stagePoints: ["consequence", "urgency"],
       answerType: "multiple_choice",
-      options: ["Atraso nas entregas", "Horas extras", "Clientes reclamando"],
+      choices: ["Atraso nas entregas", "Horas extras", "Clientes reclamando"],
     },
     {
+      wording: "Por que resolver isso agora, e não daqui a seis meses?",
       subject: "Por que agora",
       contextRelation: "O problema existe há algum tempo.",
       rationale: "A urgência define quanto esforço cabe agora.",
       stagePoints: ["urgency"],
       answerType: "free_text",
-      options: [],
+      choices: [],
     },
   ],
 };

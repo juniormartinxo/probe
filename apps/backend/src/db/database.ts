@@ -69,19 +69,20 @@ export interface QuestionTable {
   id: Generated<string>;
   blockId: string;
   position: number;
+  wording: string;
   subject: string;
   contextRelation: string;
   rationale: string | null;
   stagePoints: string[];
   answerType: AnswerType;
-  options: string[];
+  choices: string[];
 }
 
 export interface AnswerVersionTable {
   id: Generated<string>;
   questionId: string;
   number: number;
-  selectedOptions: number[] | null;
+  selectedChoices: number[] | null;
   text: string | null;
   createdAt: Generated<Date>;
 }
@@ -89,7 +90,7 @@ export interface AnswerVersionTable {
 export interface AnswerDraftTable {
   questionId: string;
   basedOnVersionId: string | null;
-  selectedOptions: number[] | null;
+  selectedChoices: number[] | null;
   text: string | null;
   updatedAt: Generated<Date>;
 }

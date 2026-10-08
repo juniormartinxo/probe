@@ -114,21 +114,24 @@ const blockInput: BlockInput = {
 
 const blockQuestions = [
   {
+    wording: "A demora é o problema ou sintoma?",
     subject: "Sintoma ou causa",
     contextRelation: "O enunciado fala da demora, não da causa.",
     rationale: "Separar sintoma de problema.",
     stagePoints: ["real_problem"],
     answerType: "single_choice",
-    options: ["É o problema", "É sintoma"],
+    choices: ["É o problema", "É sintoma"],
   },
   {
+    wording: "O que a demora causou?",
     subject: "Efeitos",
     contextRelation: "O time perde a manhã.",
     stagePoints: ["consequence", "urgency"],
     answerType: "multiple_choice",
-    options: ["Atrasos", "Horas extras", "Reclamações"],
+    choices: ["Atrasos", "Horas extras", "Reclamações"],
   },
   {
+    wording: "Por que agora?",
     subject: "Por que agora",
     contextRelation: "O problema é antigo.",
     rationale: "",
@@ -170,28 +173,31 @@ describe("Block generation through the executor", () => {
       result: {
         questions: [
           {
-            subject: "Sintoma ou causa",
+            wording: "A demora é o problema ou sintoma?",
+    subject: "Sintoma ou causa",
             contextRelation: "O enunciado fala da demora, não da causa.",
             rationale: "Separar sintoma de problema.",
             stagePoints: ["real_problem"],
             answerType: "single_choice",
-            options: ["É o problema", "É sintoma"],
+            choices: ["É o problema", "É sintoma"],
           },
           {
-            subject: "Efeitos",
+            wording: "O que a demora causou?",
+    subject: "Efeitos",
             contextRelation: "O time perde a manhã.",
             rationale: null,
             stagePoints: ["consequence", "urgency"],
             answerType: "multiple_choice",
-            options: ["Atrasos", "Horas extras", "Reclamações"],
+            choices: ["Atrasos", "Horas extras", "Reclamações"],
           },
           {
-            subject: "Por que agora",
+            wording: "Por que agora?",
+    subject: "Por que agora",
             contextRelation: "O problema é antigo.",
             rationale: null,
             stagePoints: ["urgency"],
             answerType: "free_text",
-            options: [],
+            choices: [],
           },
         ],
       },
@@ -204,15 +210,16 @@ describe("Block generation through the executor", () => {
   it.each([
     ["no questions", JSON.stringify({ questions: [] })],
     ["a truncated answer", JSON.stringify({ questions: blockQuestions }).slice(0, 80)],
+    ["a question without wording", withFirst({ wording: undefined })],
     ["a question without subject", withFirst({ subject: " " })],
     ["a question without its relation to the context", withFirst({ contextRelation: undefined })],
     ["a question that serves no Point", withFirst({ stagePoints: [] })],
     ["a Point that is not open in the Stage", withFirst({ stagePoints: ["deadline"] })],
     ["an unknown kind of answer", withFirst({ answerType: "scale" })],
-    ["a choice with a single option", withFirst({ options: ["É o problema"] })],
-    ["a choice with a blank option", withFirst({ options: ["É o problema", " "] })],
-    ["a choice with repeated options", withFirst({ options: ["É o problema", "É o problema"] })],
-    ["free text with options", withFirst({ answerType: "free_text" })],
+    ["a choice question with a single choice", withFirst({ choices: ["É o problema"] })],
+    ["a choice question with a blank choice", withFirst({ choices: ["É o problema", " "] })],
+    ["a choice question with repeated choices", withFirst({ choices: ["É o problema", "É o problema"] })],
+    ["free text with choices", withFirst({ answerType: "free_text" })],
   ])("never takes %s as a completed Block", async (_case, output) => {
     const { url } = await startExecutor(answering(output));
 
