@@ -26,6 +26,8 @@ services:
       # O executor roda no WSL, fora do Docker.
       PROBE_EXECUTOR_URL: http://host.docker.internal:${PROBE_EXECUTOR_PORT:-3211}
       PROBE_EXECUTOR_TOKEN: ${PROBE_EXECUTOR_TOKEN:-}
+      PROBE_EXECUTOR_TIMEOUT_MS: ${PROBE_EXECUTOR_TIMEOUT_MS:-300000}
+      PROBE_CLAUDE_MODEL: ${PROBE_CLAUDE_MODEL:-sonnet}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

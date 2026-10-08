@@ -1,10 +1,16 @@
 import { buildApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { createDatabase } from "./db/database.ts";
+import { createExecutorAssistant } from "./modules/ai/executor-assistant.ts";
 
 const config = loadConfig();
 const db = createDatabase(config.databaseUrl);
-const app = buildApp({ db }, { logger: true });
+const assistant = createExecutorAssistant({
+  url: config.executorUrl,
+  token: config.executorToken,
+  deadlineMs: config.executorDeadlineMs,
+});
+const app = buildApp({ db, assistant, aiModel: config.aiModel }, { logger: true });
 
 async function shutdown(): Promise<void> {
   await app.close();

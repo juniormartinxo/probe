@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { createProcess, listProcesses, type Process } from "@/api";
+import { createProcess, listProcesses, requestRefinement, type Process } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,9 @@ export function ProcessesPage() {
     setCreateError(undefined);
     try {
       const process = await createProcess(description);
+      // Descrito o problema, a IA já começa a propor um enunciado. Se o pedido falhar, a página
+      // do Processo oferece pedir de novo.
+      await requestRefinement(process.id).catch(() => undefined);
       navigate(`/processes/${process.id}`);
     } catch {
       // O texto fica no campo para uma nova tentativa.
