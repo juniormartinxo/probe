@@ -75,17 +75,17 @@ interface SettingsCardProps {
 function CliCard({ saved: savedSettings, onSaved }: SettingsCardProps) {
   const [cli, setCli] = useState<Cli>(savedSettings.cli);
   const [models, setModels] = useState(() =>
-    Object.fromEntries(clis.map((option) => [option, savedSettings.models[option] ?? ""])) as Record<Cli, string>,
+    Object.fromEntries(clis.map((candidate) => [candidate, savedSettings.models[candidate] ?? ""])) as Record<Cli, string>,
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState(false);
   // Campo vazio é CLI sem modelo escolhido.
-  const requested = Object.fromEntries(clis.map((option) => [option, models[option].trim() || null])) as Record<
+  const requested = Object.fromEntries(clis.map((candidate) => [candidate, models[candidate].trim() || null])) as Record<
     Cli,
     string | null
   >;
-  const changed = cli !== savedSettings.cli || clis.some((option) => requested[option] !== savedSettings.models[option]);
+  const changed = cli !== savedSettings.cli || clis.some((candidate) => requested[candidate] !== savedSettings.models[candidate]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -127,37 +127,37 @@ function CliCard({ saved: savedSettings, onSaved }: SettingsCardProps) {
             }}
             className="gap-4"
           >
-            {clis.map((option) => (
-              <div key={option} className="flex flex-col gap-2">
+            {clis.map((candidate) => (
+              <div key={candidate} className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
-                  <RadioGroupItem value={option} id={`cli-${option}`} />
-                  <Label htmlFor={`cli-${option}`} className="font-normal">
-                    {cliName(option)}
+                  <RadioGroupItem value={candidate} id={`cli-${candidate}`} />
+                  <Label htmlFor={`cli-${candidate}`} className="font-normal">
+                    {cliName(candidate)}
                   </Label>
                 </div>
                 <div className="flex flex-col gap-1 pl-6">
-                  <Label htmlFor={`model-${option}`} className="text-muted-foreground text-xs font-normal">
+                  <Label htmlFor={`model-${candidate}`} className="text-muted-foreground text-xs font-normal">
                     Modelo
                   </Label>
                   <Input
-                    id={`model-${option}`}
-                    list={`model-suggestions-${option}`}
-                    value={models[option]}
-                    placeholder={option === cli ? undefined : "sem modelo: a CLI não é usada"}
+                    id={`model-${candidate}`}
+                    list={`model-suggestions-${candidate}`}
+                    value={models[candidate]}
+                    placeholder={candidate === cli ? undefined : "sem modelo: a CLI não é usada"}
                     onChange={(event) => {
-                      setModels({ ...models, [option]: event.target.value });
+                      setModels({ ...models, [candidate]: event.target.value });
                       setSaved(false);
                     }}
                     autoComplete="off"
                     spellCheck={false}
                     aria-invalid={error !== undefined}
                   />
-                  <datalist id={`model-suggestions-${option}`}>
-                    {modelSuggestions[option].map((suggestion) => (
+                  <datalist id={`model-suggestions-${candidate}`}>
+                    {modelSuggestions[candidate].map((suggestion) => (
                       <option key={suggestion} value={suggestion} />
                     ))}
                   </datalist>
-                  <p className="text-muted-foreground text-xs">{modelHints[option]}</p>
+                  <p className="text-muted-foreground text-xs">{modelHints[candidate]}</p>
                 </div>
               </div>
             ))}

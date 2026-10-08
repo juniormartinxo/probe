@@ -432,6 +432,7 @@ describe("CLI failure reported by the executor", () => {
       failedWith("cli_error", "Not signed in. To authenticate without a browser, run:\n  grok login --device-code"),
       "cloak_unauthenticated",
     ],
+    ["agy runs out of quota", failedWith("cli_error", "RESOURCE_EXHAUSTED: quota exceeded"), "cli_rate_limited"],
     ["agy fails otherwise", failedWith("cli_error", "model not available"), "cli_error"],
     ["cloak is not installed", failedWith("cloak_unavailable", "cloak não foi encontrado no PATH do executor."), "cloak_unavailable"],
     ["the Cloak profile does not exist", failedWith("cloak_profile_not_found", 'O perfil "x" não foi encontrado no Cloak.'), "cloak_profile_not_found"],

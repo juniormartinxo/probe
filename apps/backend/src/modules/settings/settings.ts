@@ -78,7 +78,7 @@ export function settings(deps: { db: Db; assistant: Assistant; defaultAiModel: s
       return {
         cli: "claude",
         models: { claude: defaultAiModel, codex: null, grok: null, agy: null },
-        cloakProfile: { source: "directory" },
+        cloakProfile: cloakProfileNamed(null),
       };
     }
     return {

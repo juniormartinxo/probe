@@ -8,25 +8,25 @@ import { cliName } from "@/refinement";
 // Nova tentativa de uma Solicitação à IA que não trouxe resultado. A CLI começa como a da tentativa
 // anterior; trocar é escolha do usuário, nunca automática. O modelo e o perfil do Cloak são os da
 // configuração.
-export function RetryAttempt({
+export function NewAttempt({
   last,
-  retry,
+  open,
   onChange,
 }: {
   last: Attempt;
-  retry: (cli: Cli) => Promise<unknown>;
+  open: (cli: Cli) => Promise<unknown>;
   onChange: () => void;
 }) {
   const [cli, setCli] = useState<Cli>(last.cli);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<"model" | "other">();
-  const id = `retry-cli-${last.id}`;
+  const id = `new-attempt-cli-${last.id}`;
 
-  async function handleRetry() {
+  async function handleNewAttempt() {
     setSending(true);
     setError(undefined);
     try {
-      await retry(cli);
+      await open(cli);
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "cli_model_not_configured") setError("model");
       // Outra aba pode ter pedido antes; o estado recarregado mostra o que vale.
@@ -53,14 +53,14 @@ export function RetryAttempt({
           disabled={sending}
           className="border-input bg-background h-8 rounded-md border px-2 text-sm"
         >
-          {clis.map((option) => (
-            <option key={option} value={option}>
-              {cliName(option)}
-              {option === last.cli ? " (a mesma)" : ""}
+          {clis.map((candidate) => (
+            <option key={candidate} value={candidate}>
+              {cliName(candidate)}
+              {candidate === last.cli ? " (a mesma)" : ""}
             </option>
           ))}
         </select>
-        <Button variant="outline" size="sm" disabled={sending} onClick={handleRetry}>
+        <Button variant="outline" size="sm" disabled={sending} onClick={handleNewAttempt}>
           {sending ? "Pedindo…" : "Tentar novamente"}
         </Button>
       </div>

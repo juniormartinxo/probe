@@ -56,7 +56,7 @@ async function refine(id: string) {
   return settledRefinement(id);
 }
 
-function retryRefinement(id: string, payload?: Record<string, unknown>) {
+function newRefinementAttempt(id: string, payload?: Record<string, unknown>) {
   return api.inject({ method: "POST", url: `${refinementUrl(id)}/attempts`, ...(payload ? { payload } : {}) });
 }
 
@@ -164,7 +164,7 @@ describe("after a failure", () => {
     await refine(id);
 
     await choose("claude", { models: { ...models, codex: "gpt-6-astra-mini" } });
-    expect((await retryRefinement(id)).statusCode).toBe(202);
+    expect((await newRefinementAttempt(id)).statusCode).toBe(202);
     const attempts = await settledRefinement(id);
 
     // A CLI só muda pelo usuário; o modelo é o que a configuração tem agora para ela.
@@ -180,7 +180,7 @@ describe("after a failure", () => {
     const id = await api.createProcess();
     await refine(id);
 
-    const response = await retryRefinement(id, { cli: "grok" });
+    const response = await newRefinementAttempt(id, { cli: "grok" });
 
     expect(response.statusCode).toBe(202);
     const { refinement } = response.json();
@@ -201,7 +201,7 @@ describe("after a failure", () => {
     const id = await api.createProcess();
     await refine(id);
 
-    const response = await retryRefinement(id, { cli: "agy" });
+    const response = await newRefinementAttempt(id, { cli: "agy" });
 
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: "cli_model_not_configured" });
@@ -216,14 +216,14 @@ describe("after a failure", () => {
     const id = await api.createProcess();
     await refine(id);
 
-    const response = await retryRefinement(id, payload);
+    const response = await newRefinementAttempt(id, payload);
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: "invalid_cli" });
     expect((await api.getProcess(id)).refinement.attempts).toHaveLength(1);
   });
 
-  it("a Block request can be retried with another CLI", async () => {
+  it("a Block request gets a new attempt with another CLI", async () => {
     await choose("claude");
     assistant.block.willRespond(failure);
     const id = await api.createProcess();
@@ -247,7 +247,7 @@ describe("after a failure", () => {
     expect(process.blocks).toHaveLength(1);
   });
 
-  it("a synthesis request can be retried with another CLI", async () => {
+  it("a synthesis request gets a new attempt with another CLI", async () => {
     await choose("grok");
     const { id, block } = await api.processWithAnsweredBlock();
     assistant.synthesis.willRespond(failure);

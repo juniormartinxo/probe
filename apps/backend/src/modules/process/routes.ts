@@ -208,9 +208,9 @@ export const processRoutes =
       async (request, reply) => {
         const { id } = request.params;
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
-        const choice = attemptCliFrom(request.body);
-        if (!choice.ok) return reply.code(400).send({ error: "invalid_cli" });
-        const result = await problemStatements.newRefinementAttempt(id, choice.cli);
+        const chosen = attemptCliFrom(request.body);
+        if (!chosen.ok) return reply.code(400).send({ error: "invalid_cli" });
+        const result = await problemStatements.newRefinementAttempt(id, chosen.cli);
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(202).send({ refinement: result.refinement });
       },
@@ -240,9 +240,9 @@ export const processRoutes =
         const { id, requestId } = request.params;
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
         if (!uuidPattern.test(requestId)) return reply.code(404).send({ error: "block_request_not_found" });
-        const choice = attemptCliFrom(request.body);
-        if (!choice.ok) return reply.code(400).send({ error: "invalid_cli" });
-        const result = await blocks.newAttempt(id, requestId, choice.cli);
+        const chosen = attemptCliFrom(request.body);
+        if (!chosen.ok) return reply.code(400).send({ error: "invalid_cli" });
+        const result = await blocks.newAttempt(id, requestId, chosen.cli);
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(202).send({ blockRequest: result.blockRequest });
       },
@@ -307,9 +307,9 @@ export const processRoutes =
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
         if (!uuidPattern.test(blockId)) return reply.code(404).send({ error: "block_not_found" });
         if (!uuidPattern.test(requestId)) return reply.code(404).send({ error: "synthesis_request_not_found" });
-        const choice = attemptCliFrom(request.body);
-        if (!choice.ok) return reply.code(400).send({ error: "invalid_cli" });
-        const result = await syntheses.newAttempt(id, blockId, requestId, choice.cli);
+        const chosen = attemptCliFrom(request.body);
+        if (!chosen.ok) return reply.code(400).send({ error: "invalid_cli" });
+        const result = await syntheses.newAttempt(id, blockId, requestId, chosen.cli);
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(202).send({ synthesisRequest: result.synthesisRequest });
       },

@@ -1,3 +1,5 @@
+import type { Cli } from "../generation-request.ts";
+
 // O que cada provedor define: como a CLI é chamada para gerar texto e como a saída dela é lida. As
 // CLIs não têm formatos de saída iguais; cada provedor lê o seu.
 
@@ -82,10 +84,10 @@ export function failed(reason: FailureReason, exit: CliExit, message: string, us
 }
 
 // O que dizer de uma CLI que falhou sem explicar por quê.
-export function exitMessage(cli: string, { exitCode, signal, stderr }: CliExit): string {
+export function exitMessage(cli: Cli, { exitCode, signal, stderr }: CliExit): string {
   return (
     stderr.trim() || (signal ? `${cli} foi encerrado pelo sinal ${signal}.` : `${cli} terminou com código ${exitCode}.`)
   );
 }
 
-export const invalidOutput = (cli: string) => `${cli} não devolveu um resultado reconhecível.`;
+export const invalidOutput = (cli: Cli) => `${cli} não devolveu um resultado reconhecível.`;

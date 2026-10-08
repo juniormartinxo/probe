@@ -122,7 +122,7 @@ const isRelayedReason = (reason: unknown): reason is (typeof relayedReasons)[num
 // o perfil que precisa de login.
 function cliFailureReason(reason: unknown, message: string): FailureReason {
   if (isRelayedReason(reason)) return reason;
-  if (/\b429\b|rate[_ ]?limit|usage limit/i.test(message)) return "cli_rate_limited";
+  if (/\b429\b|rate[_ ]?limit|usage limit|resource[_ ]exhausted|quota/i.test(message)) return "cli_rate_limited";
   if (/\b401\b|invalid api key|\/login|not logged in|not signed in|authenticat|oauth token/i.test(message)) {
     return "cloak_unauthenticated";
   }

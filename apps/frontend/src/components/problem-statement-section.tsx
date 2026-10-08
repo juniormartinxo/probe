@@ -10,7 +10,7 @@ import {
   type Refinement,
 } from "@/api";
 import { AttemptList } from "@/components/attempt-list";
-import { RetryAttempt } from "@/components/retry-attempt";
+import { NewAttempt } from "@/components/new-attempt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,7 +118,7 @@ function RefinementStatus({
       <p className="text-muted-foreground text-xs">
         Seu progresso continua salvo. Você pode tentar de novo, com a mesma CLI ou outra, ou escrever o enunciado.
       </p>
-      <RetryAttempt last={last} retry={(cli) => newRefinementAttempt(processId, cli)} onChange={onChange} />
+      <NewAttempt last={last} open={(cli) => newRefinementAttempt(processId, cli)} onChange={onChange} />
     </div>
   );
 }

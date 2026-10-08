@@ -11,7 +11,7 @@ import {
   type SynthesisRequest,
 } from "@/api";
 import { AttemptList } from "@/components/attempt-list";
-import { RetryAttempt } from "@/components/retry-attempt";
+import { NewAttempt } from "@/components/new-attempt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -132,9 +132,9 @@ function UnconfirmedSynthesis({
       <>
         <p className="text-sm">{attemptProblem(last)}</p>
         {last.message && <p className="text-muted-foreground text-xs whitespace-pre-wrap">{last.message}</p>}
-        <RetryAttempt
+        <NewAttempt
           last={last}
-          retry={(cli) => newSynthesisAttempt(processId, block.id, request.id, cli)}
+          open={(cli) => newSynthesisAttempt(processId, block.id, request.id, cli)}
           onChange={onChange}
         />
       </>

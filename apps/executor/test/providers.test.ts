@@ -89,6 +89,7 @@ const codexArgs = (model: string) => [
   "--ignore-rules",
   "--color",
   "never",
+  ...["shell_tool", "apps", "browser_use", "computer_use", "multi_agent", "plugins"].flatMap((feature) => ["--disable", feature]),
   "-",
 ];
 

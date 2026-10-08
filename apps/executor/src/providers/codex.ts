@@ -56,9 +56,12 @@ function outcome(exit: CliExit): GenerationOutcome {
   return { status: "completed", output: answer.text as string, usage };
 }
 
-// Codex: `codex exec` não interativo, eventos JSONL (trazem o consumo), sandbox só de leitura, sem
-// gravar a sessão em disco e sem a configuração e as regras do usuário (a autenticação continua a do
-// perfil). Não precisa de um repositório git. O prompt vai pelo stdin (`-`).
+// Codex: `codex exec` não interativo, eventos JSONL (trazem o consumo), sem gravar a sessão em disco
+// e sem a configuração e as regras do usuário (a autenticação continua a do perfil). Nada além de
+// gerar texto: sem shell, apps, navegador, uso do computador, subagentes nem plugins, e com o sandbox
+// só de leitura. Não precisa de um repositório git. O prompt vai pelo stdin (`-`).
+const disabledFeatures = ["shell_tool", "apps", "browser_use", "computer_use", "multi_agent", "plugins"];
+
 export const codex: Provider = {
   args: (model) => [
     "exec",
@@ -73,6 +76,7 @@ export const codex: Provider = {
     "--ignore-rules",
     "--color",
     "never",
+    ...disabledFeatures.flatMap((feature) => ["--disable", feature]),
     "-",
   ],
   delivery: { via: "stdin", content: (prompt) => prompt },
