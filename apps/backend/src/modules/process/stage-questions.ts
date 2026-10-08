@@ -15,6 +15,8 @@ export interface StageQuestion {
   stagePoints: string[];
   answerType: AnswerType;
   choices: string[];
+  // A Pergunta que esta reformula, se for uma reformulação.
+  reformulatesQuestionId: string | null;
   currentVersionId: string | null;
   answer: string | null;
   unknown: boolean;
@@ -34,6 +36,7 @@ export async function stageQuestions(db: Db, processId: string, stage: Stage): P
       "questions.stagePoints",
       "questions.answerType",
       "questions.choices",
+      "questions.reformulatesQuestionId",
     ])
     .where("blocks.processId", "=", processId)
     .where("blocks.stage", "=", stage)
@@ -68,6 +71,10 @@ export async function stageQuestions(db: Db, processId: string, stage: Stage): P
     };
   });
 }
+
+// As Versões que valem nas Perguntas, as que têm resposta.
+export const currentVersionsOf = (questions: StageQuestion[]): string[] =>
+  questions.flatMap((question) => (question.currentVersionId ? [question.currentVersionId] : []));
 
 export const askedQuestionOf = ({ ref, wording, stagePoints, answer, unknown }: StageQuestion): AskedQuestion => ({
   ref,

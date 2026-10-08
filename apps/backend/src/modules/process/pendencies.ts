@@ -1,5 +1,6 @@
 import type { Db } from "../../db/database.ts";
-import { findStagePoint } from "./stage-points.ts";
+import type { ProcessPoints } from "./stage-point-coverage.ts";
+import { namedStagePoint } from "./stage-points.ts";
 
 // Motivos de Pendência. Nesta fatia, só a de informação desconhecida; reavaliação e conflito
 // chegam com as Avaliações do Jev.
@@ -31,7 +32,7 @@ export interface Pendencies {
     processId: string,
     questionId: string,
   ): Promise<{ ok: true; pendency: Pendency } | { ok: false; error: UnknownInformationError }>;
-  list(process: { id: string; stagePointsVersion: number }): Promise<Pendency[]>;
+  list(process: ProcessPoints): Promise<Pendency[]>;
 }
 
 // Uma resposta à Pergunta resolve a Pendência de informação desconhecida que estiver aberta nela.
@@ -50,7 +51,7 @@ export async function resolveUnknownInformation(trx: Db, questionId: string, ans
     .execute();
 }
 
-async function listPendencies(db: Db, process: { id: string; stagePointsVersion: number }, ids?: string[]): Promise<Pendency[]> {
+async function listPendencies(db: Db, process: ProcessPoints, ids?: string[]): Promise<Pendency[]> {
   let query = db
     .selectFrom("pendencies")
     .innerJoin("questions", "questions.id", "pendencies.questionId")
@@ -77,10 +78,7 @@ async function listPendencies(db: Db, process: { id: string; stagePointsVersion:
     id: row.id,
     reason: row.reason,
     question: { id: row.questionId, wording: row.wording, blockNumber: row.blockNumber, number: row.position + 1 },
-    stagePoints: row.stagePoints.map((key) => ({
-      key,
-      name: findStagePoint(process.stagePointsVersion, row.stage, key)?.name ?? key,
-    })),
+    stagePoints: row.stagePoints.map((key) => namedStagePoint(process.stagePointsVersion, row.stage, key)),
     openedAt: row.openedAt,
     resolvedAt: row.resolvedAt,
     resolvedByAnswerVersionId: row.resolvedByAnswerVersionId,

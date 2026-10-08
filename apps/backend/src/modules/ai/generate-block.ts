@@ -1,12 +1,12 @@
 import type { AnswerType, BlockInput, GeneratedBlock, GeneratedQuestion } from "./assistant.ts";
 import { isFilledText, isTextList, parseJsonObject } from "./json-output.ts";
-import { askedQuestionsText, stageNames } from "./prompt-parts.ts";
+import { askedQuestionsText, stageNames, stagePointsText } from "./prompt-parts.ts";
 
 // Prompt versionado com o código. Tudo o que veio do usuário vai delimitado e só como dado; a CLI
 // roda sem ferramentas, então ela não tem como agir sobre o que o texto pedir.
 export function blockPrompt(input: BlockInput): string {
   const { stage, originalDescription, problemStatement, openStagePoints, askedQuestions } = input;
-  const points = openStagePoints.map((point) => `- ${point.key}: ${point.name}. ${point.description}`).join("\n");
+  const points = stagePointsText(openStagePoints);
   const syntheses = input.confirmedSyntheses.length > 0 ? input.confirmedSyntheses.join("\n\n") : "(nenhuma)";
   const ambiguous =
     input.ambiguousAnswers.length > 0

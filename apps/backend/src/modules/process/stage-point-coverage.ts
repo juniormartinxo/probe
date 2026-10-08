@@ -14,7 +14,8 @@ export interface StagePointState extends StagePoint {
   recordedAt: Date | null;
 }
 
-interface ProcessPoints {
+// O Processo pelo que basta para ler os seus Pontos: o id e a versão da lista que ele segue.
+export interface ProcessPoints {
   id: string;
   stagePointsVersion: number;
 }
@@ -38,10 +39,11 @@ export async function stagePointStates(db: Db, process: ProcessPoints, stage: St
   });
 }
 
+export const openPoints = (states: StagePointState[]): StagePoint[] =>
+  states.filter((point) => point.status === "open").map(({ key, name, description }) => ({ key, name, description }));
+
 export async function openStagePointsOf(db: Db, process: ProcessPoints, stage: Stage): Promise<StagePoint[]> {
-  return (await stagePointStates(db, process, stage))
-    .filter((point) => point.status === "open")
-    .map(({ key, name, description }) => ({ key, name, description }));
+  return openPoints(await stagePointStates(db, process, stage));
 }
 
 export type InapplicabilityError = "process_not_found" | "process_not_open" | "stage_point_not_found" | "stage_point_closed";

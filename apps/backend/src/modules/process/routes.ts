@@ -238,7 +238,7 @@ export const processRoutes =
         return reply.code(204).send();
       },
     );
-  
+
     app.post<{ Params: { id: string; blockId: string } }>(
       "/processes/:id/blocks/:blockId/synthesis-requests",
       async (request, reply) => {

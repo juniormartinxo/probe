@@ -44,7 +44,7 @@ export function BlockSynthesis({
       {block.synthesis ? (
         <Confirmed synthesis={block.synthesis} />
       ) : (
-        <Pending processId={processId} block={block} request={request} openStagePoints={openStagePoints} onChange={onChange} />
+        <UnconfirmedSynthesis processId={processId} block={block} request={request} openStagePoints={openStagePoints} onChange={onChange} />
       )}
       {request && <AttemptList attempts={request.attempts} />}
     </div>
@@ -70,7 +70,7 @@ function Confirmed({ synthesis }: { synthesis: ConfirmedSynthesis }) {
   );
 }
 
-function Pending({
+function UnconfirmedSynthesis({
   processId,
   block,
   request,

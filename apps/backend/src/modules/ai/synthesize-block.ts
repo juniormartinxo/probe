@@ -1,11 +1,11 @@
 import type { AmbiguousAnswer, CoverageSuggestion, GeneratedSynthesis, SynthesisInput } from "./assistant.ts";
 import { isFilledText, parseJsonObject } from "./json-output.ts";
-import { askedQuestionsText, stageNames } from "./prompt-parts.ts";
+import { askedQuestionsText, stageNames, stagePointsText } from "./prompt-parts.ts";
 
 // Prompt versionado com o código. Tudo o que veio do usuário vai delimitado e só como dado; a CLI
 // roda sem ferramentas, então ela não tem como agir sobre o que o texto pedir.
 export function synthesisPrompt(input: SynthesisInput): string {
-  const points = input.openStagePoints.map((point) => `- ${point.key}: ${point.name}. ${point.description}`).join("\n");
+  const points = stagePointsText(input.openStagePoints);
   return `Você conduz uma pessoa pela Etapa ${input.stage} (${stageNames[input.stage]}) do framework PROBE, que a ajuda a tomar uma decisão.
 
 Ela acabou de responder o Bloco ${input.blockNumber} de Perguntas. Devolva:

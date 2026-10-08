@@ -103,6 +103,15 @@ Ponto da etapa que o usuário declarou não se aplicar ao caso, com justificativ
 _Code_: `inapplicable`
 _Avoid_: Ponto ignorado, ponto pulado
 
+**Resposta ambígua**:
+Resposta que a IA, ao sintetizar o Bloco, apontou como possível de entender de mais de um jeito. É sugestão: serve de candidata a Reformulação num Bloco novo, até ganhar uma.
+_Code_: `ambiguousAnswers`
+
+**Informação desconhecida**:
+Registro explícito do usuário de que não sabe o que uma Pergunta pede. Abre uma Pendência de informação desconhecida, resolvida pela resposta que chegar depois.
+_Code_: `unknown` (Pendência `unknown_information`)
+_Avoid_: Sem resposta, pulada
+
 **Resumo do entendimento**:
 Visão consultável, a qualquer momento, do que o Processo já estabeleceu: enunciado, Pontos, sínteses confirmadas, respostas que valem e Pendências abertas. É montado do que está gravado, sem chamar a IA.
 _Code_: `Understanding`

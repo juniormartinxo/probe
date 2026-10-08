@@ -3,15 +3,15 @@ import { listAiRequests, type AiRequest, type AiRequestRunner, type Attempt, typ
 import type { Assistant, AssistantOutcome, AttemptContext, GeneratedSynthesis, SynthesisInput } from "../ai/assistant.ts";
 import { synthesisProblem } from "../ai/synthesize-block.ts";
 import type { SettingsModule } from "../settings/settings.ts";
-import { openStagePointsOf } from "./stage-point-coverage.ts";
-import { askedQuestionOf, stageQuestions, type StageQuestion } from "./stage-questions.ts";
-import { findStagePoint } from "./stage-points.ts";
+import { openStagePointsOf, type ProcessPoints } from "./stage-point-coverage.ts";
+import { askedQuestionOf, currentVersionsOf, stageQuestions } from "./stage-questions.ts";
+import { namedStagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
 
 // Como a síntese confirmada nasceu: aceita como a IA propôs ou corrigida pelo usuário.
 export type SynthesisOrigin = "proposal" | "corrected";
 
-type PointRef = { key: string; name: string };
+type NamedStagePoint = ReturnType<typeof namedStagePoint>;
 
 // Proposta de síntese da IA: sugestão até o usuário confirmá-la. O id é o da tentativa que a
 // produziu. `outdated`: uma resposta do Bloco mudou depois que a IA a recebeu; a proposta não pode
@@ -19,7 +19,7 @@ type PointRef = { key: string; name: string };
 export interface SynthesisProposal {
   id: string;
   synthesis: string;
-  coverage: { stagePoint: PointRef; covered: boolean; reason: string }[];
+  coverage: { stagePoint: NamedStagePoint; covered: boolean; reason: string }[];
   ambiguousAnswers: { questionId: string; reason: string }[];
   outdated: boolean;
 }
@@ -38,7 +38,7 @@ export interface ConfirmedSynthesis {
   origin: SynthesisOrigin;
   proposalId: string;
   confirmedAt: Date;
-  coveredStagePoints: PointRef[];
+  coveredStagePoints: NamedStagePoint[];
 }
 
 export interface BlockSynthesisState {
@@ -90,7 +90,7 @@ interface LockedBlock {
   stage: Stage;
   stagePointsVersion: number;
   input: SynthesisInput;
-  // As Versões que valem nas Perguntas do Bloco.
+  // As Versões que valem nas Perguntas enviadas à IA: as do Bloco e as dos Blocos anteriores.
   currentVersionIds: string[];
   complete: boolean;
 }
@@ -143,14 +143,11 @@ async function lockBlock(
         questions: own.map(askedQuestionOf),
         earlierQuestions: questions.filter((question) => question.blockId !== blockId).map(askedQuestionOf),
       },
-      currentVersionIds: currentVersionsOf(own),
+      currentVersionIds: currentVersionsOf(questions),
       complete: own.every((question) => question.currentVersionId !== null || question.unknown),
     },
   };
 }
-
-const currentVersionsOf = (questions: StageQuestion[]) =>
-  questions.flatMap((question) => (question.currentVersionId ? [question.currentVersionId] : []));
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((item) => b.includes(item));
 
@@ -176,13 +173,15 @@ interface BlockOfProcess {
 // Estado da síntese de cada Bloco: a Confirmação, se houver, e as solicitações à IA, na ordem.
 export async function synthesesOf(
   db: Db,
-  process: { id: string; stagePointsVersion: number },
+  process: ProcessPoints,
   blocks: BlockOfProcess[],
 ): Promise<Map<string, BlockSynthesisState>> {
   const states = new Map<string, BlockSynthesisState>();
   if (blocks.length === 0) return states;
   const stagesOfBlocks = [...new Set(blocks.map((block) => block.stage))];
-  const questions = (await Promise.all(stagesOfBlocks.map((stage) => stageQuestions(db, process.id, stage)))).flat();
+  const questionsByStage = new Map(
+    await Promise.all(stagesOfBlocks.map(async (stage) => [stage, await stageQuestions(db, process.id, stage)] as const)),
+  );
   const requests = await listRequestsByBlock(db, process.id);
   const confirmedRows = await db
     .selectFrom("blockSyntheses")
@@ -203,12 +202,11 @@ export async function synthesesOf(
   const used = await usedVersionsOf(db, proposalIds);
 
   for (const block of blocks) {
-    const pointRef = (key: string): PointRef => ({
-      key,
-      name: findStagePoint(process.stagePointsVersion, block.stage, key)?.name ?? key,
-    });
-    const own = questions.filter((question) => question.blockId === block.id);
-    const current = currentVersionsOf(own);
+    const pointRef = (key: string) => namedStagePoint(process.stagePointsVersion, block.stage, key);
+    // O que a síntese do Bloco recebe: as Perguntas dele e as dos Blocos anteriores da Etapa.
+    const sent = questionsByStage.get(block.stage)!.filter((question) => question.blockNumber <= block.number);
+    const own = sent.filter((question) => question.blockId === block.id);
+    const current = currentVersionsOf(sent);
     const refToId = (ref: string) => own.find((question) => question.ref === ref)?.id ?? ref;
     const confirmed = confirmedRows.find((row) => row.blockId === block.id);
     states.set(block.id, {
@@ -403,10 +401,7 @@ export function syntheses(deps: { db: Db; assistant: Assistant; runner: AiReques
           ok: true,
           synthesis: {
             ...row,
-            coveredStagePoints: covered.map((key) => ({
-              key,
-              name: findStagePoint(block.stagePointsVersion, block.stage, key)!.name,
-            })),
+            coveredStagePoints: covered.map((key) => namedStagePoint(block.stagePointsVersion, block.stage, key)),
           },
         } as const;
       });

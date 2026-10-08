@@ -144,4 +144,40 @@ describe("New Block", () => {
     await api.confirmSynthesis(id, second.id, { proposalId: proposal.id, synthesis: proposal.synthesis, coveredStagePoints: ["urgency"] });
     expect((await api.getProcess(id)).openStagePoints).toEqual([]);
   });
+
+  it("does not ask again to reformulate an ambiguous answer that was already reformulated", async () => {
+    const { id } = await processWithConfirmedBlock();
+    assistant.block.willRespond(completed(secondBlock));
+    const second = await api.generateBlock(id);
+    await api.answer(id, second.questions[0].id, { selectedChoices: [1], basedOnVersionId: null });
+    assistant.synthesis.willRespond(
+      completed({ synthesis: "Sem prazo.", coverage: [{ stagePoint: "urgency", covered: false, reason: "Sem prazo." }], ambiguousAnswers: [] }),
+    );
+    const proposal = await api.synthesize(id, second.id);
+    await api.confirmSynthesis(id, second.id, { proposalId: proposal.id, synthesis: proposal.synthesis, coveredStagePoints: [] });
+    assistant.block.willRespond(completed({ questions: [{ ...secondBlock.questions[0]!, reformulates: null }] }));
+
+    await api.generateBlock(id);
+
+    expect(assistant.block.attempts[2]!.input.ambiguousAnswers).toEqual([]);
+  });
+
+  it("whose synthesis used an earlier Block's answer is outdated when that answer changes", async () => {
+    const { id, block } = await processWithConfirmedBlock();
+    assistant.block.willRespond(completed(secondBlock));
+    const second = await api.generateBlock(id);
+    await api.answer(id, second.questions[0].id, { selectedChoices: [0], basedOnVersionId: null });
+    assistant.synthesis.willRespond(
+      completed({ synthesis: "Há prazo.", coverage: [{ stagePoint: "urgency", covered: true, reason: "Há prazo." }], ambiguousAnswers: [] }),
+    );
+    const proposal = await api.synthesize(id, second.id);
+    const earlier = block.questions[2];
+    await api.answer(id, earlier.id, { text: "A diretoria deu prazo até março.", basedOnVersionId: earlier.answer.current.id });
+
+    const response = await api.confirmSynthesis(id, second.id, { proposalId: proposal.id, synthesis: proposal.synthesis, coveredStagePoints: [] });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: "synthesis_outdated" });
+    expect((await api.blockOf(id, second.id)).synthesisRequests[0].proposal.outdated).toBe(true);
+  });
 });

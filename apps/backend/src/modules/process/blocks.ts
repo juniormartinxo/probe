@@ -12,9 +12,9 @@ import type {
 } from "../ai/assistant.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 import { answersOf, type AnswerDraft, type Answer } from "./answers.ts";
-import { stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
-import { askedQuestionOf, stageQuestions } from "./stage-questions.ts";
-import { findStagePoint, type StagePoint } from "./stage-points.ts";
+import { openPoints, stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
+import { askedQuestionOf, currentVersionsOf, stageQuestions } from "./stage-questions.ts";
+import { namedStagePoint, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
 import { synthesesOf, type BlockSynthesisState } from "./syntheses.ts";
 
@@ -129,9 +129,15 @@ async function lockOpenProcess(
     .orderBy("blocks.number")
     .execute();
   const confirmedSyntheses = syntheses.filter((row) => row.synthesis !== null);
-  const ambiguousAnswers: AmbiguousAnswer[] = confirmedSyntheses.flatMap(
-    (row) => (row.result as GeneratedSynthesis).ambiguousAnswers,
-  );
+  // Uma resposta ambígua que já ganhou reformulação não volta a ser oferecida para reformular.
+  const reformulated = new Set(questions.flatMap((question) => question.reformulatesQuestionId ?? []));
+  const ambiguousAnswers: AmbiguousAnswer[] = confirmedSyntheses
+    // O resultado foi validado como GeneratedSynthesis antes de a tentativa ser gravada.
+    .flatMap((row) => (row.result as GeneratedSynthesis).ambiguousAnswers)
+    .filter((item) => {
+      const question = questions.find((asked) => asked.ref === item.question);
+      return question !== undefined && !reformulated.has(question.id);
+    });
   return {
     ok: true,
     prepared: {
@@ -139,14 +145,12 @@ async function lockOpenProcess(
         stage,
         originalDescription: process.originalDescription,
         problemStatement: confirmed.statement,
-        openStagePoints: (await stagePointStates(trx, process, stage))
-          .filter((point) => point.status === "open")
-          .map(({ key, name, description }) => ({ key, name, description })),
+        openStagePoints: openPoints(await stagePointStates(trx, process, stage)),
         askedQuestions: questions.map(askedQuestionOf),
         confirmedSyntheses: confirmedSyntheses.map((row) => row.synthesis!),
         ambiguousAnswers,
       },
-      usedVersionIds: questions.flatMap((question) => (question.currentVersionId ? [question.currentVersionId] : [])),
+      usedVersionIds: currentVersionsOf(questions),
       questionIdsByRef: new Map(questions.map((question) => [question.ref, question.id])),
       unsynthesized: syntheses.length - confirmedSyntheses.length,
     },
@@ -350,9 +354,7 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       };
       return {
         stagePoints,
-        openStagePoints: stagePoints
-          .filter((point) => point.status === "open")
-          .map(({ key, name, description }) => ({ key, name, description })),
+        openStagePoints: openPoints(stagePoints),
         blockRequests,
         blocks: blockRows.map((block) => ({
           ...block,
@@ -360,10 +362,7 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
             .filter((question) => question.blockId === block.id)
             .map(({ blockId: _blockId, position: _position, stagePoints: keys, reformulatesQuestionId, ...question }) => ({
               ...question,
-              stagePoints: keys.map((key) => ({
-                key,
-                name: findStagePoint(process.stagePointsVersion, block.stage, key)?.name ?? key,
-              })),
+              stagePoints: keys.map((key) => namedStagePoint(process.stagePointsVersion, block.stage, key)),
               reformulates: reformulated(reformulatesQuestionId),
               ...answers.get(question.id)!,
               unknown: unknown.some((pendency) => pendency.questionId === question.id),
