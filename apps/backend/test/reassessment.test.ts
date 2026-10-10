@@ -36,6 +36,43 @@ async function changeConfirmedAnswer(setup: () => Promise<{ id: string; block: {
 
 const blockConfirmation = (blockId: string) => ({ kind: "block_synthesis", blockId });
 
+// Etapa P com dois Blocos confirmados: o Bloco 1 cobre o problema real e a consequência; o Bloco 2,
+// que recebe as respostas do Bloco 1 como contexto, cobre a urgência.
+async function processWithSecondBlock() {
+  const { id, block } = await api.processWithAnsweredBlock();
+  const first = await api.synthesize(id, block.id);
+  await api.confirmSynthesis(id, block.id, { proposalId: first.id, synthesis: first.synthesis, coveredStagePoints: ["real_problem", "consequence"] });
+  assistant.block.willRespond(completed(secondBlock));
+  const second = await api.generateBlock(id);
+  await api.answer(id, second.questions[0].id, { text: "A revisão trimestral é em novembro.", basedOnVersionId: null });
+  assistant.synthesis.willRespond(completed(secondSynthesis));
+  const proposal = await api.synthesize(id, second.id);
+  const confirmed = await api.confirmSynthesis(id, second.id, { proposalId: proposal.id, synthesis: proposal.synthesis, coveredStagePoints: ["urgency"] });
+  expect(confirmed.statusCode).toBe(201);
+  return { id, first: await api.blockOf(id, block.id), second };
+}
+
+const secondBlock: GeneratedBlock = {
+  questions: [
+    {
+      wording: "Quando é a próxima cobrança da diretoria?",
+      subject: "Prazo da cobrança",
+      contextRelation: "A diretoria cobrou uma solução.",
+      rationale: null,
+      stagePoints: ["urgency"],
+      reformulates: null,
+      answerType: "free_text",
+      choices: [],
+    },
+  ],
+};
+
+const secondSynthesis: GeneratedSynthesis = {
+  synthesis: "A urgência vem da revisão trimestral, em novembro.",
+  coverage: [{ stagePoint: "urgency", covered: true, reason: "Revisão em novembro." }],
+  ambiguousAnswers: [],
+};
+
 const stageRBlock: GeneratedBlock = {
   questions: [
     {
@@ -89,6 +126,7 @@ describe("A new Version of an answer", () => {
         id: expect.any(String),
         answerVersionId: version.id,
         previousAnswerVersionId: previous.id,
+        analyzedAnswerVersionIds: [],
         confirmation: { kind: "block_synthesis", blockId: block.id, blockNumber: 1, stage: "P" },
         status: "completed",
         requestedModel: JEV_MODEL,
@@ -150,6 +188,9 @@ describe("A new Version of an answer", () => {
       ],
     });
     const process = await api.getProcess(id);
+    const onStageAssessment = process.impactAssessments.find((item: { confirmation: { kind: string } }) => item.confirmation.kind === "stage");
+    // As Versões que a Etapa sustentava e que o Jev recebeu ficam gravadas.
+    expect(onStageAssessment.analyzedAnswerVersionIds).toHaveLength(3);
     expect(process.impactAssessments.map((item: { confirmation: unknown }) => item.confirmation)).toEqual(
       expect.arrayContaining([
         { kind: "block_synthesis", blockId: block.id, blockNumber: 1, stage: "P" },
@@ -157,6 +198,21 @@ describe("A new Version of an answer", () => {
       ]),
     );
     expect(process.reassessments).toEqual([]);
+  });
+
+  it("is assessed against a later Block's synthesis that received it as context, which does not confirm it", async () => {
+    const second = await processWithSecondBlock();
+    assessor.willAssessImpact(impactOutcome("yes"), impactOutcome("no"));
+    const [single] = second.first.questions;
+
+    const response = await api.answer(second.id, single.id, { selectedChoices: [1], basedOnVersionId: single.answer.current.id });
+
+    expect(response.statusCode).toBe(201);
+    expect(assessor.impactInputs.map((input) => input.confirmation.kind === "block_synthesis" && input.confirmation.blockNumber)).toEqual([1, 2]);
+    const process = await api.getProcess(second.id);
+    // A síntese do Bloco 1, em revisão, é a que confirma a resposta; a do Bloco 2 apenas se apoia nela.
+    expect(process.reassessments).toMatchObject([{ confirmation: { blockNumber: 1 }, status: "pendency_open" }]);
+    expect(process.blocks[0].questions[0].answer.current).toMatchObject({ id: response.json().answerVersion.id, confirmed: false });
   });
 });
 
@@ -281,6 +337,16 @@ describe("Impact `insufficient` or with low confidence", () => {
       reassessment: { answerVersionId: version.id, openedBy: "user", impactAssessment: { id: impactAssessment.id } },
     });
     expect((await api.getProcess(id)).reassessments).toMatchObject([{ status: "pendency_open", pendencyId: response.json().pendency.id }]);
+  });
+
+  it("with a low-confidence `no`, also waits for the user", async () => {
+    assessor.willAssessImpact(impactOutcome("no", 0.65));
+    const { id } = await changeConfirmedAnswer();
+
+    const process = await api.getProcess(id);
+    expect(process.pendencies).toEqual([]);
+    expect(process.reassessments).toMatchObject([{ status: "awaiting_decision", impactAssessments: [{ choice: "no", needsDecision: true }] }]);
+    expect(process.blocks[0].questions[0].answer.current.confirmed).toBe(false);
   });
 
   it("lets the user keep the Confirmation, which then holds the new Version", async () => {
@@ -469,6 +535,19 @@ describe("Jev unavailable for the impact", () => {
       openedBy: "user",
       impactAssessment: { id: failed.id, status: "failed", failureReason: "jev_unavailable" },
     });
+  });
+
+  it("on a Stage Confirmation, tries again with the Stage as it was confirmed, even after the block synthesis took the change", async () => {
+    // A síntese do Bloco recebe `no` e passa a sustentar a Versão nova; a Etapa fica sem Avaliação.
+    assessor.willAssessImpact(impactOutcome("no"), unavailable);
+    const { id, version } = await changeConfirmedAnswer(api.processInStageR);
+
+    const retried = await api.retryImpact(id, version.id, { kind: "stage", stage: "P" });
+
+    expect(retried.statusCode).toBe(201);
+    const input = assessor.impactInputs.at(-1)!;
+    expect(input.confirmation.kind === "stage" && input.confirmation.answers[0]).toMatchObject({ ref: "1.1", answer: "A demora é o problema em si" });
+    expect(input.newAnswer).toBe("A demora é sintoma de outra coisa");
   });
 
   it("does not try again once the Jev judged the impact", async () => {

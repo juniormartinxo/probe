@@ -50,6 +50,7 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
             processId={process.id}
             block={block}
             underReassessment={new Set(process.reassessments.map((reassessment) => reassessment.question.id))}
+            impactAssessments={process.impactAssessments}
             onChange={onChange}
           />
           <BlockSynthesis

@@ -155,9 +155,14 @@ Ato do usuário que dá algo por estabelecido: enunciado do problema, síntese d
 _Code_: `Confirmation`
 _Avoid_: Conclusão, aprovação, validação
 
+**Reavaliação**:
+Revisão de uma Confirmação (síntese de bloco ou Etapa) que dependia de uma Versão já superada. Abre-se com a Versão nova e passa pela Avaliação de impacto do Jev; termina quando a Confirmação passa a sustentar a Versão nova (sem impacto, mantida pelo usuário ou reconfirmada). Enquanto não termina, bloqueia a Confirmação da Etapa da Pergunta e das seguintes; com impacto, vira Pendência de reavaliação.
+_Code_: `Reassessment` (a Avaliação: `ImpactAssessment`)
+_Avoid_: Revalidação, invalidação
+
 **Pendência**:
 Impedimento visível que bloqueia as Confirmações que dependem dele, por um de três motivos: reavaliação (depende de Versão superada), conflito (respostas incompatíveis) ou informação desconhecida. A de reavaliação nasce de uma Avaliação de impacto e se resolve reconfirmando a Confirmação afetada (numa síntese de bloco, com o texto corrigido, se preciso) ou corrigindo a resposta com uma Versão nova.
-_Code_: `Pendency` (`reassessment`; resolução `reconfirmed` ou `corrected`)
+_Code_: `Pendency` (motivos `unknown_information` e `reassessment`; resolução `answered`, `reconfirmed` ou `corrected`)
 _Avoid_: Bloqueio, alerta, issue
 
 ## Restrições e opções

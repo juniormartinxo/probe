@@ -28,6 +28,8 @@ export interface ImpactAssessment {
   id: string;
   answerVersionId: string;
   previousAnswerVersionId: string;
+  // As outras Versões que o Jev recebeu: numa Confirmação da Etapa, as respostas que ela sustentava.
+  analyzedAnswerVersionIds: string[];
   confirmation: DependentConfirmation;
   status: "completed" | "failed";
   requestedModel: string;
@@ -71,6 +73,7 @@ export async function impactAssessmentsOf(db: Db, processId: string): Promise<Im
     id: row.id,
     answerVersionId: row.answerVersionId,
     previousAnswerVersionId: row.previousAnswerVersionId,
+    analyzedAnswerVersionIds: row.analyzedAnswerVersionIds,
     confirmation:
       row.blockId !== null
         ? { kind: "block_synthesis", blockId: row.blockId, blockNumber: row.blockNumber!, stage: row.blockStage! }

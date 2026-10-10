@@ -8,8 +8,10 @@ import {
   type AnswerValue,
   type AnswerVersion,
   type Block,
+  type ImpactAssessment,
   type Question,
 } from "@/api";
+import { ImpactLine, confirmationName } from "@/components/reassessments";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,12 +78,15 @@ export function Questionnaire({
   processId,
   block,
   underReassessment,
+  impactAssessments,
   onChange,
 }: {
   processId: string;
   block: Block;
   // As Perguntas cuja resposta mudou e cujas Confirmações estão em revisão.
   underReassessment: Set<string>;
+  // As Avaliações de impacto do Processo; cada resposta mostra as da Versão que vale.
+  impactAssessments: ImpactAssessment[];
   onChange: () => void;
 }) {
   const [index, setIndex] = useState(0);
@@ -197,6 +202,7 @@ export function Questionnaire({
         question={question}
         synthesized={block.synthesis !== null}
         reassessing={underReassessment.has(question.id)}
+        impactAssessments={impactAssessments.filter((assessment) => assessment.answerVersionId === question.answer?.current.id)}
         edit={edits[question.id] ?? storedEdit(question)}
         onEdit={(value) => edit(question, value)}
         onSettled={(settled) => setEdits((current) => ({ ...current, [question.id]: settled }))}
@@ -225,6 +231,7 @@ function QuestionView({
   question,
   synthesized,
   reassessing,
+  impactAssessments,
   edit,
   onEdit,
   onSettled,
@@ -237,6 +244,7 @@ function QuestionView({
   synthesized: boolean;
   // A resposta mudou e uma Confirmação que dependia da anterior está em revisão.
   reassessing: boolean;
+  impactAssessments: ImpactAssessment[];
   edit: Edit;
   onEdit: (value: AnswerValue) => void;
   onSettled: (edit: Edit) => void;
@@ -331,7 +339,9 @@ function QuestionView({
 
       <AnswerInput question={question} value={edit.value} onChange={onEdit} disabled={saving} />
 
-      {question.answer && <SavedAnswer question={question} synthesized={synthesized} reassessing={reassessing} />}
+      {question.answer && (
+        <SavedAnswer question={question} synthesized={synthesized} reassessing={reassessing} impactAssessments={impactAssessments} />
+      )}
 
       {question.unknown && (
         <div className="flex flex-col gap-1 rounded-md border border-dashed p-3 text-sm">
@@ -476,7 +486,18 @@ function savedAnswerStatus(confirmed: boolean, synthesized: boolean, reassessing
   return "provisória até a síntese do Bloco ser confirmada";
 }
 
-function SavedAnswer({ question, synthesized, reassessing }: { question: Question; synthesized: boolean; reassessing: boolean }) {
+function SavedAnswer({
+  question,
+  synthesized,
+  reassessing,
+  impactAssessments,
+}: {
+  question: Question;
+  synthesized: boolean;
+  reassessing: boolean;
+  // As Avaliações de impacto desta Versão, sobre cada Confirmação que dependia da anterior.
+  impactAssessments: ImpactAssessment[];
+}) {
   const { current, previous } = question.answer!;
   return (
     <div className="bg-muted/50 flex flex-col gap-1 rounded-md p-3 text-sm">
@@ -485,6 +506,19 @@ function SavedAnswer({ question, synthesized, reassessing }: { question: Questio
         {savedAnswerStatus(current.confirmed, synthesized, reassessing)}
       </p>
       <p className="whitespace-pre-wrap">{describe(question, current)}</p>
+      {impactAssessments.length > 0 && (
+        <details className="text-muted-foreground text-xs">
+          <summary className="cursor-pointer">Avaliações de impacto desta Versão ({impactAssessments.length})</summary>
+          <ul className="mt-2 flex flex-col gap-1">
+            {impactAssessments.map((assessment) => (
+              <li key={assessment.id} className="flex flex-col gap-0.5">
+                <span className="font-medium">{confirmationName(assessment.confirmation)}</span>
+                <ImpactLine assessment={assessment} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {previous.length > 0 && (
         <details className="text-muted-foreground text-xs">
           <summary className="cursor-pointer">Versões anteriores ({previous.length})</summary>

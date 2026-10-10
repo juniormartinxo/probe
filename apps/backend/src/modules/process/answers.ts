@@ -63,8 +63,8 @@ export async function answersOf(db: Db, questionIds: string[]): Promise<Map<stri
   return found;
 }
 
-// As Versões, dentre as dadas, que uma síntese de bloco confirmada sustenta: as que a proposta
-// confirmada sintetizou e as que a síntese passou a sustentar depois de uma mudança.
+// As Versões, dentre as dadas, confirmadas por uma síntese de bloco: as que uma proposta confirmada
+// sintetizou e as que a síntese do Bloco da Pergunta passou a sustentar depois de uma mudança.
 export async function confirmedVersionIdsOf(db: Db, versionIds: string[]): Promise<Set<string>> {
   if (versionIds.length === 0) return new Set();
   const synthesized = await db
@@ -73,11 +73,15 @@ export async function confirmedVersionIdsOf(db: Db, versionIds: string[]): Promi
     .select("attemptAnswerVersions.answerVersionId")
     .where("attemptAnswerVersions.answerVersionId", "in", versionIds)
     .execute();
+  // Só a síntese do Bloco da própria Pergunta confirma a Versão; a de um Bloco seguinte, que a recebeu
+  // como contexto, apenas se apoia nela.
   const carried = await db
     .selectFrom("confirmationAnswerVersions")
-    .select("answerVersionId")
-    .where("answerVersionId", "in", versionIds)
-    .where("blockId", "is not", null)
+    .innerJoin("answerVersions", "answerVersions.id", "confirmationAnswerVersions.answerVersionId")
+    .innerJoin("questions", "questions.id", "answerVersions.questionId")
+    .select("confirmationAnswerVersions.answerVersionId")
+    .where("confirmationAnswerVersions.answerVersionId", "in", versionIds)
+    .whereRef("confirmationAnswerVersions.blockId", "=", "questions.blockId")
     .execute();
   return new Set([...synthesized, ...carried].map((row) => row.answerVersionId));
 }

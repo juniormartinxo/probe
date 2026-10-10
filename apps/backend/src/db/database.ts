@@ -202,6 +202,7 @@ export interface ImpactAssessmentTable extends ConfirmationColumns {
   processId: string;
   answerVersionId: string;
   previousAnswerVersionId: string;
+  analyzedAnswerVersionIds: Generated<string[]>;
   status: "completed" | "failed";
   requestedModel: string;
   jevModel: string | null;

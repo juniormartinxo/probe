@@ -32,6 +32,8 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("process_id", "uuid", (col) => col.notNull().references("processes.id").onDelete("cascade"))
     .addColumn("answer_version_id", "uuid", (col) => col.notNull().references("answer_versions.id").onDelete("cascade"))
     .addColumn("previous_answer_version_id", "uuid", (col) => col.notNull().references("answer_versions.id").onDelete("cascade"))
+    // As outras Versões que o Jev recebeu: as respostas que a Confirmação da Etapa sustentava.
+    .addColumn("analyzed_answer_version_ids", sql`uuid[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
     .addColumn("status", "text", (col) => col.notNull().check(sql`status in ('completed', 'failed')`))
     .addColumn("requested_model", "text", (col) => col.notNull())
     .addColumn("jev_model", "text")

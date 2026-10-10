@@ -14,7 +14,6 @@ import {
 import { IMPACT_RUBRIC_REVISION } from "../assessments/impact-rubric.ts";
 import { describeAnswer } from "./answers.ts";
 import { listPendencies, stagesUpTo, type Pendency } from "./pendencies.ts";
-import { confirmedAnswersOf } from "./stage-readiness.ts";
 import { findStagePoint, stagePointsOf, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
 import { synthesisCorrectionsOf, synthesisInForce } from "./syntheses.ts";
@@ -85,6 +84,11 @@ export interface Reassessments {
     pendencyId: string,
     correctedSynthesis: string | null,
   ): Promise<{ ok: true; pendency: Pendency } | { ok: false; error: ReconfirmationError }>;
+}
+
+interface PreparedImpact {
+  input: ImpactInput;
+  analyzedAnswerVersionIds: string[];
 }
 
 interface StoredVersion {
@@ -254,19 +258,44 @@ const pointOf = (version: number, stage: Stage, key: string): StagePoint => {
   return { key, name, description };
 };
 
-// A Confirmação como o Jev a recebe: a síntese que vale, com os Pontos que ela cobriu, ou a Etapa,
-// com os Pontos e as respostas confirmadas dela.
+// A Confirmação como o Jev a recebe, como está: a síntese que vale, com os Pontos que ela cobriu, ou a
+// Etapa, com os Pontos e as respostas que ela sustenta (as Versões, para gravar o que o Jev recebeu).
 async function impactedConfirmationOf(
   db: Db,
   process: { id: string; stagePointsVersion: number },
   confirmation: DependentConfirmation,
-): Promise<ImpactedConfirmation> {
+): Promise<{ confirmation: ImpactedConfirmation; analyzedAnswerVersionIds: string[] }> {
   if (confirmation.kind === "stage") {
+    const held = (await heldVersionsOf(db, process.id))
+      .filter((item) => item.confirmation.kind === "stage" && item.confirmation.stage === confirmation.stage)
+      .map((item) => item.version);
+    const questions = held.length
+      ? await db
+          .selectFrom("questions")
+          .innerJoin("blocks", "blocks.id", "questions.blockId")
+          .select(["questions.id", "questions.wording", "questions.choices", "questions.position", "blocks.number as blockNumber"])
+          .where(
+            "questions.id",
+            "in",
+            held.map((version) => version.questionId),
+          )
+          .execute()
+      : [];
+    const answers = held
+      .map((version) => ({ version, question: questions.find((item) => item.id === version.questionId)! }))
+      .toSorted((a, b) => a.question.blockNumber - b.question.blockNumber || a.question.position - b.question.position);
     return {
-      kind: "stage",
-      stage: confirmation.stage,
-      stagePoints: stagePointsOf(process.stagePointsVersion, confirmation.stage).map(({ key, name, description }) => ({ key, name, description })),
-      answers: (await confirmedAnswersOf(db, process.id, confirmation.stage)).map(({ ref, wording, answer }) => ({ ref, wording, answer })),
+      confirmation: {
+        kind: "stage",
+        stage: confirmation.stage,
+        stagePoints: stagePointsOf(process.stagePointsVersion, confirmation.stage).map(({ key, name, description }) => ({ key, name, description })),
+        answers: answers.map(({ version, question }) => ({
+          ref: `${question.blockNumber}.${question.position + 1}`,
+          wording: question.wording,
+          answer: describeAnswer(question, version),
+        })),
+      },
+      analyzedAnswerVersionIds: answers.map(({ version }) => version.id),
     };
   }
   const { synthesis } = await db
@@ -282,11 +311,14 @@ async function impactedConfirmationOf(
     .where("status", "=", "covered")
     .execute();
   return {
-    kind: "block_synthesis",
-    stage: confirmation.stage,
-    blockNumber: confirmation.blockNumber,
-    synthesis: synthesisInForce({ synthesis, corrections }),
-    coveredStagePoints: covered.map((row) => pointOf(process.stagePointsVersion, confirmation.stage, row.stagePoint)),
+    confirmation: {
+      kind: "block_synthesis",
+      stage: confirmation.stage,
+      blockNumber: confirmation.blockNumber,
+      synthesis: synthesisInForce({ synthesis, corrections }),
+      coveredStagePoints: covered.map((row) => pointOf(process.stagePointsVersion, confirmation.stage, row.stagePoint)),
+    },
+    analyzedAnswerVersionIds: [],
   };
 }
 
@@ -305,7 +337,7 @@ export function reassessments({ db, assessor }: { db: Db; assessor: Assessor }):
   }
 
   // O que o Jev recebe: a Confirmação como está e a mudança.
-  async function impactInputOf(processId: string, reassessment: Reassessment): Promise<ImpactInput> {
+  async function impactInputOf(processId: string, reassessment: Reassessment): Promise<PreparedImpact> {
     const process = await db.selectFrom("processes").select(["id", "stagePointsVersion"]).where("id", "=", processId).executeTakeFirstOrThrow();
     const { statement } = await db
       .selectFrom("problemStatements")
@@ -313,12 +345,16 @@ export function reassessments({ db, assessor }: { db: Db; assessor: Assessor }):
       .where("processId", "=", processId)
       .executeTakeFirstOrThrow();
     const { question } = reassessment;
+    const { confirmation, analyzedAnswerVersionIds } = await impactedConfirmationOf(db, process, reassessment.confirmation);
     return {
-      problemStatement: statement,
-      confirmation: await impactedConfirmationOf(db, process, reassessment.confirmation),
-      question: { ref: `${question.blockNumber}.${question.number}`, wording: question.wording },
-      previousAnswer: reassessment.previousVersion.answer,
-      newAnswer: reassessment.newVersion.answer,
+      input: {
+        problemStatement: statement,
+        confirmation,
+        question: { ref: `${question.blockNumber}.${question.number}`, wording: question.wording },
+        previousAnswer: reassessment.previousVersion.answer,
+        newAnswer: reassessment.newVersion.answer,
+      },
+      analyzedAnswerVersionIds,
     };
   }
 
@@ -328,7 +364,7 @@ export function reassessments({ db, assessor }: { db: Db; assessor: Assessor }):
   async function assess(
     processId: string,
     reassessment: Reassessment,
-    input: ImpactInput,
+    { input, analyzedAnswerVersionIds }: PreparedImpact,
   ): Promise<{ ok: true; impactAssessment: ImpactAssessment } | { ok: false; error: ReassessmentError }> {
     const { question } = reassessment;
     const outcome = await judge(input);
@@ -343,6 +379,7 @@ export function reassessments({ db, assessor }: { db: Db; assessor: Assessor }):
           processId,
           answerVersionId: reassessment.newVersion.id,
           previousAnswerVersionId: reassessment.previousVersion.id,
+          analyzedAnswerVersionIds,
           ...confirmation,
           status: outcome.status,
           requestedModel: assessor.model,
@@ -391,11 +428,15 @@ export function reassessments({ db, assessor }: { db: Db; assessor: Assessor }):
       const pending = (await reassessmentsOf(db, processId)).filter(
         (item) => item.question.id === questionId && item.status === "not_assessed",
       );
-      // Cada Confirmação chega ao Jev como estava antes da mudança, mesmo que a decisão sobre outra
-      // seja gravada antes. Uma Avaliação que não chega a ser gravada deixa a reavaliação "não
+      // Uma Avaliação que não chega a ser gravada deixa a reavaliação "não
       // avaliada": o usuário pede uma nova tentativa. A Versão nova continua gravada.
-      const inputs = await Promise.all(pending.map((item) => impactInputOf(processId, item)));
-      await Promise.all(pending.map((item, index) => assess(processId, item, inputs[index]!).catch(() => undefined)));
+      await Promise.all(
+        pending.map((item) =>
+          impactInputOf(processId, item)
+            .then((prepared) => assess(processId, item, prepared))
+            .catch(() => undefined),
+        ),
+      );
     },
 
     async retry(processId, answerVersionId, confirmation) {

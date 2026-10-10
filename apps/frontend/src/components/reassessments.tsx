@@ -10,6 +10,7 @@ import {
   type ImpactAssessment,
   type ProcessDetail,
   type Reassessment,
+  type Stage,
 } from "@/api";
 import { failureText } from "@/components/stage-confirmation";
 import { Badge } from "@/components/ui/badge";
@@ -118,6 +119,18 @@ function ReassessmentItem({
         Esta Confirmação dependia da resposta anterior.
       </p>
       {latest && <ImpactLine assessment={latest} />}
+      {reassessment.impactAssessments.length > 1 && (
+        <details className="text-muted-foreground text-xs">
+          <summary className="cursor-pointer">Avaliações anteriores ({reassessment.impactAssessments.length - 1})</summary>
+          <ul className="mt-2 flex flex-col gap-1">
+            {reassessment.impactAssessments.slice(0, -1).map((assessment) => (
+              <li key={assessment.id}>
+                <ImpactLine assessment={assessment} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       {status === "not_assessed" && (
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -165,8 +178,8 @@ function ReassessmentItem({
   );
 }
 
-// O julgamento do Jev como veio, ou a falha.
-function ImpactLine({ assessment }: { assessment: ImpactAssessment }) {
+// A Avaliação de impacto como veio, ou a falha.
+export function ImpactLine({ assessment }: { assessment: ImpactAssessment }) {
   if (assessment.status === "failed") {
     return (
       <div className="flex flex-col gap-0.5 text-xs">
@@ -204,7 +217,7 @@ function Reconfirmation({
   openedBy: "jev" | "user";
   // O texto da síntese que vale; null quando a Confirmação é a da Etapa.
   synthesis: string | null;
-  stage: string;
+  stage: Stage;
   saving: boolean;
   onReconfirm: (synthesis: string | null) => void;
 }) {
