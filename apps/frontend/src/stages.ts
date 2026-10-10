@@ -1,4 +1,4 @@
-import type { ProcessStatus, Stage, StagePointStatus } from "./api";
+import type { PendencyReason, ProcessStatus, Stage, StagePointStatus } from "./api";
 
 export const stages: { stage: Stage; name: string }[] = [
   { stage: "P", name: "Problema" },
@@ -21,4 +21,10 @@ export const stagePointStatusText: Record<StagePointStatus, string> = {
   covered: "coberto",
   inapplicable: "inaplicável",
   absent: "ausência registrada",
+};
+
+export const pendencyReasonText: Record<PendencyReason, string> = {
+  unknown_information: "Informação desconhecida",
+  reassessment: "Reavaliação",
+  conflict: "Conflito",
 };

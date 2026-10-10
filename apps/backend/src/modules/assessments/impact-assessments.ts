@@ -45,9 +45,12 @@ export interface ImpactAssessment {
   createdAt: Date;
 }
 
-// O julgamento decide sozinho só com `yes` ou `no` e confiança no limite ou acima dele.
-export const decidesAlone = ({ choice, confidence }: Pick<Verdict, "choice" | "confidence">): boolean =>
-  choice !== "insufficient" && confidence >= IMPACT_CONFIDENCE_THRESHOLD;
+// O julgamento decide sozinho só com `yes` ou `no` e confiança no limite ou acima dele; o limite é o
+// da Avaliação de impacto, salvo outro dado.
+export const decidesAlone = (
+  { choice, confidence }: Pick<Verdict, "choice" | "confidence">,
+  threshold = IMPACT_CONFIDENCE_THRESHOLD,
+): boolean => choice !== "insufficient" && confidence >= threshold;
 
 const isUnit = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 

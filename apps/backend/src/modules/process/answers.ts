@@ -1,7 +1,7 @@
 import { sql } from "kysely";
 import type { Db } from "../../db/database.ts";
 import type { AnswerType } from "../ai/assistant.ts";
-import { resolveReassessmentsByCorrection, resolveUnknownInformation } from "./pendencies.ts";
+import { resolveConflictsByCorrection, resolveReassessmentsByCorrection, resolveUnknownInformation } from "./pendencies.ts";
 
 // Cada estado registrado de uma resposta. Traz os índices das alternativas escolhidas ou o texto
 // livre, conforme a Pergunta.
@@ -174,7 +174,8 @@ async function lockQuestion(
 }
 
 // `afterChange`: chamado depois de gravada a Versão, fora da transação, para avaliar o impacto dela
-// sobre as Confirmações que dependiam da anterior. Não lança: uma falha ali não desfaz a Versão.
+// sobre as Confirmações que dependiam da anterior e, confirmada, o conflito dela com as outras
+// respostas. Não lança: uma falha ali não desfaz a Versão.
 export function answers({
   db,
   afterChange,
@@ -206,6 +207,7 @@ export function answers({
         await trx.deleteFrom("answerDrafts").where("questionId", "=", questionId).execute();
         await resolveUnknownInformation(trx, questionId, answerVersion.id);
         await resolveReassessmentsByCorrection(trx, questionId, answerVersion.id);
+        await resolveConflictsByCorrection(trx, questionId, answerVersion.id);
         return { ok: true, answerVersion } as const;
       });
       if (!recorded.ok || recorded.answerVersion.number === 1) return recorded;

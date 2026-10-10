@@ -50,6 +50,26 @@ export interface ImpactInput {
   newAnswer: string;
 }
 
+// Resposta confirmada num par avaliado quanto a conflito, com a Etapa da Pergunta.
+export interface ConflictAnswer extends AssessedAnswer {
+  stage: Stage;
+}
+
+// Par de respostas confirmadas: a que acabou de ser confirmada e outra já confirmada (ou outra do mesmo
+// Bloco). `key` identifica o par no julgamento.
+export interface ConflictPairInput {
+  key: string;
+  answer: ConflictAnswer;
+  other: ConflictAnswer;
+}
+
+// O que o Jev recebe para avaliar, par a par, se respostas confirmadas são incompatíveis entre si, com
+// as Restrições e Preferências em vigor como contexto.
+export interface ConflictInput extends ItemStatements {
+  problemStatement: string;
+  pairs: ConflictPairInput[];
+}
+
 export type AssessorFailureReason =
   // A chave do Jev não está no ambiente do backend.
   | "jev_not_configured"
@@ -72,4 +92,6 @@ export interface Assessor {
   assessCoverage(input: CoverageInput): Promise<AssessorOutcome<Record<string, Verdict>>>;
   // Um julgamento: `yes`, a mudança afeta a Confirmação; `no`, não afeta.
   assessImpact(input: ImpactInput): Promise<AssessorOutcome<Verdict>>;
+  // Um julgamento para cada par recebido, pela chave do par: `yes`, as respostas são incompatíveis.
+  assessConflicts(input: ConflictInput): Promise<AssessorOutcome<Record<string, Verdict>>>;
 }

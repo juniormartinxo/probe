@@ -15,6 +15,7 @@ import {
 import { IMPACT_RUBRIC_REVISION } from "../assessments/impact-rubric.ts";
 import { describeAnswer } from "./answers.ts";
 import { listPendencies, stagesUpTo, type Pendency } from "./pendencies.ts";
+import { lockOpenProcess } from "./process.ts";
 import { findStagePoint, stagePointsOf, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
 import { synthesisCorrectionsOf, synthesisInForce } from "./syntheses.ts";
@@ -242,19 +243,6 @@ async function findReassessment(db: Db, processId: string, answerVersionId: stri
   );
 }
 
-// Trava o Processo aberto para a transação.
-async function lockOpenProcess(trx: Db, processId: string) {
-  const process = await trx
-    .selectFrom("processes")
-    .select(["id", "status", "stagePointsVersion"])
-    .where("id", "=", processId)
-    .forUpdate()
-    .executeTakeFirst();
-  if (!process) return { ok: false, error: "process_not_found" } as const;
-  if (process.status !== "open") return { ok: false, error: "process_not_open" } as const;
-  return { ok: true, process } as const;
-}
-
 const pointOf = (version: number, stage: Stage, key: string): StagePoint => {
   const { name, description } = findStagePoint(version, stage, key)!;
   return { key, name, description };
@@ -324,7 +312,19 @@ async function impactedConfirmationOf(
   };
 }
 
-export function reassessments({ db, assessor, log }: { db: Db; assessor: Assessor; log: FastifyBaseLogger }): Reassessments {
+// `afterConfirm`: chamado depois que uma Confirmação passa a sustentar uma Versão nova (sem impacto,
+// mantida ou reconfirmada), com essa Versão; quem o recebe avalia só as que ficaram confirmadas. Não lança.
+export function reassessments({
+  db,
+  assessor,
+  log,
+  afterConfirm,
+}: {
+  db: Db;
+  assessor: Assessor;
+  log: FastifyBaseLogger;
+  afterConfirm: (processId: string, answerVersionIds: string[]) => Promise<void>;
+}): Reassessments {
   async function judge(input: ImpactInput): Promise<AssessorOutcome<Verdict>> {
     const outcome = await assessor.assessImpact(input).catch(
       (error: unknown): AssessorOutcome<never> => ({
@@ -448,6 +448,7 @@ export function reassessments({ db, assessor, log }: { db: Db; assessor: Assesso
             return input ? assess(processId, item, input).catch(failed(item)) : null;
           }),
         );
+        await afterConfirm(processId, [...new Set(pending.map((item) => item.newVersion.id))]);
       } catch (error) {
         log.error({ err: error, processId, questionId }, "Não foi possível encontrar as Confirmações a reavaliar.");
       }
@@ -460,7 +461,9 @@ export function reassessments({ db, assessor, log }: { db: Db; assessor: Assesso
       const found = await findReassessment(db, processId, answerVersionId, confirmation);
       if (!found) return { ok: false, error: "reassessment_not_found" };
       if (found.status !== "not_assessed" && found.status !== "assessment_failed") return { ok: false, error: "impact_assessed" };
-      return assess(processId, found, await impactInputOf(processId, found));
+      const assessed = await assess(processId, found, await impactInputOf(processId, found));
+      if (assessed.ok) await afterConfirm(processId, [answerVersionId]);
+      return assessed;
     },
 
     async decide(processId, { answerVersionId, confirmation, impactAssessmentId, decision }) {
@@ -497,13 +500,16 @@ export function reassessments({ db, assessor, log }: { db: Db; assessor: Assesso
         return { ok: true, pendencyId: id, process: locked.process } as const;
       });
       if (!decided.ok) return decided;
-      if (decided.pendencyId === null) return { ok: true, pendency: null };
+      if (decided.pendencyId === null) {
+        await afterConfirm(processId, [answerVersionId]);
+        return { ok: true, pendency: null };
+      }
       const [pendency] = await listPendencies(db, decided.process, [decided.pendencyId]);
       return { ok: true, pendency: pendency! };
     },
 
     async reconfirm(processId, pendencyId, correctedSynthesis) {
-      return db.transaction().execute(async (trx) => {
+      const reconfirmed = await db.transaction().execute(async (trx) => {
         const locked = await lockOpenProcess(trx, processId);
         if (!locked.ok) return locked;
         const pendency = await trx
@@ -547,8 +553,11 @@ export function reassessments({ db, assessor, log }: { db: Db; assessor: Assesso
           .where("id", "=", pendencyId)
           .execute();
         const [resolved] = await listPendencies(trx, locked.process, [pendencyId]);
-        return { ok: true, pendency: resolved! } as const;
+        return { ok: true, pendency: resolved!, answerVersionId: pendency.answerVersionId! } as const;
       });
+      if (!reconfirmed.ok) return reconfirmed;
+      await afterConfirm(processId, [reconfirmed.answerVersionId]);
+      return { ok: true, pendency: reconfirmed.pendency };
     },
   };
 }

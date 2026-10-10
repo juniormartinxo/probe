@@ -101,7 +101,7 @@ export async function statementsInForceOf(db: Db, processId: string): Promise<It
 const optionalText = (value: string | null): string | null => value?.trim() || null;
 
 // Trava o Processo para a transação; Restrições e Preferências só mudam enquanto R é a Etapa atual.
-async function lockStageR(
+export async function lockStageR(
   trx: Db,
   processId: string,
 ): Promise<{ ok: true; process: { id: string; stagePointsVersion: number } } | { ok: false; error: ItemClosed }> {
@@ -117,18 +117,88 @@ async function lockStageR(
   return { ok: true, process };
 }
 
+// Registra o item; chamar com o Processo travado na Etapa R.
+async function registerIn(trx: Db, processId: string, kind: ItemKind, { statement, scope, unit }: ItemStatement): Promise<StatedItem> {
+  return trx
+    .insertInto(itemPaths[kind])
+    .values({ processId, statement: statement.trim(), scope: optionalText(scope), unit: optionalText(unit) })
+    .returning(columns)
+    .executeTakeFirstOrThrow();
+}
+
+// Retira o item em vigor; chamar com o Processo travado na Etapa R.
+async function withdrawIn(
+  trx: Db,
+  process: { id: string; stagePointsVersion: number },
+  kind: ItemKind,
+  itemId: string,
+): Promise<{ ok: true; item: StatedItem } | { ok: false; error: ItemNotFound | "already_withdrawn" | ItemsRequired }> {
+  const found = await trx
+    .selectFrom(itemPaths[kind])
+    .select("withdrawnAt")
+    .where("id", "=", itemId)
+    .where("processId", "=", process.id)
+    .executeTakeFirst();
+  if (!found) return { ok: false, error: `${kind}_not_found` };
+  if (found.withdrawnAt !== null) return { ok: false, error: "already_withdrawn" };
+  // Coberto, o Ponto que distingue Restrições de Preferências não fica sem nenhuma delas.
+  const { constraints, preferences } = inForceOf(await constraintsAndPreferencesOf(trx, process.id));
+  const lastOne = constraints.length + preferences.length === 1;
+  const covered = (await stagePointStates(trx, process, "R")).some(
+    (point) => point.status === "covered" && findStagePoint(process.stagePointsVersion, "R", point.key)?.needsConstraintsOrPreferences,
+  );
+  if (lastOne && covered) return { ok: false, error: "no_constraint_or_preference" };
+  const item = await trx
+    .updateTable(itemPaths[kind])
+    .set({ withdrawnAt: sql<Date>`clock_timestamp()` })
+    .where("id", "=", itemId)
+    .returning(columns)
+    .executeTakeFirstOrThrow();
+  return { ok: true, item };
+}
+
+// O que substitui a Restrição revista: uma Restrição nova ou uma Preferência.
+export interface ItemReplacement {
+  kind: ItemKind;
+  item: ItemStatement;
+}
+
+export type ConstraintRevisionError = "constraint_not_found" | "already_withdrawn" | ItemsRequired;
+
+// Revisão de Restrição: retira a Restrição em vigor e registra a que a substitui, se houver; as duas
+// ficam no histórico. Chamar com o Processo travado na Etapa R (lockStageR).
+export async function reviseConstraintIn(
+  trx: Db,
+  process: { id: string; stagePointsVersion: number },
+  constraintId: string,
+  replacement: ItemReplacement | null,
+): Promise<
+  | { ok: true; revised: StatedItem; replacement: { kind: ItemKind; item: StatedItem } | null }
+  | { ok: false; error: ConstraintRevisionError }
+> {
+  // Verificada antes de registrar a substituta: uma recusa não deixa nada gravado.
+  const found = await trx
+    .selectFrom("constraints")
+    .select("withdrawnAt")
+    .where("id", "=", constraintId)
+    .where("processId", "=", process.id)
+    .executeTakeFirst();
+  if (!found) return { ok: false, error: "constraint_not_found" };
+  if (found.withdrawnAt !== null) return { ok: false, error: "already_withdrawn" };
+  // A substituta entra antes: com ela, a retirada não deixa o Ponto sem nenhuma Restrição ou Preferência.
+  const registered = replacement && { kind: replacement.kind, item: await registerIn(trx, process.id, replacement.kind, replacement.item) };
+  const withdrawn = await withdrawIn(trx, process, "constraint", constraintId);
+  if (!withdrawn.ok) return { ok: false, error: withdrawn.error === "preference_not_found" ? "constraint_not_found" : withdrawn.error };
+  return { ok: true, revised: withdrawn.item, replacement: registered };
+}
+
 export function constraintsAndPreferences({ db }: { db: Db }): ConstraintsAndPreferences {
   return {
-    async register(processId, kind, { statement, scope, unit }) {
+    async register(processId, kind, item) {
       return db.transaction().execute(async (trx) => {
         const locked = await lockStageR(trx, processId);
         if (!locked.ok) return locked;
-        const item = await trx
-          .insertInto(itemPaths[kind])
-          .values({ processId, statement: statement.trim(), scope: optionalText(scope), unit: optionalText(unit) })
-          .returning(columns)
-          .executeTakeFirstOrThrow();
-        return { ok: true, item } as const;
+        return { ok: true, item: await registerIn(trx, processId, kind, item) } as const;
       });
     },
 
@@ -136,28 +206,7 @@ export function constraintsAndPreferences({ db }: { db: Db }): ConstraintsAndPre
       return db.transaction().execute(async (trx) => {
         const locked = await lockStageR(trx, processId);
         if (!locked.ok) return locked;
-        const found = await trx
-          .selectFrom(itemPaths[kind])
-          .select("withdrawnAt")
-          .where("id", "=", itemId)
-          .where("processId", "=", processId)
-          .executeTakeFirst();
-        if (!found) return { ok: false, error: `${kind}_not_found` } as const;
-        if (found.withdrawnAt !== null) return { ok: false, error: "already_withdrawn" } as const;
-        // Coberto, o Ponto que distingue Restrições de Preferências não fica sem nenhuma delas.
-        const { constraints, preferences } = inForceOf(await constraintsAndPreferencesOf(trx, processId));
-        const lastOne = constraints.length + preferences.length === 1;
-        const covered = (await stagePointStates(trx, locked.process, "R")).some(
-          (point) => point.status === "covered" && findStagePoint(locked.process.stagePointsVersion, "R", point.key)?.needsConstraintsOrPreferences,
-        );
-        if (lastOne && covered) return { ok: false, error: "no_constraint_or_preference" } as const;
-        const item = await trx
-          .updateTable(itemPaths[kind])
-          .set({ withdrawnAt: sql<Date>`clock_timestamp()` })
-          .where("id", "=", itemId)
-          .returning(columns)
-          .executeTakeFirstOrThrow();
-        return { ok: true, item } as const;
+        return withdrawIn(trx, locked.process, kind, itemId);
       });
     },
   };

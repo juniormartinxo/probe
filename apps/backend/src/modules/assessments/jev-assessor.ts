@@ -5,6 +5,7 @@ import {
   type AssessorOutcome,
   type Verdict,
 } from "./assessor.ts";
+import { conflictRequest } from "./conflict-rubric.ts";
 import { coverageRequest, type ChoiceQuestion } from "./coverage-rubric.ts";
 import { IMPACT_KEY, impactRequest } from "./impact-rubric.ts";
 
@@ -113,6 +114,10 @@ export function createJevAssessor({ url, apiKey, model, timeoutMs }: JevSettings
       const { state, questions } = impactRequest(input);
       const outcome = await ask(state, questions);
       return outcome.status === "completed" ? { ...outcome, result: outcome.result[IMPACT_KEY]! } : outcome;
+    },
+    assessConflicts(input) {
+      const { state, questions } = conflictRequest(input);
+      return ask(state, questions);
     },
   };
 }

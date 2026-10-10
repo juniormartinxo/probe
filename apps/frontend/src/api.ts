@@ -240,10 +240,83 @@ export interface ImpactAssessment {
   createdAt: string;
 }
 
-export type PendencyReason = "unknown_information" | "reassessment";
+export type PendencyReason = "unknown_information" | "reassessment" | "conflict";
 
-// Pendência numa Pergunta: de informação desconhecida, até uma resposta resolvê-la; ou de
-// reavaliação, até o usuário reconfirmar a Confirmação afetada ou corrigir a resposta.
+// Resposta confirmada num par de conflito, como o usuário a vê. `superseded`: a Pergunta já tem uma
+// Versão mais nova.
+export interface ConflictingAnswer {
+  answerVersionId: string;
+  versionNumber: number;
+  question: { id: string; wording: string; stage: Stage; blockNumber: number; number: number };
+  answer: string;
+  superseded: boolean;
+}
+
+// Julgamento do Jev sobre um par de respostas. `needsDecision`: `insufficient` ou confiança baixa.
+export interface ConflictVerdict {
+  pairId: string;
+  choice: AssessmentChoice;
+  probabilities: Record<AssessmentChoice, number>;
+  confidence: number;
+  needsDecision: boolean;
+}
+
+// Uma chamada ao Jev com os pares de uma verificação de conflito.
+export interface ConflictAssessment {
+  id: string;
+  checkId: string;
+  status: "completed" | "failed";
+  requestedModel: string;
+  jevModel: string | null;
+  rubricRevision: string;
+  analyzedConstraintIds: string[];
+  analyzedPreferenceIds: string[];
+  verdicts: ConflictVerdict[];
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  createdAt: string;
+}
+
+export type ConflictPairStatus =
+  | "not_assessed"
+  | "assessment_failed"
+  | "awaiting_decision"
+  | "no_conflict"
+  | "dismissed"
+  | "pendency_open"
+  | "pendency_resolved"
+  | "superseded";
+
+export interface ConflictPair {
+  id: string;
+  position: number;
+  answer: ConflictingAnswer;
+  other: ConflictingAnswer;
+  status: ConflictPairStatus;
+  verdict: ConflictVerdict | null;
+  pendencyId: string | null;
+}
+
+// Respostas recém-confirmadas, em pares entre si e com as já confirmadas, e as Avaliações do Jev.
+export interface ConflictCheck {
+  id: string;
+  createdAt: string;
+  status: "not_assessed" | "assessment_failed" | "awaiting_decision" | "decided";
+  pairs: ConflictPair[];
+  assessments: ConflictAssessment[];
+}
+
+// A pergunta com que a IA orienta a resolução de uma Pendência de conflito.
+export interface ResolutionQuestion {
+  id: string;
+  status: AttemptStatus;
+  question: string | null;
+  attempts: Attempt[];
+}
+
+// Pendência numa Pergunta: de informação desconhecida, até uma resposta resolvê-la; de reavaliação,
+// até o usuário reconfirmar a Confirmação afetada ou corrigir a resposta; de conflito, até o usuário
+// corrigir uma das respostas, rever uma Restrição ou esclarecer.
 export interface Pendency {
   id: string;
   reason: PendencyReason;
@@ -252,13 +325,24 @@ export interface Pendency {
   openedAt: string;
   resolvedAt: string | null;
   resolvedByAnswerVersionId: string | null;
-  resolution: "answered" | "reconfirmed" | "corrected" | null;
+  resolution: "answered" | "reconfirmed" | "corrected" | "clarified" | "constraint_revised" | null;
   reassessment: {
     answerVersionId: string;
     previousAnswerVersionId: string;
     confirmation: DependentConfirmation;
     openedBy: "jev" | "user";
     impactAssessment: ImpactAssessment;
+  } | null;
+  conflict: {
+    checkId: string;
+    pairId: string;
+    answers: [ConflictingAnswer, ConflictingAnswer];
+    openedBy: "jev" | "user";
+    conflictAssessment: ConflictAssessment;
+    resolutionQuestion: ResolutionQuestion | null;
+    // O esclarecimento, ou a nota da revisão de Restrição.
+    note: string | null;
+    constraintRevision: { revisedConstraintId: string; replacement: { kind: ItemKind; id: string } | null } | null;
   } | null;
 }
 
@@ -360,6 +444,8 @@ export interface ProcessDetail extends ProcessWithConversation {
   // Confirmações em revisão porque uma resposta de que dependiam mudou, e as Avaliações de impacto.
   reassessments: Reassessment[];
   impactAssessments: ImpactAssessment[];
+  // Verificações de conflito entre respostas confirmadas, com os pares e as Avaliações do Jev.
+  conflictChecks: ConflictCheck[];
   // Avaliações do Jev de cada Etapa já aberta, na ordem em que foram pedidas.
   stageAssessments: StageAssessment[];
   stageConfirmations: StageConfirmation[];
@@ -645,6 +731,61 @@ export async function reconfirmPendency(processId: string, pendencyId: string, s
     { method: "POST", body: JSON.stringify({ synthesis }) },
   );
   return pendency;
+}
+
+const pendencyPath = (processId: string, pendencyId: string) => `${processPath(processId)}/pendencies/${encodeURIComponent(pendencyId)}`;
+
+const checkPath = (processId: string, checkId: string) => `${processPath(processId)}/conflict-checks/${encodeURIComponent(checkId)}`;
+
+// Nova tentativa da Avaliação de conflito, depois de uma falha do Jev.
+export async function retryConflictAssessment(processId: string, checkId: string): Promise<ConflictCheck> {
+  const { conflictCheck } = await request<{ conflictCheck: ConflictCheck }>(`${checkPath(processId, checkId)}/conflict-assessments`, {
+    method: "POST",
+  });
+  return conflictCheck;
+}
+
+// A decisão do usuário sobre pares em que o Jev não teve certeza ou não respondeu, sobre a Avaliação que ele viu.
+export async function decideConflict(
+  processId: string,
+  checkId: string,
+  decision: { conflictAssessmentId: string; pairIds: string[]; decision: "open_pendency" | "dismiss" },
+): Promise<Pendency[]> {
+  const { pendencies } = await request<{ pendencies: Pendency[] }>(`${checkPath(processId, checkId)}/decision`, {
+    method: "POST",
+    body: JSON.stringify(decision),
+  });
+  return pendencies;
+}
+
+export async function clarifyConflict(processId: string, pendencyId: string, clarification: string): Promise<Pendency> {
+  const { pendency } = await request<{ pendency: Pendency }>(`${pendencyPath(processId, pendencyId)}/clarification`, {
+    method: "POST",
+    body: JSON.stringify({ clarification }),
+  });
+  return pendency;
+}
+
+// Resolve a Pendência de conflito retirando a Restrição e, se houver, registrando a que a substitui.
+export async function reviseConstraintForConflict(
+  processId: string,
+  pendencyId: string,
+  revision: { constraintId: string; replacement: (ItemStatement & { kind: ItemKind }) | null; note: string | null },
+): Promise<Pendency> {
+  const { pendency } = await request<{ pendency: Pendency }>(`${pendencyPath(processId, pendencyId)}/constraint-revision`, {
+    method: "POST",
+    body: JSON.stringify(revision),
+  });
+  return pendency;
+}
+
+// Pede a pergunta de resolução à IA, ou uma nova tentativa dela, com a CLI escolhida.
+export async function requestResolutionQuestion(processId: string, pendencyId: string, cli?: Cli): Promise<ResolutionQuestion> {
+  const { resolutionQuestion } = await request<{ resolutionQuestion: ResolutionQuestion }>(
+    `${pendencyPath(processId, pendencyId)}/resolution-question/attempts`,
+    { method: "POST", body: JSON.stringify(cli ? { cli } : {}) },
+  );
+  return resolutionQuestion;
 }
 
 export async function getUnderstanding(processId: string): Promise<Understanding> {

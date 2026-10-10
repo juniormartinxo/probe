@@ -135,6 +135,8 @@ interface LockedBlock {
   input: SynthesisInput;
   // As Versões que valem nas Perguntas enviadas à IA: as do Bloco e as dos Blocos anteriores.
   currentVersionIds: string[];
+  // As que valem nas Perguntas do próprio Bloco: as que a Confirmação da síntese confirma.
+  ownVersionIds: string[];
   complete: boolean;
 }
 
@@ -188,6 +190,7 @@ async function lockBlock(
         earlierQuestions: questions.filter((question) => question.blockId !== blockId).map(askedQuestionOf),
       },
       currentVersionIds: currentVersionsOf(questions),
+      ownVersionIds: currentVersionsOf(own),
       complete: own.every((question) => question.currentVersionId !== null || question.unknown),
     },
   };
@@ -310,8 +313,16 @@ async function listRequestsByBlock(db: Db, processId: string): Promise<Map<strin
   return byBlock;
 }
 
-export function syntheses(deps: { db: Db; assistant: Assistant; runner: AiRequestRunner; settings: SettingsModule }): Syntheses {
-  const { db, assistant, runner, settings } = deps;
+// `afterConfirm`: chamado depois de gravada a Confirmação da síntese, fora da transação, com as Versões
+// que ela confirmou, para avaliar conflito entre elas e as respostas já confirmadas. Não lança.
+export function syntheses(deps: {
+  db: Db;
+  assistant: Assistant;
+  runner: AiRequestRunner;
+  settings: SettingsModule;
+  afterConfirm: (processId: string, answerVersionIds: string[]) => Promise<void>;
+}): Syntheses {
+  const { db, assistant, runner, settings, afterConfirm } = deps;
 
   async function findRequest(processId: string, blockId: string, requestId: string): Promise<SynthesisRequest> {
     const block = await db
@@ -406,7 +417,7 @@ export function syntheses(deps: { db: Db; assistant: Assistant; runner: AiReques
 
     async confirm(processId, blockId, confirmation) {
       const synthesis = confirmation.synthesis.trim();
-      return db.transaction().execute(async (trx) => {
+      const confirmed = await db.transaction().execute(async (trx) => {
         const locked = await lockBlock(trx, processId, blockId);
         if (!locked.ok) return locked;
         const { block } = locked;
@@ -454,10 +465,14 @@ export function syntheses(deps: { db: Db; assistant: Assistant; runner: AiReques
           synthesis: {
             ...row,
             coveredStagePoints: covered.map((key) => namedStagePoint(block.stagePointsVersion, block.stage, key)),
-            corrections: [],
+            corrections: [] as SynthesisCorrection[],
           },
+          confirmedVersionIds: block.ownVersionIds,
         } as const;
       });
+      if (!confirmed.ok) return confirmed;
+      await afterConfirm(processId, confirmed.confirmedVersionIds);
+      return { ok: true, synthesis: confirmed.synthesis };
     },
   };
 }

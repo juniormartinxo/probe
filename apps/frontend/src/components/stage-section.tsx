@@ -12,6 +12,7 @@ import {
 import { AttemptList } from "@/components/attempt-list";
 import { NewAttempt } from "@/components/new-attempt";
 import { BlockSynthesis } from "@/components/block-synthesis";
+import { Conflicts } from "@/components/conflicts";
 import { ConstraintsAndPreferences } from "@/components/constraints-and-preferences";
 import { Questionnaire } from "@/components/questionnaire";
 import { Reassessments } from "@/components/reassessments";
@@ -24,7 +25,7 @@ import { attemptProblem } from "@/refinement";
 import { stageName, stagePointStatusText } from "@/stages";
 
 // Etapa atual: os Pontos (abertos, cobertos, inaplicáveis ou com a ausência registrada), as
-// Restrições e Preferências, o que precisa ser revisto, as Pendências e os Blocos de Perguntas da IA, cada um com a sua síntese. Só aparece depois da Confirmação do enunciado.
+// Restrições e Preferências, o que precisa ser revisto, as respostas em conflito, as Pendências e os Blocos de Perguntas da IA, cada um com a sua síntese. Só aparece depois da Confirmação do enunciado.
 // `onChange` recarrega o Processo depois de cada ação.
 export function StageSection({ process, onChange }: { process: ProcessDetail; onChange: () => void }) {
   const blockRequest = process.blockRequests.at(-1) ?? null;
@@ -43,6 +44,7 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
       <StagePoints processId={process.id} points={process.stagePoints} onChange={onChange} />
       <ConstraintsAndPreferences process={process} onChange={onChange} />
       <Reassessments process={process} onChange={onChange} />
+      <Conflicts process={process} onChange={onChange} />
       <OpenPendencies process={process} />
       {process.blocks.map((block) => (
         <div key={block.id} className="flex flex-col gap-2">
@@ -210,7 +212,7 @@ function StagePointItem({ processId, point, onChange }: { processId: string; poi
 }
 
 function OpenPendencies({ process }: { process: ProcessDetail }) {
-  // As de reavaliação aparecem com o que precisa ser revisto.
+  // As de reavaliação aparecem com o que precisa ser revisto; as de conflito, com as respostas em conflito.
   const open = process.pendencies.filter((pendency) => pendency.resolvedAt === null && pendency.reason === "unknown_information");
   if (open.length === 0) return null;
   return (

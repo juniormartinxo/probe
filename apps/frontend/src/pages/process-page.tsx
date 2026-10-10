@@ -44,7 +44,8 @@ export function ProcessPage() {
     state.kind === "loaded" &&
     (state.process.refinement?.status === "running" ||
       state.process.blockRequests.at(-1)?.status === "running" ||
-      state.process.blocks.some((block) => block.synthesisRequests.at(-1)?.status === "running"));
+      state.process.blocks.some((block) => block.synthesisRequests.at(-1)?.status === "running") ||
+      state.process.pendencies.some((pendency) => pendency.conflict?.resolutionQuestion?.status === "running"));
   useEffect(() => {
     if (!running) return;
     const timer = setInterval(load, POLL_INTERVAL_MS);

@@ -6,6 +6,7 @@ import type { Assessor } from "./modules/assessments/assessor.ts";
 import { stageAssessments } from "./modules/assessments/stage-assessments.ts";
 import { answers } from "./modules/process/answers.ts";
 import { blocks } from "./modules/process/blocks.ts";
+import { conflicts as conflictsModule } from "./modules/process/conflicts.ts";
 import { constraintsAndPreferences } from "./modules/process/constraints-and-preferences.ts";
 import { pendencies } from "./modules/process/pendencies.ts";
 import { problemStatements } from "./modules/process/problem-statement.ts";
@@ -29,7 +30,10 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
   const app = Fastify({ logger: options.logger ?? false });
   const runner = new AiRequestRunner(db, app.log);
   const settings = settingsModule({ db, assistant, defaultAiModel });
-  const reassessments = reassessmentsModule({ db, assessor, log: app.log });
+  const conflicts = conflictsModule({ db, assessor, assistant, runner, settings, log: app.log });
+  // Respostas que passam a confirmadas têm o conflito com as já confirmadas avaliado.
+  const afterConfirm = (processId: string, answerVersionIds: string[]) => conflicts.assessConfirmed(processId, answerVersionIds);
+  const reassessments = reassessmentsModule({ db, assessor, log: app.log, afterConfirm });
 
   // Ao subir, o que ficou em andamento de uma execução anterior não tem mais quem o receba.
   app.addHook("onReady", () => runner.interruptAbandoned());
@@ -44,13 +48,14 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
           problemStatements: problemStatements({ db, assistant, runner, settings }),
           blocks: blocks({ db, assistant, runner, settings }),
           answers: answers({ db, afterChange: (processId, questionId) => reassessments.assessChange(processId, questionId) }),
-          syntheses: syntheses({ db, assistant, runner, settings }),
+          syntheses: syntheses({ db, assistant, runner, settings, afterConfirm }),
           pendencies: pendencies({ db }),
           stagePointCoverage: stagePointCoverage({ db }),
           stageAssessments: stageAssessments({ db, assessor }),
           stageConfirmations: stageConfirmations({ db }),
           constraintsAndPreferences: constraintsAndPreferences({ db }),
           reassessments,
+          conflicts,
         }),
       );
       await api.register(settingsRoutes({ settings }));

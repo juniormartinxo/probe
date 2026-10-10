@@ -42,6 +42,7 @@ describe("Unknown information", () => {
       resolvedByAnswerVersionId: null,
       resolution: null,
       reassessment: null,
+      conflict: null,
     };
     expect(response.json().pendency).toEqual(pendency);
     await testApp.close();

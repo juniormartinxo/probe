@@ -33,6 +33,8 @@ export interface AiRequestTable {
   operation: Operation;
   // Bloco que a solicitação sintetiza; só nas de síntese.
   blockId: string | null;
+  // Pendência de conflito cuja pergunta de resolução a solicitação formula; só nessas.
+  pendencyId: Generated<string | null>;
   createdAt: Generated<Date>;
 }
 
@@ -158,6 +160,59 @@ export interface PendencyTable {
   openedBy: "jev" | "user" | null;
   blockId: string | null;
   stage: Stage | null;
+  // Só nas de conflito: o par de respostas e a Avaliação de conflito que a originou. Na resolução, o
+  // esclarecimento ou a nota, e a Restrição revista com a que a substituiu, se houver.
+  conflictPairId: Generated<string | null>;
+  conflictAssessmentId: Generated<string | null>;
+  resolutionNote: Generated<string | null>;
+  revisedConstraintId: Generated<string | null>;
+  replacementConstraintId: Generated<string | null>;
+  replacementPreferenceId: Generated<string | null>;
+}
+
+export interface ConflictCheckTable {
+  id: Generated<string>;
+  processId: string;
+  subjectAnswerVersionIds: string[];
+  createdAt: Generated<Date>;
+}
+
+export interface ConflictPairTable {
+  id: Generated<string>;
+  checkId: string;
+  position: number;
+  answerVersionId: string;
+  otherAnswerVersionId: string;
+}
+
+export interface ConflictAssessmentTable {
+  id: Generated<string>;
+  processId: string;
+  checkId: string;
+  status: "completed" | "failed";
+  requestedModel: string;
+  jevModel: string | null;
+  rubricRevision: string;
+  analyzedConstraintIds: Generated<string[]>;
+  analyzedPreferenceIds: Generated<string[]>;
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  createdAt: Generated<Date>;
+}
+
+export interface ConflictVerdictTable {
+  assessmentId: string;
+  pairId: string;
+  choice: AssessmentChoice;
+  confidence: number;
+  // Gravado como JSON; lido como objeto.
+  probabilities: ColumnType<Record<AssessmentChoice, number>, string, never>;
+}
+
+export interface ConflictDismissalTable {
+  pairId: string;
+  conflictAssessmentId: string;
+  dismissedAt: Generated<Date>;
 }
 
 export interface StageAssessmentTable {
@@ -270,6 +325,11 @@ export interface Database {
   stageConfirmations: StageConfirmationTable;
   impactAssessments: ImpactAssessmentTable;
   confirmationAnswerVersions: ConfirmationAnswerVersionTable;
+  conflictChecks: ConflictCheckTable;
+  conflictPairs: ConflictPairTable;
+  conflictAssessments: ConflictAssessmentTable;
+  conflictVerdicts: ConflictVerdictTable;
+  conflictDismissals: ConflictDismissalTable;
   settings: SettingsTable;
 }
 

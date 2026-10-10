@@ -241,6 +241,7 @@ describe("Impact `yes`", () => {
         openedBy: "jev",
         impactAssessment,
       },
+      conflict: null,
     };
     expect(process.pendencies).toEqual([pendency]);
     // O chat mostra o que precisa ser revisto e por quê: a Confirmação, a mudança e o julgamento.

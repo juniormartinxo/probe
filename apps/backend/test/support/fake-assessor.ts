@@ -2,6 +2,8 @@ import type {
   AssessmentChoice,
   Assessor,
   AssessorOutcome,
+  ConflictInput,
+  ConflictPairInput,
   CoverageInput,
   ImpactInput,
   Verdict,
@@ -37,14 +39,28 @@ export const impactOutcome = (choice: AssessmentChoice, confidence = 0.9): Asses
   result: verdict(choice, confidence),
 });
 
-// `Assessor` falso: desfechos na ordem; sem roteiro, `yes` em todos os Pontos e, no impacto, `no`
-// com confiança (a Confirmação continua valendo).
+// Desfecho concluído de uma Avaliação de conflito: o julgamento que `judge` der a cada par, ou `no`
+// com confiança.
+export const conflictOutcome =
+  (judge: (pair: ConflictPairInput) => Verdict | undefined = () => undefined) =>
+  (input: ConflictInput): AssessorOutcome<Verdicts> => ({
+    status: "completed",
+    model: JEV_MODEL,
+    result: Object.fromEntries(input.pairs.map((pair) => [pair.key, judge(pair) ?? verdict("no")])),
+  });
+
+type ConflictStep = AssessorOutcome<Verdicts> | ((input: ConflictInput) => AssessorOutcome<Verdicts>);
+
+// `Assessor` falso: desfechos na ordem; sem roteiro, `yes` em todos os Pontos, no impacto `no` com
+// confiança (a Confirmação continua valendo) e, no conflito, `no` com confiança em todos os pares.
 export class FakeAssessor implements Assessor {
   readonly model = JEV_MODEL;
   readonly inputs: CoverageInput[] = [];
   readonly impactInputs: ImpactInput[] = [];
+  readonly conflictInputs: ConflictInput[] = [];
   private readonly steps: Step[] = [];
   private readonly impactSteps: AssessorOutcome<Verdict>[] = [];
+  private readonly conflictSteps: ConflictStep[] = [];
 
   willRespond(...steps: Step[]): this {
     this.steps.push(...steps);
@@ -54,6 +70,17 @@ export class FakeAssessor implements Assessor {
   willAssessImpact(...outcomes: AssessorOutcome<Verdict>[]): this {
     this.impactSteps.push(...outcomes);
     return this;
+  }
+
+  willAssessConflicts(...steps: ConflictStep[]): this {
+    this.conflictSteps.push(...steps);
+    return this;
+  }
+
+  async assessConflicts(input: ConflictInput): Promise<AssessorOutcome<Verdicts>> {
+    this.conflictInputs.push(input);
+    const step = this.conflictSteps.shift() ?? conflictOutcome();
+    return typeof step === "function" ? step(input) : step;
   }
 
   async assessImpact(input: ImpactInput): Promise<AssessorOutcome<Verdict>> {

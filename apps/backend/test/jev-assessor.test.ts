@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { CoverageInput, ImpactInput } from "../src/modules/assessments/assessor.ts";
+import type { ConflictInput, CoverageInput, ImpactInput } from "../src/modules/assessments/assessor.ts";
 import { createJevAssessor } from "../src/modules/assessments/jev-assessor.ts";
 import { stagePointsOf } from "../src/modules/process/stage-points.ts";
 
@@ -250,5 +250,66 @@ describe("impact Assessment through the Jev API", () => {
     const { url } = await startJev(() => ({ model: "jev-1.13.0", answers: {}, usage: {} }));
 
     expect(await assessImpact(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
+  });
+});
+
+const conflictInput: ConflictInput = {
+  problemStatement: "O deploy leva 40 minutos e bloqueia o time durante a manhã.",
+  constraints: [{ statement: "Sem downtime", scope: "Produção", unit: null }],
+  preferences: [{ statement: "Manter o GitHub Actions", scope: null, unit: null }],
+  pairs: [
+    {
+      key: "par_0",
+      answer: { ref: "2.1", stage: "R", wording: "Até quando?", answer: "Em duas semanas." },
+      other: { ref: "2.2", stage: "R", wording: "De que integrações depende?", answer: "Da nova API, disponível em um mês." },
+    },
+    {
+      key: "par_1",
+      answer: { ref: "2.1", stage: "R", wording: "Até quando?", answer: "Em duas semanas." },
+      other: { ref: "1.1", stage: "P", wording: "A demora é o problema em si?", answer: "A demora é sintoma de outra coisa" },
+    },
+  ],
+};
+
+describe("conflict Assessment through the Jev API", () => {
+  const assessConflicts = (url: string) =>
+    createJevAssessor({ url, apiKey: API_KEY, model: "jev-latest", timeoutMs: 5_000 }).assessConflicts(conflictInput);
+
+  it("sends the answers once, with the Constraints and Preferences as context, and one Choice question per pair", async () => {
+    const answers = { par_0: validAnswers.real_problem, par_1: validAnswers.consequence };
+    const { url, requests } = await startJev(() => ({ model: "jev-1.13.0", answers, usage: {} }));
+
+    const outcome = await assessConflicts(url);
+
+    const body = requests[0]!.body as { state: unknown; questions: Record<string, { instructions: string; criteria: object }> };
+    expect(body.state).toEqual({
+      enunciado: conflictInput.problemStatement,
+      restricoes: [{ restricao: "Sem downtime", escopo: "Produção", unidade: null }],
+      preferencias: [{ preferencia: "Manter o GitHub Actions", escopo: null, unidade: null }],
+      respostas: [
+        { pergunta: "[2.1] Até quando?", etapa: "R (Restrições)", resposta: "Em duas semanas." },
+        { pergunta: "[2.2] De que integrações depende?", etapa: "R (Restrições)", resposta: "Da nova API, disponível em um mês." },
+        { pergunta: "[1.1] A demora é o problema em si?", etapa: "P (Problema)", resposta: "A demora é sintoma de outra coisa" },
+      ],
+    });
+    expect(Object.keys(body.questions)).toEqual(["par_0", "par_1"]);
+    expect(body.questions.par_0!.instructions).toContain("As respostas [2.1] e [2.2] são incompatíveis entre si");
+    // Preferência não é obrigação.
+    expect(body.questions.par_0!.instructions).toContain("deixar de atender uma Preferência não é conflito");
+    expect(Object.keys(body.questions.par_1!.criteria)).toEqual(["yes", "no", "insufficient"]);
+    expect(outcome).toEqual({
+      status: "completed",
+      model: "jev-1.13.0",
+      result: {
+        par_0: { choice: "yes", probabilities: { yes: 0.88, no: 0.1, insufficient: 0.02 }, confidence: 0.81 },
+        par_1: { choice: "insufficient", probabilities: { yes: 0.3, no: 0.3, insufficient: 0.4 }, confidence: 0.12 },
+      },
+    });
+  });
+
+  it("refuses an answer that leaves a pair without judgment as invalid output", async () => {
+    const { url } = await startJev(() => ({ model: "jev-1.13.0", answers: { par_0: validAnswers.real_problem }, usage: {} }));
+
+    expect(await assessConflicts(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
   });
 });

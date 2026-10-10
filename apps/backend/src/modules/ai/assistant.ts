@@ -161,6 +161,26 @@ export interface GeneratedSynthesis {
   ambiguousAnswers: AmbiguousAnswer[];
 }
 
+// Resposta confirmada como a IA a recebe numa Pendência de conflito, com a Etapa da Pergunta.
+export interface ConflictingAnswer {
+  ref: string;
+  stage: Stage;
+  wording: string;
+  answer: string;
+}
+
+// O que a IA recebe para formular a pergunta com que o usuário resolve uma Pendência de conflito: o
+// problema, as Restrições e Preferências em vigor e as duas respostas incompatíveis.
+export interface ConflictQuestionInput extends ItemStatements {
+  problemStatement: string;
+  answers: [ConflictingAnswer, ConflictingAnswer];
+}
+
+export interface ConflictQuestion {
+  // A pergunta ao usuário: se há alternativa provisória, se algo deve ser revisto ou se algo foi mal entendido.
+  question: string;
+}
+
 export interface Assistant {
   refineProblemStatement(
     input: { originalDescription: string },
@@ -168,6 +188,7 @@ export interface Assistant {
   ): Promise<AssistantOutcome<StatementProposal>>;
   generateBlock(input: BlockInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedBlock>>;
   synthesizeBlock(input: SynthesisInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedSynthesis>>;
+  formulateConflictQuestion(input: ConflictQuestionInput, context: AttemptContext): Promise<AssistantOutcome<ConflictQuestion>>;
   // Pedido mínimo à CLI, só para saber se a cadeia até ela funciona; o resultado é a resposta crua.
   testConnection(context: AttemptContext): Promise<AssistantOutcome<string>>;
 }
