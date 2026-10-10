@@ -248,7 +248,7 @@ function ComparisonForm({
         Linha de “{row.option.statement}”
         {fromSuggestion && <span className="text-muted-foreground font-normal"> · a partir da sugestão da IA</span>}
       </p>
-      {row.comparison && suggestion && !fromSuggestion && (
+      {row.comparison && suggestion && !fromSuggestion && row.comparison.recommendationId !== recommendationId && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-muted-foreground text-xs">A Recomendação mais recente sugere outra linha para esta Opção.</p>
           <Button
@@ -368,14 +368,23 @@ function RecommendationView({ recommendation, matrix }: { recommendation: Sugges
 function Choice({ process, editable, onChange }: { process: ProcessDetail; editable: boolean; onChange: () => void }) {
   const viable = process.comparisonMatrix.filter((row) => row.viability === "viable");
   const current = process.chosenOptions.at(-1) ?? null;
+  const chosenViability = current && process.comparisonMatrix.find((row) => row.option.id === current.option.id)?.viability;
+  // O formulário parte da Escolha em vigor só enquanto ela é viável: uma Opção que uma Revisão de
+  // Restrição tornou inviável não pode ser escolhida de novo.
+  const startingOptionId = chosenViability === "viable" ? current!.option.id : null;
   const [choosing, setChoosing] = useState(current === null);
-  const [optionId, setOptionId] = useState<string | null>(current?.option.id ?? null);
+  const [optionId, setOptionId] = useState<string | null>(startingOptionId);
   const [reasons, setReasons] = useState<Record<string, string>>(
     Object.fromEntries(current?.discards.map((discard) => [discard.option.id, discard.reason]) ?? []),
   );
   const { saving, error, act } = useAction(onChange);
   const others = viable.filter((row) => row.option.id !== optionId);
-  const chosenViability = current && process.comparisonMatrix.find((row) => row.option.id === current.option.id)?.viability;
+
+  function startChoosing() {
+    // A viabilidade pode ter mudado desde que a tela abriu (uma Revisão de Restrição).
+    setOptionId(startingOptionId);
+    setChoosing(true);
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -417,7 +426,7 @@ function Choice({ process, editable, onChange }: { process: ProcessDetail; edita
       )}
       {editable && !choosing && (
         <div>
-          <Button variant="outline" size="sm" onClick={() => setChoosing(true)}>
+          <Button variant="outline" size="sm" onClick={startChoosing}>
             Trocar a Escolha
           </Button>
         </div>
