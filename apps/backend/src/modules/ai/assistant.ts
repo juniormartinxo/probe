@@ -2,6 +2,7 @@
 
 import type { ConflictClarification } from "../assessments/assessor.ts";
 import type { ItemStatements } from "../process/constraints-and-preferences.ts";
+import type { OptionStatus } from "../process/options.ts";
 import type { StagePoint } from "../process/stage-points.ts";
 import type { Stage } from "../process/stage.ts";
 
@@ -204,7 +205,7 @@ export interface GeneratedOptions {
 export interface KnownOption {
   statement: string;
   description: string | null;
-  status: "suggested" | "accepted" | "discarded";
+  status: OptionStatus;
   violatedConstraints: string[];
 }
 

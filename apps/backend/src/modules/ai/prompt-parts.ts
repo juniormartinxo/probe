@@ -1,5 +1,6 @@
 import type { StagePoint } from "../process/stage-points.ts";
 import type { ItemStatement, ItemStatements } from "../process/constraints-and-preferences.ts";
+import type { OptionStatus } from "../process/options.ts";
 import type { Stage } from "../process/stage.ts";
 import type { AskedQuestion, ConfirmedStageAnswers, KnownOption } from "./assistant.ts";
 
@@ -69,7 +70,7 @@ const itemsText = (items: ItemStatement[]): string => (items.length > 0 ? items.
 export const constraintsAndPreferencesText = ({ constraints, preferences }: ItemStatements): string =>
   `Restrições (inegociáveis):\n${itemsText(constraints)}\nPreferências (negociáveis):\n${itemsText(preferences)}`;
 
-const optionStatusNames: Record<KnownOption["status"], string> = { suggested: "sugerida", accepted: "aceita", discarded: "descartada" };
+const optionStatusNames: Record<OptionStatus, string> = { suggested: "sugerida", accepted: "aceita", discarded: "descartada" };
 
 // Opções já registradas, como entram nos prompts: o estado e, numa aceita, as Restrições que ela viola.
 // O texto é do usuário ou da IA e vai dentro dos delimitadores de dado.

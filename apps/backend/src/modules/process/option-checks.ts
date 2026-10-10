@@ -1,6 +1,5 @@
 import type { Db } from "../../db/database.ts";
-import { optionAssessmentsOf, type OptionAssessment, type OptionVerdict } from "../assessments/option-assessments.ts";
-import { optionDecidesAlone } from "../assessments/option-assessments.ts";
+import { optionAssessmentsOf, optionDecidesAlone, type OptionAssessment, type OptionVerdict } from "../assessments/option-assessments.ts";
 
 // Em que pé está cada par Opção × Restrição: ainda sem Avaliação, com a Avaliação falha ou incerta à
 // espera do usuário, decidido (a Opção cumpre ou viola a Restrição, pelo Jev ou pelo usuário), ou

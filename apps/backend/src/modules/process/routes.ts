@@ -105,7 +105,7 @@ function optionStatementFrom(body: unknown): OptionStatement | undefined {
   return { statement, description: description ?? null };
 }
 
-// A Opção do usuário, com as perspectivas da Etapa O que ela representa, se alguma. Se as chaves são
+// A Opção do usuário, com os Pontos da Etapa O que ela representa, se algum. Se as chaves são
 // da Etapa O, o módulo decide.
 function userOptionFrom(body: unknown): UserOption | undefined {
   const option = optionStatementFrom(body);

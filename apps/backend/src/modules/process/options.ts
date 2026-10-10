@@ -27,7 +27,7 @@ export interface Option {
   id: string;
   statement: string;
   description: string | null;
-  // As perspectivas da Etapa O que a Opção representa, se alguma.
+  // Os Pontos da Etapa O que a Opção representa, se algum.
   stagePoints: { key: string; name: string }[];
   origin: OptionOrigin;
   // A sugestão como a IA a fez, que o texto que vale pode ter editado; null na do usuário.
