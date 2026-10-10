@@ -183,7 +183,7 @@ describe("Conflict `yes`", () => {
           openedBy: "jev",
           conflictAssessment: check.assessments[0],
           resolutionQuestion: expect.objectContaining({ id: expect.any(String) }),
-          note: null,
+          clarification: null,
           constraintRevision: null,
         },
       },
@@ -205,6 +205,7 @@ describe("Conflict `yes`", () => {
           expect.objectContaining({ ref: "2.1", stage: "R", answer: deadline }),
           expect.objectContaining({ ref: "2.2", stage: "R", answer: integration }),
         ],
+        clarifications: [],
       },
     ]);
     let pendency: { conflict: { resolutionQuestion: { status: string; question: string | null } } };
@@ -300,13 +301,13 @@ describe("The Pendency of conflict", () => {
   });
 });
 
+const reviseConstraint = (id: string, pendencyId: string, payload: Record<string, unknown>) =>
+  api.inject({ method: "POST", url: `/api/processes/${id}/pendencies/${pendencyId}/constraint-revision`, payload });
+
+const clarify = (id: string, pendencyId: string, payload: Record<string, unknown>) =>
+  api.inject({ method: "POST", url: `/api/processes/${id}/pendencies/${pendencyId}/clarification`, payload });
+
 describe("Resolving the Pendency of conflict", () => {
-  const reviseConstraint = (id: string, pendencyId: string, payload: Record<string, unknown>) =>
-    api.inject({ method: "POST", url: `/api/processes/${id}/pendencies/${pendencyId}/constraint-revision`, payload });
-
-  const clarify = (id: string, pendencyId: string, payload: Record<string, unknown>) =>
-    api.inject({ method: "POST", url: `/api/processes/${id}/pendencies/${pendencyId}/clarification`, payload });
-
   it("by revising a Constraint: the deadline is withdrawn and replaced, and both stay in the history", async () => {
     assessor.willAssessConflicts(conflictOutcome(), deadlineVersusIntegration());
     let constraintId = "";
@@ -334,15 +335,25 @@ describe("Resolving the Pendency of conflict", () => {
       resolvedAt: expect.any(String),
       resolvedByAnswerVersionId: null,
       conflict: {
-        note: "A data foi um desejo da diretoria, não um limite.",
-        constraintRevision: { revisedConstraintId: constraintId, replacement: { kind: "preference", id: preference.id } },
+        clarification: null,
+        constraintRevision: {
+          id: expect.any(String),
+          constraint: expect.objectContaining({ id: constraintId, statement: "Entregar em duas semanas" }),
+          replacement: { kind: "preference", item: preference },
+          note: "A data foi um desejo da diretoria, não um limite.",
+          conflictPendencyId: pendency.id,
+          revisedAt: expect.any(String),
+        },
       },
     });
     expect(process.pendencies).toEqual([response.json().pendency]);
+    // Na Etapa R, antes da Confirmação dela, nenhuma Confirmação sustentava a Restrição: nada a reavaliar.
+    expect(assessor.constraintImpactInputs).toEqual([]);
+    expect(process.constraintReassessments).toEqual([]);
     expect((await confirmStageR(id)).statusCode).toBe(201);
   });
 
-  it("by revising a Constraint, only one in force, while Stage R is the current one", async () => {
+  it("by revising a Constraint, only one in force, leaving nothing recorded when refused", async () => {
     assessor.willAssessConflicts(conflictOutcome(), deadlineVersusIntegration());
     let constraintId = "";
     const { id } = await confirmStageRBlock({
@@ -380,7 +391,7 @@ describe("Resolving the Pendency of conflict", () => {
     expect(response.json().pendency).toMatchObject({
       resolution: "clarified",
       resolvedAt: expect.any(String),
-      conflict: { note: text, answers: [expect.objectContaining({ answer: deadline }), expect.objectContaining({ answer: integration })] },
+      conflict: { clarification: text, answers: [expect.objectContaining({ answer: deadline }), expect.objectContaining({ answer: integration })] },
     });
     expect(again.statusCode).toBe(409);
     expect(again.json()).toEqual({ error: "pendency_resolved" });
@@ -701,5 +712,226 @@ describe("A new Version that a Confirmation comes to hold", () => {
     expect(response.statusCode).toBe(201);
     expect(assessor.conflictInputs).toHaveLength(3);
     assessedNewVersion();
+  });
+});
+
+describe("A Constraint revision after Stage R", () => {
+  const changedIntegration = "Depende da nova API de artefatos, que agora só sai daqui a seis semanas.";
+  const note = "O prazo era da primeira versão; a diretoria aceita cinco semanas.";
+
+  // Etapa O atual: a Etapa R foi confirmada com o prazo como Restrição e, sem conflito, com o Bloco 2.
+  // Depois, a resposta da integração muda e entra em conflito com o prazo.
+  async function conflictInStageO() {
+    let constraintId = "";
+    const { id, block } = await confirmStageRBlock({
+      before: async (processId) => {
+        constraintId = (await register(processId, "constraints", "Entregar em duas semanas")).json().constraint.id;
+      },
+    });
+    expect((await confirmStageR(id)).statusCode).toBe(201);
+    assessor.willAssessConflicts(deadlineVersusIntegration());
+    const question = block.questions[1];
+    const changed = await api.answer(id, question.id, { text: changedIntegration, basedOnVersionId: question.answer.current.id });
+    expect(changed.statusCode).toBe(201);
+    const process = await api.getProcess(id);
+    expect(process.currentStage).toBe("O");
+    const pendency = process.pendencies.find((item: { reason: string; resolvedAt: string | null }) => item.reason === "conflict" && item.resolvedAt === null);
+    expect(pendency).toBeDefined();
+    return { id, constraintId, pendency };
+  }
+
+  const revise = (id: string, pendencyId: string, constraintId: string) =>
+    reviseConstraint(id, pendencyId, { constraintId, replacement: { kind: "constraint", statement: "Entregar em cinco semanas" }, note });
+
+  // Fecha os Pontos da Etapa O, inaplicáveis, e pede a Confirmação dela (sem Ponto coberto a avaliar).
+  async function confirmStageO(id: string) {
+    for (const key of ["eliminate_problem", "simplest_solution", "eighty_twenty", "reversibility"]) {
+      await api.declareInapplicable(id, key, { justification: "Fora deste exemplo." });
+    }
+    return api.confirmStage(id, { stageAssessmentId: null }, "O");
+  }
+
+  const retryConstraintImpact = (id: string, revisionId: string) =>
+    api.inject({
+      method: "POST",
+      url: `/api/processes/${id}/constraint-revisions/${revisionId}/impact-assessments`,
+      payload: { confirmation: { kind: "stage", stage: "R" } },
+    });
+
+  const decideConstraintImpact = (id: string, revisionId: string, payload: Record<string, unknown>) =>
+    api.inject({
+      method: "POST",
+      url: `/api/processes/${id}/constraint-revisions/${revisionId}/impact-decision`,
+      payload: { confirmation: { kind: "stage", stage: "R" }, ...payload },
+    });
+
+  it("resolves the Pendency of conflict, and the Jev reassesses the Stage Confirmation that held the Constraint", async () => {
+    const { id, constraintId, pendency } = await conflictInStageO();
+    assessor.willAssessConstraintImpact(impactOutcome("yes"));
+
+    const response = await revise(id, pendency.id, constraintId);
+
+    expect(response.statusCode).toBe(200);
+    const revision = response.json().pendency.conflict.constraintRevision;
+    expect(revision).toMatchObject({ note, replacement: { kind: "constraint", item: { statement: "Entregar em cinco semanas" } } });
+    // Só a Confirmação da Etapa R sustentava a Restrição: a da P veio antes dela, e a O não foi confirmada.
+    expect(assessor.constraintImpactInputs).toEqual([
+      {
+        problemStatement: statement,
+        confirmation: expect.objectContaining({ kind: "stage", stage: "R" }),
+        revision: {
+          constraint: { statement: "Entregar em duas semanas", scope: null, unit: null },
+          replacement: { kind: "constraint", item: { statement: "Entregar em cinco semanas", scope: null, unit: null } },
+          note,
+        },
+      },
+    ]);
+    const process = await api.getProcess(id);
+    const [reassessment] = process.constraintReassessments;
+    expect(process.constraintReassessments).toEqual([
+      {
+        confirmation: { kind: "stage", stage: "R" },
+        revision,
+        status: "pendency_open",
+        impactAssessments: [
+          expect.objectContaining({
+            answerVersionId: null,
+            previousAnswerVersionId: null,
+            constraintRevisionId: revision.id,
+            confirmation: { kind: "stage", stage: "R" },
+            choice: "yes",
+            needsDecision: false,
+            rubricRevision: expect.stringMatching(/^sha256:/),
+          }),
+        ],
+        pendencyId: expect.any(String),
+      },
+    ]);
+    const reassessmentPendency = process.pendencies.find((item: { id: string }) => item.id === reassessment.pendencyId);
+    expect(reassessmentPendency).toEqual({
+      id: reassessment.pendencyId,
+      reason: "reassessment",
+      // Sem Pergunta: fica na Confirmação da Etapa.
+      question: null,
+      stagePoints: [],
+      openedAt: expect.any(String),
+      resolvedAt: null,
+      resolvedByAnswerVersionId: null,
+      resolution: null,
+      reassessment: {
+        answerVersionId: null,
+        previousAnswerVersionId: null,
+        constraintRevisionId: revision.id,
+        confirmation: { kind: "stage", stage: "R" },
+        openedBy: "jev",
+        impactAssessment: reassessment.impactAssessments[0],
+      },
+      conflict: null,
+    });
+
+    // Bloqueia a Confirmação da Etapa atual até o usuário reconfirmar a Etapa R com a revisão.
+    const blocked = await confirmStageO(id);
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json()).toEqual({ error: "blocking_pendencies", pendencyIds: [reassessment.pendencyId] });
+    const reconfirmed = await api.reconfirm(id, reassessment.pendencyId);
+    expect(reconfirmed.statusCode).toBe(200);
+    expect(reconfirmed.json().pendency).toMatchObject({ resolution: "reconfirmed", resolvedAt: expect.any(String) });
+    expect((await api.getProcess(id)).constraintReassessments).toEqual([]);
+    expect((await confirmStageO(id)).statusCode).toBe(201);
+  });
+
+  it("with a confident `no`, has the Stage Confirmation hold the revision: nothing to review", async () => {
+    const { id, constraintId, pendency } = await conflictInStageO();
+
+    await revise(id, pendency.id, constraintId);
+
+    const process = await api.getProcess(id);
+    expect(process.constraintReassessments).toEqual([]);
+    expect(process.impactAssessments.at(-1)).toMatchObject({ constraintRevisionId: expect.any(String), choice: "no", needsDecision: false });
+    expect(process.pendencies.filter((item: { resolvedAt: string | null }) => item.resolvedAt === null)).toEqual([]);
+    expect((await confirmStageO(id)).statusCode).toBe(201);
+  });
+
+  it("with the Jev unavailable and then uncertain, holds the Stage Confirmation until the user keeps it", async () => {
+    const { id, constraintId, pendency } = await conflictInStageO();
+    assessor.willAssessConstraintImpact(unavailable, impactOutcome("yes", 0.5));
+
+    const revised = await revise(id, pendency.id, constraintId);
+    const revisionId = revised.json().pendency.conflict.constraintRevision.id;
+
+    expect((await api.getProcess(id)).constraintReassessments).toMatchObject([{ status: "assessment_failed" }]);
+    const retried = await retryConstraintImpact(id, revisionId);
+    expect(retried.statusCode).toBe(201);
+    expect(retried.json().impactAssessment).toMatchObject({ choice: "yes", confidence: 0.5, needsDecision: true });
+    const [reassessment] = (await api.getProcess(id)).constraintReassessments;
+    expect(reassessment).toMatchObject({ status: "awaiting_decision", pendencyId: null });
+    const blocked = await confirmStageO(id);
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json()).toEqual({ error: "undecided_reassessments" });
+
+    const stale = await decideConstraintImpact(id, revisionId, {
+      impactAssessmentId: reassessment.impactAssessments[0].id,
+      decision: "keep_confirmation",
+    });
+    const kept = await decideConstraintImpact(id, revisionId, {
+      impactAssessmentId: reassessment.impactAssessments[1].id,
+      decision: "keep_confirmation",
+    });
+
+    expect(stale.statusCode).toBe(422);
+    expect(stale.json()).toEqual({ error: "unknown_assessment" });
+    expect(kept.statusCode).toBe(201);
+    expect(kept.json()).toEqual({ pendency: null });
+    expect((await api.getProcess(id)).constraintReassessments).toEqual([]);
+    expect((await confirmStageO(id)).statusCode).toBe(201);
+  });
+
+  it("lets the user open the Pendency of reassessment when the Jev is uncertain", async () => {
+    const { id, constraintId, pendency } = await conflictInStageO();
+    assessor.willAssessConstraintImpact(impactOutcome("no", 0.55));
+    const revisionId = (await revise(id, pendency.id, constraintId)).json().pendency.conflict.constraintRevision.id;
+    const [reassessment] = (await api.getProcess(id)).constraintReassessments;
+
+    const opened = await decideConstraintImpact(id, revisionId, {
+      impactAssessmentId: reassessment.impactAssessments[0].id,
+      decision: "open_pendency",
+    });
+
+    expect(opened.statusCode).toBe(201);
+    expect(opened.json().pendency).toMatchObject({
+      reason: "reassessment",
+      question: null,
+      reassessment: { constraintRevisionId: revisionId, openedBy: "user", confirmation: { kind: "stage", stage: "R" } },
+    });
+    expect((await api.getProcess(id)).constraintReassessments).toMatchObject([{ status: "pendency_open", pendencyId: opened.json().pendency.id }]);
+  });
+});
+
+describe("A clarification of the user", () => {
+  it("goes as context to the next conflict Assessments and resolution questions, with the answers as they were", async () => {
+    assessor.willAssessConflicts(conflictOutcome(), deadlineVersusIntegration());
+    const { id, block } = await confirmStageRBlock();
+    const [pendency] = (await api.getProcess(id)).pendencies;
+    const text = "Há uma alternativa provisória: publicar pelo registro atual até a nova API ficar pronta.";
+    expect((await clarify(id, pendency.id, { clarification: text })).statusCode).toBe(200);
+
+    // A integração muda e volta a conflitar com o prazo: o Jev e a IA recebem o esclarecimento.
+    assessor.willAssessConflicts(deadlineVersusIntegration());
+    const question = block.questions[1];
+    const changed = "Depende da nova API de artefatos, prevista para daqui a seis semanas.";
+    await api.answer(id, question.id, { text: changed, basedOnVersionId: question.answer.current.id });
+
+    const clarification = {
+      answers: [
+        { ref: "2.1", stage: "R", wording: block.questions[0].wording, answer: deadline },
+        { ref: "2.2", stage: "R", wording: question.wording, answer: integration },
+      ],
+      clarification: text,
+    };
+    expect(assessor.conflictInputs.at(-1)!.clarifications).toEqual([clarification]);
+    expect(assistant.resolutionQuestion.attempts.at(-1)!.input).toMatchObject({
+      answers: [expect.objectContaining({ answer: changed }), expect.objectContaining({ answer: deadline })],
+      clarifications: [clarification],
+    });
   });
 });

@@ -39,7 +39,6 @@ const errorText: Record<string, string> = {
   unknown_assessment: "Há uma Avaliação mais recente do que a que você viu. Confira-a antes de decidir.",
   conflict_assessed: "O Jev já avaliou estes pares.",
   pendency_resolved: "Esta Pendência já foi resolvida.",
-  stage_not_current: "Restrições só são revistas enquanto a Etapa R é a atual.",
   already_withdrawn: "Esta Restrição já foi retirada.",
   no_constraint_or_preference: "Sem substituta, o Ponto que distingue Restrições de Preferências ficaria sem nenhuma.",
   resolution_question_generated: "A IA já formulou a pergunta.",
@@ -185,7 +184,8 @@ function ConflictPendency({ process, pendency, onChange }: { process: ProcessDet
   const conflict = pendency.conflict!;
   const verdict = conflict.conflictAssessment.verdicts.find((item) => item.pairId === conflict.pairId);
   const constraints = process.constraints.filter((item) => item.withdrawnAt === null);
-  const canRevise = process.currentStage === "R" && constraints.length > 0;
+  // Restrições só existem a partir da Etapa R; a revisão vale em qualquer Etapa desde então.
+  const canRevise = constraints.length > 0;
   return (
     <div className="flex flex-col gap-2 rounded-md border p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -313,6 +313,9 @@ function ConstraintRevision({
     <details className="text-xs">
       <summary className="cursor-pointer">Rever uma Restrição</summary>
       <form onSubmit={submit} className="mt-2 flex flex-col gap-2">
+        <p className="text-muted-foreground">
+          As Confirmações de Etapa que já valiam com a Restrição passam pela Avaliação de impacto do Jev, e você revê as afetadas.
+        </p>
         <div className="flex flex-col gap-1">
           <Label htmlFor={`${prefix}-constraint`} className="text-xs font-normal">
             Restrição a retirar (fica no histórico)

@@ -487,6 +487,15 @@ const resolutionQuestionInput: ResolutionQuestionInput = {
     { ref: "2.1", stage: "R", wording: "Até quando o deploy precisa ficar mais rápido?", answer: "Em duas semanas." },
     { ref: "2.2", stage: "R", wording: "De que integrações a solução depende?", answer: "Da nova API, disponível em um mês." },
   ],
+  clarifications: [
+    {
+      answers: [
+        { ref: "2.1", stage: "R", wording: "Até quando o deploy precisa ficar mais rápido?", answer: "Em três semanas." },
+        { ref: "2.3", stage: "R", wording: "Quem aprova a mudança?", answer: "A diretoria, em um mês." },
+      ],
+      clarification: "A aprovação só vale para a segunda fase.",
+    },
+  ],
 };
 
 describe("Conflict resolution question through the executor", () => {
@@ -504,6 +513,19 @@ describe("Conflict resolution question through the executor", () => {
     expect(prompt).toContain("[2.1] (Etapa R, Restrições) Até quando o deploy precisa ficar mais rápido?\nResposta: Em duas semanas.");
     expect(prompt).toContain("<<<ENUNCIADO\nO deploy leva 40 minutos");
     expect(prompt).toContain("Restrições (inegociáveis):\n- Sem downtime");
+  });
+
+  it("sends the user's clarifications of earlier conflicts, with the answers as they were, as data", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify({ question: "Há alternativa provisória?" })));
+
+    await formulate(url);
+
+    const { prompt } = requests[0]!.body as { prompt: string };
+    expect(prompt).toContain(
+      "<<<ESCLARECIMENTOS\n[2.1] (Etapa R, Restrições) Até quando o deploy precisa ficar mais rápido?\nResposta: Em três semanas.\n" +
+        "[2.3] (Etapa R, Restrições) Quem aprova a mudança?\nResposta: A diretoria, em um mês.\n" +
+        "Esclarecimento: A aprovação só vale para a segunda fase.\nESCLARECIMENTOS>>>",
+    );
   });
 
   it("brings the question", async () => {

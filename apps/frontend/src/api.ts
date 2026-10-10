@@ -220,12 +220,14 @@ export type DependentConfirmation =
   | { kind: "block_synthesis"; blockId: string; blockNumber: number; stage: Stage }
   | { kind: "stage"; stage: Stage };
 
-// Avaliação de impacto do Jev, bruta: se a Versão nova de uma resposta afeta a Confirmação que
-// dependia da anterior. `needsDecision`: `insufficient` ou confiança baixa; quem decide é o usuário.
+// Avaliação de impacto do Jev, bruta: se uma mudança afeta a Confirmação que dependia do que mudou (a
+// Versão nova de uma resposta, com a anterior, ou uma Revisão de Restrição). `needsDecision`:
+// `insufficient` ou confiança baixa; quem decide é o usuário.
 export interface ImpactAssessment {
   id: string;
-  answerVersionId: string;
-  previousAnswerVersionId: string;
+  answerVersionId: string | null;
+  previousAnswerVersionId: string | null;
+  constraintRevisionId: string | null;
   confirmation: DependentConfirmation;
   status: "completed" | "failed";
   requestedModel: string;
@@ -317,21 +319,33 @@ export interface ResolutionQuestion {
   attempts: Attempt[];
 }
 
+// Revisão de Restrição: a Restrição retirada, a que a substitui (se houver) e a nota do usuário.
+export interface ConstraintRevision {
+  id: string;
+  constraint: StatedItem;
+  replacement: { kind: ItemKind; item: StatedItem } | null;
+  note: string | null;
+  conflictPendencyId: string | null;
+  revisedAt: string;
+}
+
 // Pendência numa Pergunta: de informação desconhecida, até uma resposta resolvê-la; de reavaliação,
 // até o usuário reconfirmar a Confirmação afetada ou corrigir a resposta; de conflito, até o usuário
-// corrigir uma das respostas, rever uma Restrição ou esclarecer.
+// corrigir uma das respostas, rever uma Restrição ou esclarecer. A de reavaliação de uma Revisão de
+// Restrição não tem Pergunta: fica na Confirmação da Etapa.
 export interface Pendency {
   id: string;
   reason: PendencyReason;
-  question: { id: string; wording: string; stage: Stage; blockNumber: number; number: number };
+  question: { id: string; wording: string; stage: Stage; blockNumber: number; number: number } | null;
   stagePoints: { key: string; name: string }[];
   openedAt: string;
   resolvedAt: string | null;
   resolvedByAnswerVersionId: string | null;
   resolution: "answered" | "reconfirmed" | "corrected" | "clarified" | "constraint_revised" | null;
   reassessment: {
-    answerVersionId: string;
-    previousAnswerVersionId: string;
+    answerVersionId: string | null;
+    previousAnswerVersionId: string | null;
+    constraintRevisionId: string | null;
     confirmation: DependentConfirmation;
     openedBy: "jev" | "user";
     impactAssessment: ImpactAssessment;
@@ -343,9 +357,8 @@ export interface Pendency {
     openedBy: "jev" | "user";
     conflictAssessment: ConflictAssessment;
     resolutionQuestion: ResolutionQuestion | null;
-    // O esclarecimento, ou a nota da revisão de Restrição.
-    note: string | null;
-    constraintRevision: { revisedConstraintId: string; replacement: { kind: ItemKind; id: string } | null } | null;
+    clarification: string | null;
+    constraintRevision: ConstraintRevision | null;
   } | null;
 }
 
@@ -357,6 +370,16 @@ export interface Reassessment {
   question: { id: string; wording: string; stage: Stage; blockNumber: number; number: number };
   previousVersion: { id: string; number: number; answer: string };
   newVersion: { id: string; number: number; answer: string };
+  status: ReassessmentStatus;
+  impactAssessments: ImpactAssessment[];
+  pendencyId: string | null;
+}
+
+// Uma Confirmação de Etapa sustentava uma Restrição que foi revista: fica em revisão até passar a
+// sustentar a revisão.
+export interface ConstraintReassessment {
+  confirmation: { kind: "stage"; stage: Stage };
+  revision: ConstraintRevision;
   status: ReassessmentStatus;
   impactAssessments: ImpactAssessment[];
   pendencyId: string | null;
@@ -446,6 +469,8 @@ export interface ProcessDetail extends ProcessWithConversation {
   pendencies: Pendency[];
   // Confirmações em revisão porque uma resposta de que dependiam mudou, e as Avaliações de impacto.
   reassessments: Reassessment[];
+  // Confirmações de Etapa em revisão porque uma Restrição que sustentavam foi revista.
+  constraintReassessments: ConstraintReassessment[];
   impactAssessments: ImpactAssessment[];
   // Verificações de conflito entre respostas confirmadas, com os pares e as Avaliações do Jev.
   conflictChecks: ConflictCheck[];
@@ -727,7 +752,36 @@ export async function decideImpact(
   return pendency;
 }
 
-// Reconfirma a Confirmação afetada com a Versão nova; numa síntese de bloco, com o texto corrigido, se houver.
+const revisionPath = (processId: string, revisionId: string) =>
+  `${processPath(processId)}/constraint-revisions/${encodeURIComponent(revisionId)}`;
+
+// Nova tentativa da Avaliação de impacto de uma Revisão de Restrição sobre a Confirmação da Etapa.
+export async function retryConstraintImpact(processId: string, revisionId: string, stage: Stage): Promise<ImpactAssessment> {
+  const { impactAssessment } = await request<{ impactAssessment: ImpactAssessment }>(`${revisionPath(processId, revisionId)}/impact-assessments`, {
+    method: "POST",
+    body: JSON.stringify({ confirmation: { kind: "stage", stage } }),
+  });
+  return impactAssessment;
+}
+
+// A decisão do usuário sobre o impacto de uma Revisão de Restrição, sobre a Avaliação que ele viu.
+export async function decideConstraintImpact(
+  processId: string,
+  revisionId: string,
+  decision: { stage: Stage; impactAssessmentId: string; decision: "open_pendency" | "keep_confirmation" },
+): Promise<Pendency | null> {
+  const { pendency } = await request<{ pendency: Pendency | null }>(`${revisionPath(processId, revisionId)}/impact-decision`, {
+    method: "POST",
+    body: JSON.stringify({
+      confirmation: { kind: "stage", stage: decision.stage },
+      impactAssessmentId: decision.impactAssessmentId,
+      decision: decision.decision,
+    }),
+  });
+  return pendency;
+}
+
+// Reconfirma a Confirmação afetada com a mudança; numa síntese de bloco, com o texto corrigido, se houver.
 export async function reconfirmPendency(processId: string, pendencyId: string, synthesis: string | null): Promise<Pendency> {
   const { pendency } = await request<{ pendency: Pendency }>(
     `${processPath(processId)}/pendencies/${encodeURIComponent(pendencyId)}/reconfirmation`,
@@ -769,7 +823,8 @@ export async function clarifyConflict(processId: string, pendencyId: string, cla
   return pendency;
 }
 
-// Resolve a Pendência de conflito retirando a Restrição e, se houver, registrando a que a substitui.
+// Resolve a Pendência de conflito com uma Revisão de Restrição: retira a Restrição e, se houver,
+// registra a que a substitui. Vale em qualquer Etapa a partir de R.
 export async function reviseConstraintForConflict(
   processId: string,
   pendencyId: string,

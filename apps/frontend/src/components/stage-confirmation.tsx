@@ -60,9 +60,12 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
   // (com Pendência ou ainda sem decisão) entre respostas desta Etapa ou das anteriores.
   const upTo = stages.slice(0, stages.findIndex((item) => item.stage === stage) + 1).map((item) => item.stage);
   const unknown = process.pendencies.filter(
-    (pendency) => pendency.resolvedAt === null && pendency.reason === "unknown_information" && pendency.question.stage === stage,
+    (pendency) => pendency.resolvedAt === null && pendency.reason === "unknown_information" && pendency.question?.stage === stage,
   );
-  const reviews = process.reassessments.filter((reassessment) => upTo.includes(reassessment.question.stage));
+  const reviews = [
+    ...process.reassessments.filter((reassessment) => upTo.includes(reassessment.question.stage)),
+    ...process.constraintReassessments.filter((reassessment) => upTo.includes(reassessment.confirmation.stage)),
+  ];
   const inStages = (...answers: { question: { stage: Stage } }[]) => answers.some((answer) => upTo.includes(answer.question.stage));
   const conflicts = [
     ...process.pendencies.filter(

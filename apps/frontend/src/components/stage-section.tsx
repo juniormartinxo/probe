@@ -219,12 +219,16 @@ function OpenPendencies({ process }: { process: ProcessDetail }) {
     <div className="border-destructive/40 flex flex-col gap-1.5 rounded-lg border p-4 text-sm">
       <p className="text-xs font-medium">Pendências</p>
       <ul className="flex flex-col gap-1">
-        {open.map((pendency) => (
-          <li key={pendency.id}>
-            <span className="font-medium">Informação desconhecida</span> · Pergunta {pendency.question.number} do Bloco{" "}
-            {pendency.question.blockNumber}: {pendency.question.wording}
-          </li>
-        ))}
+        {open.map((pendency) => {
+          // A de informação desconhecida sempre fica numa Pergunta.
+          const question = pendency.question!;
+          return (
+            <li key={pendency.id}>
+              <span className="font-medium">Informação desconhecida</span> · Pergunta {question.number} do Bloco{" "}
+              {question.blockNumber}: {question.wording}
+            </li>
+          );
+        })}
       </ul>
       <p className="text-muted-foreground text-xs">Se souber a informação depois, responda a Pergunta e a Pendência se resolve.</p>
     </div>

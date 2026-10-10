@@ -97,6 +97,34 @@ export async function conflictPairsOf(db: Db, processId: string, pairIds?: strin
   }));
 }
 
+// Os esclarecimentos com que o usuário resolveu Pendências de conflito, na ordem em que foram dados,
+// cada um com as duas respostas como estavam, como o Jev e a IA os recebem.
+export async function clarificationsOf(db: Db, processId: string) {
+  const rows = await db
+    .selectFrom("pendencies")
+    .select(["conflictPairId", "resolutionNote"])
+    .where("processId", "=", processId)
+    .where("resolution", "=", "clarified")
+    .orderBy("resolvedAt")
+    .orderBy("id")
+    .execute();
+  const pairs = await conflictPairsOf(
+    db,
+    processId,
+    rows.map((row) => row.conflictPairId!),
+  );
+  return rows.map((row) => {
+    const pair = pairs.find((item) => item.id === row.conflictPairId)!;
+    return {
+      answers: [conflictingAnswerOf(pair.answer), conflictingAnswerOf(pair.other)] as [
+        ReturnType<typeof conflictingAnswerOf>,
+        ReturnType<typeof conflictingAnswerOf>,
+      ],
+      clarification: row.resolutionNote!,
+    };
+  });
+}
+
 export const RESOLUTION_QUESTION_OPERATION = "formulate_resolution_question";
 
 // A pergunta de resolução que a IA formula para uma Pendência de conflito: sugestão para orientar o

@@ -174,6 +174,8 @@ export interface ConflictingAnswer {
 export interface ResolutionQuestionInput extends ItemStatements {
   problemStatement: string;
   answers: [ConflictingAnswer, ConflictingAnswer];
+  // Os esclarecimentos com que o usuário resolveu outras Pendências de conflito, com as respostas como estavam.
+  clarifications: { answers: [ConflictingAnswer, ConflictingAnswer]; clarification: string }[];
 }
 
 export interface GeneratedResolutionQuestion {

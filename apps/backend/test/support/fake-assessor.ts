@@ -4,6 +4,7 @@ import type {
   AssessorOutcome,
   ConflictInput,
   ConflictPairInput,
+  ConstraintImpactInput,
   CoverageInput,
   ImpactInput,
   Verdict,
@@ -51,16 +52,19 @@ export const conflictOutcome =
 
 type ConflictStep = AssessorOutcome<Verdicts> | ((input: ConflictInput) => AssessorOutcome<Verdicts>);
 
-// `Assessor` falso: desfechos na ordem; sem roteiro, `yes` em todos os Pontos, no impacto `no` com
-// confiança (a Confirmação continua valendo) e, no conflito, `no` com confiança em todos os pares.
+// `Assessor` falso: desfechos na ordem; sem roteiro, `yes` em todos os Pontos, no impacto (de uma Versão
+// nova ou de uma Revisão de Restrição) `no` com confiança (a Confirmação continua valendo) e, no
+// conflito, `no` com confiança em todos os pares.
 export class FakeAssessor implements Assessor {
   readonly model = JEV_MODEL;
   readonly inputs: CoverageInput[] = [];
   readonly impactInputs: ImpactInput[] = [];
   readonly conflictInputs: ConflictInput[] = [];
+  readonly constraintImpactInputs: ConstraintImpactInput[] = [];
   private readonly steps: Step[] = [];
   private readonly impactSteps: AssessorOutcome<Verdict>[] = [];
   private readonly conflictSteps: ConflictStep[] = [];
+  private readonly constraintImpactSteps: AssessorOutcome<Verdict>[] = [];
 
   willRespond(...steps: Step[]): this {
     this.steps.push(...steps);
@@ -69,6 +73,11 @@ export class FakeAssessor implements Assessor {
 
   willAssessImpact(...outcomes: AssessorOutcome<Verdict>[]): this {
     this.impactSteps.push(...outcomes);
+    return this;
+  }
+
+  willAssessConstraintImpact(...outcomes: AssessorOutcome<Verdict>[]): this {
+    this.constraintImpactSteps.push(...outcomes);
     return this;
   }
 
@@ -86,6 +95,11 @@ export class FakeAssessor implements Assessor {
   async assessImpact(input: ImpactInput): Promise<AssessorOutcome<Verdict>> {
     this.impactInputs.push(input);
     return this.impactSteps.shift() ?? impactOutcome("no");
+  }
+
+  async assessConstraintImpact(input: ConstraintImpactInput): Promise<AssessorOutcome<Verdict>> {
+    this.constraintImpactInputs.push(input);
+    return this.constraintImpactSteps.shift() ?? impactOutcome("no");
   }
 
   async assessCoverage(input: CoverageInput): Promise<AssessorOutcome<Verdicts>> {

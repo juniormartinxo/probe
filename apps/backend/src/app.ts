@@ -7,6 +7,7 @@ import { stageAssessments } from "./modules/assessments/stage-assessments.ts";
 import { answers } from "./modules/process/answers.ts";
 import { blocks } from "./modules/process/blocks.ts";
 import { conflicts as conflictsModule } from "./modules/process/conflicts.ts";
+import { constraintReassessments as constraintReassessmentsModule } from "./modules/process/constraint-reassessments.ts";
 import { constraintsAndPreferences } from "./modules/process/constraints-and-preferences.ts";
 import { pendencies } from "./modules/process/pendencies.ts";
 import { problemStatements } from "./modules/process/problem-statement.ts";
@@ -30,7 +31,17 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
   const app = Fastify({ logger: options.logger ?? false });
   const runner = new AiRequestRunner(db, app.log);
   const settings = settingsModule({ db, assistant, defaultAiModel });
-  const conflicts = conflictsModule({ db, assessor, assistant, runner, settings, log: app.log });
+  const constraintReassessments = constraintReassessmentsModule({ db, assessor, log: app.log });
+  // Uma Revisão de Restrição tem o impacto sobre as Confirmações de Etapa que a sustentavam avaliado.
+  const conflicts = conflictsModule({
+    db,
+    assessor,
+    assistant,
+    runner,
+    settings,
+    log: app.log,
+    afterConstraintRevision: (processId, revision) => constraintReassessments.assessRevision(processId, revision),
+  });
   // Respostas que passam a confirmadas têm o conflito com as já confirmadas avaliado.
   const afterConfirm = (processId: string, answerVersionIds: string[]) => conflicts.assessConfirmed(processId, answerVersionIds);
   const reassessments = reassessmentsModule({ db, assessor, log: app.log, afterConfirm });
@@ -55,6 +66,7 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
           stageConfirmations: stageConfirmations({ db }),
           constraintsAndPreferences: constraintsAndPreferences({ db }),
           reassessments,
+          constraintReassessments,
           conflicts,
         }),
       );

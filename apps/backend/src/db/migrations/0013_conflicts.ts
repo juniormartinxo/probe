@@ -74,7 +74,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await forbidUpdate("conflict_dismissals").execute(db);
 
   // Pendência de conflito: ligada ao par (as duas respostas) e à Avaliação de conflito. Resolve-se com
-  // uma Versão nova de uma das respostas, uma revisão de Restrição ou um esclarecimento.
+  // uma Versão nova de uma das respostas, uma Revisão de Restrição ou um esclarecimento.
   await sql`alter table pendencies drop constraint pendencies_reason_check`.execute(db);
   await sql`alter table pendencies add constraint pendencies_reason_check
     check (reason in ('unknown_information', 'reassessment', 'conflict'))`.execute(db);
@@ -85,41 +85,98 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .alterTable("pendencies")
     .addColumn("conflict_pair_id", "uuid", (col) => col.references("conflict_pairs.id").onDelete("cascade"))
     .addColumn("conflict_assessment_id", "uuid", (col) => col.references("conflict_assessments.id").onDelete("cascade"))
-    // O esclarecimento do usuário ou a nota da revisão de Restrição.
+    // O esclarecimento do usuário que resolveu o conflito.
     .addColumn("resolution_note", "text", (col) => col.check(sql`resolution_note is null or btrim(resolution_note) <> ''`))
-    // Na revisão de Restrição: a retirada e a que a substituiu, se houver (Restrição ou Preferência).
-    .addColumn("revised_constraint_id", "uuid", (col) => col.references("constraints.id").onDelete("cascade"))
+    .execute();
+
+  // Revisão de Restrição: o usuário retira uma Restrição em vigor e, se houver, registra a que a
+  // substitui (uma Restrição nova ou uma Preferência), com uma nota; as duas ficam no histórico. Vale
+  // em qualquer Etapa a partir de R, e as Confirmações de Etapa que sustentavam a Restrição passam
+  // pela Avaliação de impacto. Por ora, só como resolução de uma Pendência de conflito.
+  await db.schema
+    .createTable("constraint_revisions")
+    .addColumn("id", "uuid", (col) => col.primaryKey().defaultTo(sql`gen_random_uuid()`))
+    .addColumn("process_id", "uuid", (col) => col.notNull().references("processes.id").onDelete("cascade"))
+    // Uma Restrição é retirada uma vez.
+    .addColumn("constraint_id", "uuid", (col) => col.notNull().unique().references("constraints.id").onDelete("cascade"))
     .addColumn("replacement_constraint_id", "uuid", (col) => col.references("constraints.id").onDelete("cascade"))
     .addColumn("replacement_preference_id", "uuid", (col) => col.references("preferences.id").onDelete("cascade"))
+    .addColumn("note", "text", (col) => col.check(sql`note is null or btrim(note) <> ''`))
+    .addColumn("conflict_pendency_id", "uuid", (col) => col.unique().references("pendencies.id").onDelete("cascade"))
+    .addColumn("revised_at", "timestamptz", (col) => col.notNull().defaultTo(sql`clock_timestamp()`))
+    .addCheckConstraint("constraint_revisions_one_replacement", sql`replacement_constraint_id is null or replacement_preference_id is null`)
+    .addCheckConstraint("constraint_revisions_distinct", sql`replacement_constraint_id is distinct from constraint_id`)
+    .execute();
+  await forbidUpdate("constraint_revisions").execute(db);
+
+  // Pendência de reavaliação de uma Revisão de Restrição: na Confirmação de Etapa afetada, sem Pergunta.
+  await sql`alter table pendencies alter column question_id drop not null`.execute(db);
+  await db.schema
+    .alterTable("pendencies")
+    .addColumn("constraint_revision_id", "uuid", (col) => col.references("constraint_revisions.id").onDelete("cascade"))
     .execute();
   await sql`alter table pendencies drop constraint pendencies_reassessment`.execute(db);
   await addCheck(
     "pendencies",
     "pendencies_reason_columns",
     sql`case reason
-        when 'reassessment' then answer_version_id is not null and impact_assessment_id is not null
-          and opened_by is not null and (block_id is null) <> (stage is null)
-          and coalesce(resolution in ('reconfirmed', 'corrected'), true)
-          and conflict_pair_id is null and conflict_assessment_id is null
+        when 'reassessment' then impact_assessment_id is not null and opened_by is not null
+          and (block_id is null) <> (stage is null) and conflict_pair_id is null and conflict_assessment_id is null
+          and case when constraint_revision_id is null
+            then answer_version_id is not null and question_id is not null and coalesce(resolution in ('reconfirmed', 'corrected'), true)
+            else answer_version_id is null and question_id is null and stage is not null and coalesce(resolution = 'reconfirmed', true)
+          end
         when 'conflict' then conflict_pair_id is not null and conflict_assessment_id is not null and opened_by is not null
-          and answer_version_id is null and impact_assessment_id is null and block_id is null and stage is null
+          and question_id is not null and answer_version_id is null and impact_assessment_id is null and block_id is null
+          and stage is null and constraint_revision_id is null
           and coalesce(resolution in ('corrected', 'clarified', 'constraint_revised'), true)
-        else answer_version_id is null and impact_assessment_id is null and opened_by is null
+        else question_id is not null and answer_version_id is null and impact_assessment_id is null and opened_by is null
           and block_id is null and stage is null and conflict_pair_id is null and conflict_assessment_id is null
-          and coalesce(resolution = 'answered', true)
+          and constraint_revision_id is null and coalesce(resolution = 'answered', true)
       end`,
   ).execute(db);
-  await addCheck(
-    "pendencies",
-    "pendencies_conflict_resolution",
-    sql`(resolution_note is null or resolution in ('clarified', 'constraint_revised'))
-      and (resolution is distinct from 'clarified' or resolution_note is not null)
-      and (revised_constraint_id is not null) = coalesce(resolution = 'constraint_revised', false)
-      and (replacement_constraint_id is null or replacement_preference_id is null)
-      and (revised_constraint_id is not null or (replacement_constraint_id is null and replacement_preference_id is null))`,
-  ).execute(db);
+  await addCheck("pendencies", "pendencies_clarification", sql`(resolution_note is not null) = coalesce(resolution = 'clarified', false)`).execute(db);
   // Uma Pendência de conflito por par.
   await sql`create unique index pendencies_one_conflict on pendencies (conflict_pair_id) where reason = 'conflict'`.execute(db);
+  // Uma Pendência de reavaliação por mudança (Versão nova ou Revisão de Restrição) e Confirmação afetada.
+  await sql`drop index pendencies_one_reassessment`.execute(db);
+  await sql`create unique index pendencies_one_reassessment
+    on pendencies (answer_version_id, constraint_revision_id, block_id, stage) nulls not distinct where reason = 'reassessment'`.execute(db);
+
+  // Avaliação de impacto de uma Revisão de Restrição sobre uma Confirmação de Etapa que a sustentava.
+  await sql`alter table impact_assessments alter column answer_version_id drop not null`.execute(db);
+  await sql`alter table impact_assessments alter column previous_answer_version_id drop not null`.execute(db);
+  await db.schema
+    .alterTable("impact_assessments")
+    .addColumn("constraint_revision_id", "uuid", (col) => col.references("constraint_revisions.id").onDelete("cascade"))
+    .execute();
+  await addCheck(
+    "impact_assessments",
+    "impact_assessments_change",
+    sql`case when constraint_revision_id is null
+        then answer_version_id is not null and previous_answer_version_id is not null
+        else answer_version_id is null and previous_answer_version_id is null and stage is not null
+      end`,
+  ).execute(db);
+
+  // A Revisão de Restrição que uma Confirmação de Etapa passou a sustentar: sem impacto, segundo o Jev;
+  // mantida pelo usuário; ou reconfirmada, ao resolver a Pendência de reavaliação.
+  await db.schema
+    .createTable("confirmation_constraint_revisions")
+    .addColumn("id", "uuid", (col) => col.primaryKey().defaultTo(sql`gen_random_uuid()`))
+    .addColumn("process_id", "uuid", (col) => col.notNull().references("processes.id").onDelete("cascade"))
+    .addColumn("constraint_revision_id", "uuid", (col) => col.notNull().references("constraint_revisions.id").onDelete("cascade"))
+    .addColumn("stage", "text", (col) => col.notNull().check(sql`stage in ('P', 'R', 'O', 'B', 'E')`))
+    .addColumn("basis", "text", (col) => col.notNull().check(sql`basis in ('no_impact', 'kept', 'reconfirmed')`))
+    .addColumn("impact_assessment_id", "uuid", (col) => col.notNull().references("impact_assessments.id").onDelete("cascade"))
+    .addColumn("recorded_at", "timestamptz", (col) => col.notNull().defaultTo(sql`clock_timestamp()`))
+    .addForeignKeyConstraint("confirmation_constraint_revisions_stage_confirmation", ["process_id", "stage"], "stage_confirmations", [
+      "process_id",
+      "stage",
+    ])
+    .addUniqueConstraint("confirmation_constraint_revisions_once", ["constraint_revision_id", "stage"])
+    .execute();
+  await forbidUpdate("confirmation_constraint_revisions").execute(db);
 
   // A pergunta de resolução que a IA formula para uma Pendência de conflito.
   await sql`alter table ai_requests drop constraint ai_requests_operation_check`.execute(db);
@@ -143,17 +200,26 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   await sql`alter table ai_requests add constraint ai_requests_operation_check
     check (operation in ('refine_problem_statement', 'generate_block', 'synthesize_block'))`.execute(db);
 
-  await sql`delete from pendencies where reason = 'conflict'`.execute(db);
-  await sql`update pendencies set resolution_note = null, revised_constraint_id = null,
-    replacement_constraint_id = null, replacement_preference_id = null`.execute(db);
+  await db.schema.dropTable("confirmation_constraint_revisions").execute();
+  await sql`delete from impact_assessments where constraint_revision_id is not null`.execute(db);
+  await sql`alter table impact_assessments drop constraint impact_assessments_change`.execute(db);
+  await db.schema.alterTable("impact_assessments").dropColumn("constraint_revision_id").execute();
+  await sql`alter table impact_assessments alter column previous_answer_version_id set not null`.execute(db);
+  await sql`alter table impact_assessments alter column answer_version_id set not null`.execute(db);
+
+  await sql`delete from pendencies where reason = 'conflict' or constraint_revision_id is not null`.execute(db);
+  await sql`update pendencies set resolution_note = null`.execute(db);
+  await sql`drop index pendencies_one_reassessment`.execute(db);
+  await sql`create unique index pendencies_one_reassessment
+    on pendencies (answer_version_id, block_id, stage) nulls not distinct where reason = 'reassessment'`.execute(db);
   await sql`drop index pendencies_one_conflict`.execute(db);
-  await sql`alter table pendencies drop constraint pendencies_conflict_resolution`.execute(db);
+  await sql`alter table pendencies drop constraint pendencies_clarification`.execute(db);
   await sql`alter table pendencies drop constraint pendencies_reason_columns`.execute(db);
+  await db.schema.alterTable("pendencies").dropColumn("constraint_revision_id").execute();
+  await sql`alter table pendencies alter column question_id set not null`.execute(db);
+  await db.schema.dropTable("constraint_revisions").execute();
   await db.schema
     .alterTable("pendencies")
-    .dropColumn("replacement_preference_id")
-    .dropColumn("replacement_constraint_id")
-    .dropColumn("revised_constraint_id")
     .dropColumn("resolution_note")
     .dropColumn("conflict_assessment_id")
     .dropColumn("conflict_pair_id")

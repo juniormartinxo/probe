@@ -6,6 +6,7 @@ import { stageAssessmentsOf, type StageAssessments } from "../assessments/stage-
 import type { AnswerChange, AnswerValue, Answers } from "./answers.ts";
 import type { Blocks } from "./blocks.ts";
 import { conflictChecksOf, type ConflictConstraintRevision, type ConflictDecision, type Conflicts } from "./conflicts.ts";
+import { constraintReassessmentsOf, type ConstraintReassessments } from "./constraint-reassessments.ts";
 import {
   constraintsAndPreferencesOf,
   itemPaths,
@@ -112,13 +113,13 @@ function confirmationRefFrom(value: unknown): ConfirmationRef | undefined {
 }
 
 // A decisão do usuário sobre o impacto, quando o Jev não teve certeza ou não respondeu.
-function impactDecisionFrom(answerVersionId: string, body: unknown): ImpactDecision | undefined {
+function impactDecisionFrom(body: unknown): Omit<ImpactDecision, "answerVersionId"> | undefined {
   if (typeof body !== "object" || body === null) return undefined;
   const { confirmation, impactAssessmentId, decision } = body as Record<string, unknown>;
   const ref = confirmationRefFrom(confirmation);
   if (!ref || typeof impactAssessmentId !== "string" || !uuidPattern.test(impactAssessmentId)) return undefined;
   if (decision !== "open_pendency" && decision !== "keep_confirmation") return undefined;
-  return { answerVersionId, confirmation: ref, impactAssessmentId, decision };
+  return { confirmation: ref, impactAssessmentId, decision };
 }
 
 // O texto corrigido da síntese, ao reconfirmá-la; sem corpo ou sem `synthesis`, reconfirma como está.
@@ -251,6 +252,7 @@ export const processRoutes =
     stageConfirmations,
     constraintsAndPreferences,
     reassessments,
+    constraintReassessments,
     conflicts,
   }: {
     db: Db;
@@ -264,6 +266,7 @@ export const processRoutes =
     stageConfirmations: StageConfirmations;
     constraintsAndPreferences: ConstraintsAndPreferences;
     reassessments: Reassessments;
+    constraintReassessments: ConstraintReassessments;
     conflicts: Conflicts;
   }): FastifyPluginAsync =>
   async (app) => {
@@ -287,6 +290,8 @@ export const processRoutes =
         pendencies: await pendencies.list(process),
         // Confirmações cuja Versão sustentada foi superada, ainda em revisão, e as Avaliações de impacto.
         reassessments: await reassessmentsOf(db, id),
+        // Confirmações de Etapa que sustentavam uma Restrição revista, ainda em revisão.
+        constraintReassessments: await constraintReassessmentsOf(db, id),
         impactAssessments: await impactAssessmentsOf(db, id),
         // As verificações de conflito entre respostas confirmadas, com os pares e as Avaliações.
         conflictChecks: await conflictChecksOf(db, id),
@@ -523,9 +528,43 @@ export const processRoutes =
         const { id, versionId } = request.params;
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
         if (!uuidPattern.test(versionId)) return reply.code(404).send({ error: "reassessment_not_found" });
-        const decision = impactDecisionFrom(versionId, request.body);
+        const decision = impactDecisionFrom(request.body);
         if (!decision) return reply.code(400).send({ error: "decision_required" });
-        const result = await reassessments.decide(id, decision);
+        const result = await reassessments.decide(id, { answerVersionId: versionId, ...decision });
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ pendency: result.pendency });
+      },
+    );
+
+    // O impacto de uma Revisão de Restrição, sobre uma Confirmação de Etapa.
+    app.post<{ Params: { id: string; revisionId: string } }>(
+      "/processes/:id/constraint-revisions/:revisionId/impact-assessments",
+      async (request, reply) => {
+        const { id, revisionId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(revisionId)) return reply.code(404).send({ error: "reassessment_not_found" });
+        const confirmation = confirmationRefFrom((request.body as Record<string, unknown> | undefined)?.confirmation);
+        if (confirmation?.kind !== "stage") return reply.code(400).send({ error: "confirmation_required" });
+        const result = await constraintReassessments.retry(id, revisionId, confirmation.stage);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ impactAssessment: result.impactAssessment });
+      },
+    );
+
+    app.post<{ Params: { id: string; revisionId: string } }>(
+      "/processes/:id/constraint-revisions/:revisionId/impact-decision",
+      async (request, reply) => {
+        const { id, revisionId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(revisionId)) return reply.code(404).send({ error: "reassessment_not_found" });
+        const decision = impactDecisionFrom(request.body);
+        if (decision?.confirmation.kind !== "stage") return reply.code(400).send({ error: "decision_required" });
+        const result = await constraintReassessments.decide(id, {
+          constraintRevisionId: revisionId,
+          stage: decision.confirmation.stage,
+          impactAssessmentId: decision.impactAssessmentId,
+          decision: decision.decision,
+        });
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(201).send({ pendency: result.pendency });
       },

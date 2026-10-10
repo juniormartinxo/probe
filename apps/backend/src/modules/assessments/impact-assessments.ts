@@ -1,6 +1,6 @@
 import type { Db } from "../../db/database.ts";
 import type { Stage } from "../process/stage.ts";
-import { assessmentChoices, type AssessmentChoice, type AssessorFailureReason, type Verdict } from "./assessor.ts";
+import { assessmentChoices, type AssessmentChoice, type AssessorFailureReason, type AssessorOutcome, type Verdict } from "./assessor.ts";
 import { IMPACT_CONFIDENCE_THRESHOLD } from "./impact-rubric.ts";
 
 // Confirmação que depende de respostas: a síntese de um Bloco ou a de uma Etapa.
@@ -21,13 +21,15 @@ export const confirmationColumnsOf = (ref: ConfirmationRef): { blockId: string |
 export const confirmationRefOf = ({ blockId, stage }: { blockId: string | null; stage: Stage | null }): ConfirmationRef =>
   blockId !== null ? { kind: "block_synthesis", blockId } : { kind: "stage", stage: stage! };
 
-// Avaliação de impacto: o julgamento do Jev, bruto, sobre se a Versão nova de uma resposta afeta uma
-// Confirmação que dependia da anterior. `needsDecision`: o Jev respondeu `insufficient` ou com
-// confiança abaixo do limite; quem decide se abre a Pendência é o usuário.
+// Avaliação de impacto: o julgamento do Jev, bruto, sobre se uma mudança afeta uma Confirmação que
+// dependia do que mudou: a Versão nova de uma resposta (com a anterior) ou uma Revisão de Restrição.
+// `needsDecision`: o Jev respondeu `insufficient` ou com confiança abaixo do limite; quem decide se
+// abre a Pendência é o usuário.
 export interface ImpactAssessment {
   id: string;
-  answerVersionId: string;
-  previousAnswerVersionId: string;
+  answerVersionId: string | null;
+  previousAnswerVersionId: string | null;
+  constraintRevisionId: string | null;
   // As outras Versões que o Jev recebeu: numa Confirmação da Etapa, as respostas que ela sustentava.
   analyzedAnswerVersionIds: string[];
   confirmation: DependentConfirmation;
@@ -61,6 +63,36 @@ export function verdictProblem({ choice, confidence, probabilities }: Verdict): 
   return undefined;
 }
 
+// O desfecho do Jev, qualquer que seja o Assessor: uma exceção vira falha.
+export const caught = <T>(call: () => Promise<AssessorOutcome<T>>): Promise<AssessorOutcome<T>> =>
+  call().catch(
+    (error: unknown): AssessorOutcome<never> => ({
+      status: "failed",
+      reason: "jev_error",
+      message: error instanceof Error ? error.message : String(error),
+    }),
+  );
+
+// Um julgamento único válido, ou a falha.
+export async function judgedImpact(call: () => Promise<AssessorOutcome<Verdict>>): Promise<AssessorOutcome<Verdict>> {
+  const outcome = await caught(call);
+  if (outcome.status !== "completed") return outcome;
+  const problem = verdictProblem(outcome.result);
+  return problem ? { status: "failed", reason: "invalid_output", message: problem } : outcome;
+}
+
+// As colunas do desfecho do Jev numa Avaliação de impacto gravada.
+export const impactOutcomeColumns = (outcome: AssessorOutcome<Verdict>, requestedModel: string) => ({
+  status: outcome.status,
+  requestedModel,
+  jevModel: outcome.status === "completed" ? outcome.model : null,
+  choice: outcome.status === "completed" ? outcome.result.choice : null,
+  confidence: outcome.status === "completed" ? outcome.result.confidence : null,
+  probabilities: outcome.status === "completed" ? JSON.stringify(outcome.result.probabilities) : null,
+  failureReason: outcome.status === "failed" ? outcome.reason : null,
+  message: outcome.status === "failed" ? outcome.message : null,
+});
+
 // As Avaliações de impacto do Processo, na ordem em que foram pedidas.
 export async function impactAssessmentsOf(db: Db, processId: string): Promise<ImpactAssessment[]> {
   const rows = await db
@@ -76,6 +108,7 @@ export async function impactAssessmentsOf(db: Db, processId: string): Promise<Im
     id: row.id,
     answerVersionId: row.answerVersionId,
     previousAnswerVersionId: row.previousAnswerVersionId,
+    constraintRevisionId: row.constraintRevisionId,
     analyzedAnswerVersionIds: row.analyzedAnswerVersionIds,
     confirmation:
       row.blockId !== null

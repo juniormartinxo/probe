@@ -1,13 +1,14 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { Db } from "../../db/database.ts";
-import type { Assessor, AssessorOutcome, ImpactedConfirmation, ImpactInput, Verdict } from "../assessments/assessor.ts";
+import type { Assessor, ImpactedConfirmation, ImpactInput } from "../assessments/assessor.ts";
 import {
   confirmationColumnsOf,
   confirmationKey,
   confirmationRefOf,
   decidesAlone,
   impactAssessmentsOf,
-  verdictProblem,
+  impactOutcomeColumns,
+  judgedImpact,
   type ConfirmationRef,
   type DependentConfirmation,
   type ImpactAssessment,
@@ -28,6 +29,10 @@ export type ConfirmationBasis = "no_impact" | "kept" | "reconfirmed";
 // Em que pé está a reavaliação: o Jev ainda não avaliou o impacto (a chamada se perdeu), a Avaliação
 // falhou, o Jev não teve certeza e o usuário decide, ou a Pendência de reavaliação está aberta.
 export type ReassessmentStatus = "not_assessed" | "assessment_failed" | "awaiting_decision" | "pendency_open";
+
+// Com a Pendência aberta, ou pela última Avaliação de impacto, se houver.
+export const reassessmentStatus = (pendency: unknown, last: ImpactAssessment | undefined): ReassessmentStatus =>
+  pendency ? "pendency_open" : !last ? "not_assessed" : last.status === "failed" ? "assessment_failed" : "awaiting_decision";
 
 interface VersionOfAnswer {
   id: string;
@@ -82,7 +87,8 @@ export interface Reassessments {
     confirmation: ConfirmationRef,
   ): Promise<{ ok: true; impactAssessment: ImpactAssessment } | { ok: false; error: ImpactRetryError }>;
   decide(processId: string, decision: ImpactDecision): Promise<{ ok: true; pendency: Pendency | null } | { ok: false; error: ImpactDecisionError }>;
-  // Reconfirma a Confirmação afetada com a Versão nova; numa síntese de bloco, com o texto corrigido, se houver.
+  // Reconfirma a Confirmação afetada com a Versão nova (numa síntese de bloco, com o texto corrigido, se
+  // houver) ou com a Revisão de Restrição.
   reconfirm(
     processId: string,
     pendencyId: string,
@@ -190,14 +196,7 @@ export async function reassessmentsOf(db: Db, processId: string): Promise<Reasse
       const pendency = pendencies.find(
         (item) => item.answerVersionId === current.id && confirmationKey(confirmationRefOf(item)) === key,
       );
-      const last = own.at(-1);
-      const status: ReassessmentStatus = pendency
-        ? "pendency_open"
-        : !last
-          ? "not_assessed"
-          : last.status === "failed"
-            ? "assessment_failed"
-            : "awaiting_decision";
+      const status = reassessmentStatus(pendency, own.at(-1));
       const block = confirmation.kind === "block_synthesis" ? blocks.find((item) => item.id === confirmation.blockId)! : undefined;
       return {
         confirmation: block
@@ -251,7 +250,7 @@ const pointOf = (version: number, stage: Stage, key: string): StagePoint => {
 
 // A Confirmação como o Jev a recebe, como está: a síntese que vale, com os Pontos que ela cobriu, ou a
 // Etapa, com os Pontos e as respostas que ela sustenta (as Versões, para gravar o que o Jev recebeu).
-async function impactedConfirmationOf(
+export async function impactedConfirmationOf(
   db: Db,
   process: { id: string; stagePointsVersion: number },
   confirmation: DependentConfirmation,
@@ -326,19 +325,6 @@ export function reassessments({
   log: FastifyBaseLogger;
   afterConfirm: (processId: string, answerVersionIds: string[]) => Promise<void>;
 }): Reassessments {
-  async function judge(input: ImpactInput): Promise<AssessorOutcome<Verdict>> {
-    const outcome = await assessor.assessImpact(input).catch(
-      (error: unknown): AssessorOutcome<never> => ({
-        status: "failed",
-        reason: "jev_error",
-        message: error instanceof Error ? error.message : String(error),
-      }),
-    );
-    if (outcome.status !== "completed") return outcome;
-    const problem = verdictProblem(outcome.result);
-    return problem ? { status: "failed", reason: "invalid_output", message: problem } : outcome;
-  }
-
   // O que o Jev recebe: a Confirmação como está e a mudança.
   async function impactInputOf(processId: string, reassessment: Reassessment): Promise<PreparedImpact> {
     const process = await db.selectFrom("processes").select(["id", "stagePointsVersion"]).where("id", "=", processId).executeTakeFirstOrThrow();
@@ -366,7 +352,7 @@ export function reassessments({
     { input, analyzedAnswerVersionIds }: PreparedImpact,
   ): Promise<{ ok: true; impactAssessment: ImpactAssessment } | { ok: false; error: ReassessmentError }> {
     const { question } = reassessment;
-    const outcome = await judge(input);
+    const outcome = await judgedImpact(() => assessor.assessImpact(input));
 
     const saved = await db.transaction().execute(async (trx) => {
       const locked = await lockOpenProcess(trx, processId);
@@ -380,15 +366,8 @@ export function reassessments({
           previousAnswerVersionId: reassessment.previousVersion.id,
           analyzedAnswerVersionIds,
           ...confirmation,
-          status: outcome.status,
-          requestedModel: assessor.model,
-          jevModel: outcome.status === "completed" ? outcome.model : null,
+          ...impactOutcomeColumns(outcome, assessor.model),
           rubricRevision: IMPACT_RUBRIC_REVISION,
-          choice: outcome.status === "completed" ? outcome.result.choice : null,
-          confidence: outcome.status === "completed" ? outcome.result.confidence : null,
-          probabilities: outcome.status === "completed" ? JSON.stringify(outcome.result.probabilities) : null,
-          failureReason: outcome.status === "failed" ? outcome.reason : null,
-          message: outcome.status === "failed" ? outcome.message : null,
         })
         .returning("id")
         .executeTakeFirstOrThrow();
@@ -511,7 +490,7 @@ export function reassessments({
         if (!locked.ok) return locked;
         const pendency = await trx
           .selectFrom("pendencies")
-          .select(["answerVersionId", "impactAssessmentId", "blockId", "stage", "resolvedAt"])
+          .select(["answerVersionId", "constraintRevisionId", "impactAssessmentId", "blockId", "stage", "resolvedAt"])
           .where("id", "=", pendencyId)
           .where("processId", "=", processId)
           .where("reason", "=", "reassessment")
@@ -531,6 +510,23 @@ export function reassessments({
           const text = correctedSynthesis.trim();
           // O mesmo texto que vale não é correção.
           if (text !== synthesisInForce({ synthesis, corrections })) correction = text;
+        }
+        // Numa Revisão de Restrição, a Confirmação da Etapa passa a sustentar a revisão.
+        if (pendency.constraintRevisionId !== null) {
+          const { recordedAt } = await trx
+            .insertInto("confirmationConstraintRevisions")
+            .values({
+              processId,
+              constraintRevisionId: pendency.constraintRevisionId,
+              stage: pendency.stage!,
+              basis: "reconfirmed",
+              impactAssessmentId: pendency.impactAssessmentId!,
+            })
+            .returning("recordedAt")
+            .executeTakeFirstOrThrow();
+          await trx.updateTable("pendencies").set({ resolvedAt: recordedAt, resolution: "reconfirmed" }).where("id", "=", pendencyId).execute();
+          const [resolved] = await listPendencies(trx, locked.process, [pendencyId]);
+          return { ok: true, pendency: resolved!, answerVersionId: null } as const;
         }
         const { recordedAt } = await trx
           .insertInto("confirmationAnswerVersions")
@@ -553,7 +549,7 @@ export function reassessments({
         return { ok: true, pendency: resolved!, answerVersionId: pendency.answerVersionId! } as const;
       });
       if (!reconfirmed.ok) return reconfirmed;
-      await afterConfirm(processId, [reconfirmed.answerVersionId]);
+      if (reconfirmed.answerVersionId !== null) await afterConfirm(processId, [reconfirmed.answerVersionId]);
       return { ok: true, pendency: reconfirmed.pendency };
     },
   };

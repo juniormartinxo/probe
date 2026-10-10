@@ -100,8 +100,9 @@ export async function statementsInForceOf(db: Db, processId: string): Promise<It
 
 const optionalText = (value: string | null): string | null => value?.trim() || null;
 
-// Trava o Processo para a transação; Restrições e Preferências só mudam enquanto R é a Etapa atual.
-export async function lockStageR(
+// Trava o Processo para a transação. O registro e a retirada avulsos só valem enquanto R é a Etapa
+// atual; depois, uma Restrição só muda pela Revisão de Restrição.
+async function lockStageR(
   trx: Db,
   processId: string,
 ): Promise<{ ok: true; process: { id: string; stagePointsVersion: number } } | { ok: false; error: ItemClosed }> {
@@ -117,7 +118,7 @@ export async function lockStageR(
   return { ok: true, process };
 }
 
-// Registra o item; chamar com o Processo travado na Etapa R.
+// Registra o item; chamar com o Processo travado.
 async function registerIn(trx: Db, processId: string, kind: ItemKind, { statement, scope, unit }: ItemStatement): Promise<StatedItem> {
   return trx
     .insertInto(itemPaths[kind])
@@ -126,7 +127,7 @@ async function registerIn(trx: Db, processId: string, kind: ItemKind, { statemen
     .executeTakeFirstOrThrow();
 }
 
-// Retira o item em vigor; chamar com o Processo travado na Etapa R.
+// Retira o item em vigor; chamar com o Processo travado.
 async function withdrawIn(
   trx: Db,
   process: { id: string; stagePointsVersion: number },
@@ -163,19 +164,58 @@ export interface ItemReplacement {
   item: ItemStatement;
 }
 
+// Revisão de Restrição: o usuário retirou uma Restrição em vigor e registrou a que a substitui, se
+// houver (uma Restrição nova ou uma Preferência), com uma nota; as duas ficam no histórico. Vale em
+// qualquer Etapa a partir de R; por ora, só como resolução de uma Pendência de conflito.
+export interface ConstraintRevision {
+  id: string;
+  constraint: StatedItem;
+  replacement: { kind: ItemKind; item: StatedItem } | null;
+  note: string | null;
+  // A Pendência de conflito que ela resolveu.
+  conflictPendencyId: string | null;
+  revisedAt: Date;
+}
+
+// As Revisões de Restrição do Processo, na ordem em que foram feitas. Com `ids`, só essas.
+export async function constraintRevisionsOf(db: Db, processId: string, ids?: string[]): Promise<ConstraintRevision[]> {
+  if (ids?.length === 0) return [];
+  let query = db
+    .selectFrom("constraintRevisions")
+    .selectAll()
+    .where("processId", "=", processId)
+    .orderBy("revisedAt")
+    .orderBy("id");
+  if (ids) query = query.where("id", "in", ids);
+  const rows = await query.execute();
+  if (rows.length === 0) return [];
+  const { constraints, preferences } = await constraintsAndPreferencesOf(db, processId);
+  const constraintOf = (id: string) => constraints.find((item) => item.id === id)!;
+  return rows.map((row) => ({
+    id: row.id,
+    constraint: constraintOf(row.constraintId),
+    replacement:
+      row.replacementConstraintId !== null
+        ? { kind: "constraint", item: constraintOf(row.replacementConstraintId) }
+        : row.replacementPreferenceId !== null
+          ? { kind: "preference", item: preferences.find((item) => item.id === row.replacementPreferenceId)! }
+          : null,
+    note: row.note,
+    conflictPendencyId: row.conflictPendencyId,
+    revisedAt: row.revisedAt,
+  }));
+}
+
 export type ConstraintRevisionError = "constraint_not_found" | "already_withdrawn" | ItemsRequired;
 
-// Revisão de Restrição: retira a Restrição em vigor e registra a que a substitui, se houver; as duas
-// ficam no histórico. Chamar com o Processo travado na Etapa R (lockStageR).
+// Revisão de Restrição: retira a Restrição em vigor, registra a que a substitui, se houver, e grava a
+// revisão. Chamar com o Processo aberto travado; numa Etapa antes de R não há Restrição a rever.
 export async function reviseConstraintIn(
   trx: Db,
   process: { id: string; stagePointsVersion: number },
   constraintId: string,
-  replacement: ItemReplacement | null,
-): Promise<
-  | { ok: true; revised: StatedItem; replacement: { kind: ItemKind; item: StatedItem } | null }
-  | { ok: false; error: ConstraintRevisionError }
-> {
+  { replacement, note, conflictPendencyId }: { replacement: ItemReplacement | null; note: string | null; conflictPendencyId: string | null },
+): Promise<{ ok: true; revision: ConstraintRevision } | { ok: false; error: ConstraintRevisionError }> {
   // Verificada antes de registrar a substituta: uma recusa não deixa nada gravado.
   const found = await trx
     .selectFrom("constraints")
@@ -189,7 +229,20 @@ export async function reviseConstraintIn(
   const registered = replacement && { kind: replacement.kind, item: await registerIn(trx, process.id, replacement.kind, replacement.item) };
   const withdrawn = await withdrawIn(trx, process, "constraint", constraintId);
   if (!withdrawn.ok) return { ok: false, error: withdrawn.error === "preference_not_found" ? "constraint_not_found" : withdrawn.error };
-  return { ok: true, revised: withdrawn.item, replacement: registered };
+  const { id } = await trx
+    .insertInto("constraintRevisions")
+    .values({
+      processId: process.id,
+      constraintId,
+      replacementConstraintId: registered?.kind === "constraint" ? registered.item.id : null,
+      replacementPreferenceId: registered?.kind === "preference" ? registered.item.id : null,
+      note: optionalText(note),
+      conflictPendencyId,
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  const [revision] = await constraintRevisionsOf(trx, process.id, [id]);
+  return { ok: true, revision: revision! };
 }
 
 export function constraintsAndPreferences({ db }: { db: Db }): ConstraintsAndPreferences {

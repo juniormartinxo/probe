@@ -10,6 +10,8 @@ const PREAMBLE =
   "O estado traz o enunciado de um problema, as Restrições e Preferências que a pessoa registrou e respostas que ela " +
   "confirmou num Processo de decisão pelo framework PROBE. Restrições são inegociáveis; Preferências são desejáveis, " +
   "mas negociáveis: deixar de atender uma Preferência não é conflito. " +
+  "Os esclarecimentos são explicações da pessoa sobre conflitos aparentes já resolvidos, com as respostas como estavam " +
+  "então: considere-os, mas julgue as respostas atuais. " +
   "Julgue apenas pelo texto explícito; não use conhecimento externo.";
 
 // {a} e {b} são as referências das duas respostas, dadas pela aplicação.
@@ -59,6 +61,10 @@ export function conflictRequest(input: ConflictInput): { state: Record<string, u
       restricoes: input.constraints.map(({ statement, scope, unit }) => ({ restricao: statement, escopo: scope, unidade: unit })),
       preferencias: input.preferences.map(({ statement, scope, unit }) => ({ preferencia: statement, escopo: scope, unidade: unit })),
       respostas: [...answers.values()].map(answerOf),
+      esclarecimentos: input.clarifications.map(({ answers: pair, clarification }) => ({
+        respostasDeEntao: pair.map(answerOf),
+        esclarecimento: clarification,
+      })),
     },
     questions: Object.fromEntries(
       input.pairs.map(({ key, answer, other }) => [

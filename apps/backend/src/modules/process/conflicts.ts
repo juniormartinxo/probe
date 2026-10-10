@@ -10,10 +10,11 @@ import {
   type ConflictVerdict,
 } from "../assessments/conflict-assessments.ts";
 import { CONFLICT_RUBRIC_REVISION } from "../assessments/conflict-rubric.ts";
-import { verdictProblem } from "../assessments/impact-assessments.ts";
+import { caught, verdictProblem } from "../assessments/impact-assessments.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 import { confirmedVersionIdsOf } from "./answers.ts";
 import {
+  clarificationsOf,
   conflictingAnswerOf,
   conflictPairsOf,
   resolutionQuestionOf,
@@ -24,9 +25,9 @@ import {
 import {
   constraintsAndPreferencesOf,
   inForceOf,
-  lockStageR,
   reviseConstraintIn,
   statementsOf,
+  type ConstraintRevision,
   type ConstraintRevisionError,
   type ItemReplacement,
 } from "./constraints-and-preferences.ts";
@@ -85,7 +86,7 @@ type PendencyError = "process_not_found" | "process_not_open" | "pendency_not_fo
 
 export type ClarificationError = PendencyError;
 
-export type ConflictConstraintRevisionError = PendencyError | "stage_not_current" | ConstraintRevisionError;
+export type ConflictConstraintRevisionError = PendencyError | ConstraintRevisionError;
 
 export type ResolutionQuestionError = PendencyError | "attempt_in_progress" | "resolution_question_generated" | "cli_model_not_configured";
 
@@ -118,7 +119,8 @@ export interface Conflicts {
   ): Promise<{ ok: true; pendencies: Pendency[] } | { ok: false; error: ConflictDecisionError }>;
   // Resolve a Pendência de conflito com o esclarecimento do usuário.
   clarify(processId: string, pendencyId: string, clarification: string): Promise<{ ok: true; pendency: Pendency } | { ok: false; error: ClarificationError }>;
-  // Resolve a Pendência de conflito revendo uma Restrição, enquanto a Etapa R é a atual.
+  // Resolve a Pendência de conflito com uma Revisão de Restrição, em qualquer Etapa a partir de R (antes
+  // dela não há Restrição); as Confirmações de Etapa que sustentavam a Restrição passam pela Avaliação de impacto.
   reviseConstraint(
     processId: string,
     pendencyId: string,
@@ -255,6 +257,8 @@ async function openConflictPendency(trx: Db, processId: string, pendencyId: stri
   return { ok: true, pairId: pendency.conflictPairId! } as const;
 }
 
+// `afterConstraintRevision`: chamado depois de uma Revisão de Restrição, com ela; quem o recebe avalia o
+// impacto dela sobre as Confirmações de Etapa. Não lança.
 export function conflicts(deps: {
   db: Db;
   assessor: Assessor;
@@ -262,18 +266,13 @@ export function conflicts(deps: {
   runner: AiRequestRunner;
   settings: SettingsModule;
   log: FastifyBaseLogger;
+  afterConstraintRevision: (processId: string, revision: ConstraintRevision) => Promise<void>;
 }): Conflicts {
-  const { db, assessor, assistant, runner, settings, log } = deps;
+  const { db, assessor, assistant, runner, settings, log, afterConstraintRevision } = deps;
 
   // Um julgamento válido para cada par, ou a falha, qualquer que seja o Assessor.
   async function judge(input: ConflictInput): Promise<AssessorOutcome<Record<string, Verdict>>> {
-    const outcome = await assessor.assessConflicts(input).catch(
-      (error: unknown): AssessorOutcome<never> => ({
-        status: "failed",
-        reason: "jev_error",
-        message: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    const outcome = await caught(() => assessor.assessConflicts(input));
     if (outcome.status !== "completed") return outcome;
     for (const { key } of input.pairs) {
       const verdict = outcome.result[key];
@@ -291,6 +290,7 @@ export function conflicts(deps: {
     const input: ConflictInput = {
       problemStatement: await confirmedStatementOf(db, processId),
       ...statementsOf(items),
+      clarifications: await clarificationsOf(db, processId),
       pairs: pairs.map((pair) => ({ key: pairKey(pair.position), answer: conflictingAnswerOf(pair.answer), other: conflictingAnswerOf(pair.other) })),
     };
     const outcome = await judge(input);
@@ -394,6 +394,7 @@ export function conflicts(deps: {
         problemStatement: await confirmedStatementOf(trx, processId),
         ...statementsOf(inForceOf(await constraintsAndPreferencesOf(trx, processId))),
         answers: [conflictingAnswerOf(pair!.answer), conflictingAnswerOf(pair!.other)],
+        clarifications: await clarificationsOf(trx, processId),
       };
       const attempt = await runner.openAttempt(trx, aiRequestId, attemptSettings.settings);
       return { ok: true, attempt, input } as const;
@@ -520,28 +521,24 @@ export function conflicts(deps: {
     },
 
     async reviseConstraint(processId, pendencyId, { constraintId, replacement, note }) {
-      return db.transaction().execute(async (trx) => {
-        const locked = await lockStageR(trx, processId);
+      const revised = await db.transaction().execute(async (trx) => {
+        const locked = await lockOpenProcess(trx, processId);
         if (!locked.ok) return locked;
         const pendency = await openConflictPendency(trx, processId, pendencyId);
         if (!pendency.ok) return pendency;
-        const revised = await reviseConstraintIn(trx, locked.process, constraintId, replacement);
-        if (!revised.ok) return revised;
+        const revision = await reviseConstraintIn(trx, locked.process, constraintId, { replacement, note, conflictPendencyId: pendencyId });
+        if (!revision.ok) return revision;
         await trx
           .updateTable("pendencies")
-          .set((eb) => ({
-            resolvedAt: eb.fn<Date>("clock_timestamp"),
-            resolution: "constraint_revised" as const,
-            resolutionNote: note?.trim() || null,
-            revisedConstraintId: revised.revised.id,
-            replacementConstraintId: revised.replacement?.kind === "constraint" ? revised.replacement.item.id : null,
-            replacementPreferenceId: revised.replacement?.kind === "preference" ? revised.replacement.item.id : null,
-          }))
+          .set((eb) => ({ resolvedAt: eb.fn<Date>("clock_timestamp"), resolution: "constraint_revised" as const }))
           .where("id", "=", pendencyId)
           .execute();
         const [resolved] = await listPendencies(trx, locked.process, [pendencyId]);
-        return { ok: true, pendency: resolved! } as const;
+        return { ok: true, pendency: resolved!, revision: revision.revision } as const;
       });
+      if (!revised.ok) return revised;
+      await afterConstraintRevision(processId, revised.revision);
+      return { ok: true, pendency: revised.pendency };
     },
 
     requestResolutionQuestion,
