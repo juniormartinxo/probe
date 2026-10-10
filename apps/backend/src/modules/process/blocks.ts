@@ -15,6 +15,7 @@ import type { SettingsModule } from "../settings/settings.ts";
 import { answersOf, type AnswerDraft, type Answer } from "./answers.ts";
 import { openPoints, stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
 import { statementsInForceOf } from "./constraints-and-preferences.ts";
+import { knownOptionOf, optionsOf } from "./options.ts";
 import { confirmedStagesOf } from "./stage-readiness.ts";
 import { askedQuestionOf, currentVersionsOf, stageQuestions } from "./stage-questions.ts";
 import { namedStagePoint, type StagePoint } from "./stage-points.ts";
@@ -175,6 +176,9 @@ async function lockOpenProcess(
           synthesisInForce({ synthesis: row.synthesis!, corrections: corrections.get(row.id)! }),
         ),
         ambiguousAnswers,
+        options: (await optionsOf(trx, process))
+          .filter((option) => option.status === "accepted")
+          .map(knownOptionOf),
       },
       usedVersionIds: currentVersionsOf(questions),
       questionIdsByRef: new Map(questions.map((question) => [question.ref, question.id])),

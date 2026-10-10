@@ -4,6 +4,7 @@ import type { AttemptStatus, Operation } from "../modules/ai/ai-requests.ts";
 import type { AnswerType, Cli, CloakProfile, FailureReason } from "../modules/ai/assistant.ts";
 import type { AssessmentChoice, AssessorFailureReason } from "../modules/assessments/assessor.ts";
 import type { AssessmentType } from "../modules/assessments/stage-assessments.ts";
+import type { OptionOrigin } from "../modules/process/options.ts";
 import type { PendencyReason, PendencyResolution } from "../modules/process/pendencies.ts";
 import type { ConfirmationBasis } from "../modules/process/reassessments.ts";
 import type { StatementOrigin } from "../modules/process/problem-statement.ts";
@@ -311,6 +312,65 @@ export interface StageConfirmationTable {
   confirmedAt: Generated<Date>;
 }
 
+// Opção registrada na Etapa O: proposta pela IA (com a sugestão como veio) ou acrescentada pelo usuário.
+export interface OptionTable {
+  id: Generated<string>;
+  processId: string;
+  statement: string;
+  description: string | null;
+  stagePoints: Generated<string[]>;
+  origin: OptionOrigin;
+  proposalAttemptId: string | null;
+  suggestedStatement: string | null;
+  suggestedDescription: string | null;
+  createdAt: Generated<Date>;
+  acceptedAt: Date | null;
+  discardedAt: Date | null;
+}
+
+export interface OptionCheckTable {
+  id: Generated<string>;
+  processId: string;
+  createdAt: Generated<Date>;
+}
+
+export interface OptionConstraintPairTable {
+  id: Generated<string>;
+  checkId: string;
+  position: number;
+  optionId: string;
+  constraintId: string;
+}
+
+export interface OptionAssessmentTable {
+  id: Generated<string>;
+  processId: string;
+  checkId: string;
+  status: "completed" | "failed";
+  requestedModel: string;
+  jevModel: string | null;
+  rubricRevision: string;
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  createdAt: Generated<Date>;
+}
+
+export interface OptionVerdictTable {
+  assessmentId: string;
+  pairId: string;
+  choice: AssessmentChoice;
+  confidence: number;
+  // Gravado como JSON; lido como objeto.
+  probabilities: ColumnType<Record<AssessmentChoice, number>, string, never>;
+}
+
+export interface OptionDecisionTable {
+  pairId: string;
+  optionAssessmentId: string;
+  violates: boolean;
+  decidedAt: Generated<Date>;
+}
+
 // Linha única de configurações não sensíveis.
 export interface SettingsTable {
   id: Generated<boolean>;
@@ -354,6 +414,12 @@ export interface Database {
   conflictDismissals: ConflictDismissalTable;
   constraintRevisions: ConstraintRevisionTable;
   confirmationConstraintRevisions: ConfirmationConstraintRevisionTable;
+  options: OptionTable;
+  optionChecks: OptionCheckTable;
+  optionConstraintPairs: OptionConstraintPairTable;
+  optionAssessments: OptionAssessmentTable;
+  optionVerdicts: OptionVerdictTable;
+  optionDecisions: OptionDecisionTable;
   settings: SettingsTable;
 }
 

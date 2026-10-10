@@ -132,6 +132,8 @@ export interface BlockInput extends ItemStatements {
   confirmedSyntheses: string[];
   // Respostas que as sínteses confirmadas apontaram como ambíguas: candidatas a reformulação.
   ambiguousAnswers: AmbiguousAnswer[];
+  // As Opções aceitas, a partir da Etapa O; nenhuma antes.
+  options: KnownOption[];
 }
 
 // O que a IA recebe para sintetizar um Bloco e sugerir a cobertura dos Pontos ainda abertos.
@@ -184,6 +186,39 @@ export interface GeneratedResolutionQuestion {
   question: string;
 }
 
+// Opção como a IA a propõe: o caminho, o que ele envolve (quando precisa ser dito) e os Pontos da
+// Etapa O que ela representa (por exemplo, eliminar o problema), se algum.
+export interface ProposedOption {
+  statement: string;
+  description: string | null;
+  stagePoints: string[];
+}
+
+export interface GeneratedOptions {
+  // Pode vir vazia: nenhuma Opção é inventada só para atingir uma quantidade.
+  options: ProposedOption[];
+}
+
+// Opção já registrada no Processo, como a IA a recebe, para não repeti-la: o estado e, numa aceita,
+// as Restrições que ela viola.
+export interface KnownOption {
+  statement: string;
+  description: string | null;
+  status: "suggested" | "accepted" | "discarded";
+  violatedConstraints: string[];
+}
+
+// O que a IA recebe para propor Opções: o problema, as Etapas já confirmadas, as Restrições e
+// Preferências em vigor, os Pontos da Etapa O, o que já foi perguntado nela e as Opções já registradas.
+export interface OptionProposalInput extends ItemStatements {
+  originalDescription: string;
+  problemStatement: string;
+  confirmedStages: ConfirmedStageAnswers[];
+  stagePoints: StagePoint[];
+  askedQuestions: AskedQuestion[];
+  options: KnownOption[];
+}
+
 export interface Assistant {
   refineProblemStatement(
     input: { originalDescription: string },
@@ -192,6 +227,7 @@ export interface Assistant {
   generateBlock(input: BlockInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedBlock>>;
   synthesizeBlock(input: SynthesisInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedSynthesis>>;
   formulateResolutionQuestion(input: ResolutionQuestionInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedResolutionQuestion>>;
+  proposeOptions(input: OptionProposalInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedOptions>>;
   // Pedido mínimo à CLI, só para saber se a cadeia até ela funciona; o resultado é a resposta crua.
   testConnection(context: AttemptContext): Promise<AssistantOutcome<string>>;
 }

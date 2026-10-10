@@ -385,6 +385,91 @@ export interface ConstraintReassessment {
   pendencyId: string | null;
 }
 
+// Opção: caminho concreto para o problema, registrado na Etapa O. A da IA é sugestão até você aceitá-la
+// (como veio ou editada) ou descartá-la; a sua já nasce aceita. Aceita, não se edita; descartada, fica
+// no histórico.
+export type OptionStatus = "suggested" | "accepted" | "discarded";
+
+// Viável, inviável (viola uma Restrição em vigor) ou ainda sem decisão do Jev ou sua.
+export type OptionViability = "viable" | "inviable" | "undecided";
+
+export interface OptionViolation {
+  constraintId: string;
+  statement: string;
+  decidedBy: "jev" | "user";
+}
+
+export interface Option {
+  id: string;
+  statement: string;
+  description: string | null;
+  stagePoints: { key: string; name: string }[];
+  origin: "ai" | "user";
+  // A sugestão como a IA a fez; null nas suas.
+  suggestion: { statement: string; description: string | null } | null;
+  status: OptionStatus;
+  createdAt: string;
+  acceptedAt: string | null;
+  discardedAt: string | null;
+  // Só nas aceitas.
+  viability: OptionViability | null;
+  violations: OptionViolation[];
+}
+
+// Proposta de Opções pedida à IA; `optionIds`, as Opções que ela sugeriu.
+export interface OptionProposal {
+  id: string;
+  status: AttemptStatus;
+  optionIds: string[];
+  attempts: Attempt[];
+}
+
+// O julgamento do Jev sobre um par Opção × Restrição: `yes`, a Opção viola a Restrição.
+export interface OptionVerdict {
+  pairId: string;
+  choice: AssessmentChoice;
+  probabilities: Record<AssessmentChoice, number>;
+  confidence: number;
+  needsDecision: boolean;
+}
+
+export interface OptionAssessment {
+  id: string;
+  checkId: string;
+  status: "completed" | "failed";
+  requestedModel: string;
+  jevModel: string | null;
+  rubricRevision: string;
+  verdicts: OptionVerdict[];
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  createdAt: string;
+}
+
+export type OptionPairStatus = "not_assessed" | "assessment_failed" | "awaiting_decision" | "complies" | "violates" | "superseded";
+
+export const undecidedOptionStatuses: OptionPairStatus[] = ["not_assessed", "assessment_failed", "awaiting_decision"];
+
+export interface OptionConstraintPair {
+  id: string;
+  position: number;
+  option: { id: string; statement: string };
+  constraint: { id: string; statement: string };
+  status: OptionPairStatus;
+  decidedBy: "jev" | "user" | null;
+  verdict: OptionVerdict | null;
+}
+
+// Verificação de viabilidade: pares de Opções aceitas e Restrições em vigor, e as Avaliações do Jev
+// sobre eles; a última é a que vale.
+export interface OptionCheck {
+  id: string;
+  createdAt: string;
+  status: "not_assessed" | "assessment_failed" | "awaiting_decision" | "decided";
+  pairs: OptionConstraintPair[];
+  assessments: OptionAssessment[];
+}
+
 // Resumo do entendimento atual do Processo, montado sem chamar a IA.
 export interface Understanding {
   originalDescription: string;
@@ -400,6 +485,8 @@ export interface Understanding {
     answers: { questionId: string; wording: string; answer: string | null; confirmed: boolean; unknown: boolean }[];
   }[];
   openPendencies: { reason: PendencyReason; wording: string }[];
+  // As Opções aceitas, com a viabilidade.
+  options: Pick<Option, "statement" | "viability" | "violations">[];
 }
 
 export type AssessmentChoice = "yes" | "no" | "insufficient";
@@ -482,6 +569,11 @@ export interface ProcessDetail extends ProcessWithConversation {
   // Restrições e Preferências registradas, inclusive as retiradas, na ordem do registro.
   constraints: StatedItem[];
   preferences: StatedItem[];
+  // As Opções da Etapa O, inclusive as descartadas, as propostas pedidas à IA e as verificações de
+  // viabilidade de cada Opção aceita contra cada Restrição em vigor.
+  options: Option[];
+  optionProposals: OptionProposal[];
+  optionChecks: OptionCheck[];
 }
 
 // Configurações não sensíveis; segredos ficam no ambiente do backend e nunca chegam aqui.
@@ -862,6 +954,73 @@ export async function requestResolutionQuestion(processId: string, pendencyId: s
     { method: "POST", body: JSON.stringify(cli ? { cli } : {}) },
   );
   return resolutionQuestion;
+}
+
+// Pede Opções à IA, enquanto a Etapa O é a atual.
+export async function requestOptionProposal(processId: string): Promise<OptionProposal> {
+  const { optionProposal } = await request<{ optionProposal: OptionProposal }>(`${processPath(processId)}/option-proposals`, { method: "POST" });
+  return optionProposal;
+}
+
+// Nova tentativa da proposta de Opções que não trouxe resultado, com a CLI escolhida.
+export async function newOptionProposalAttempt(processId: string, proposalId: string, cli: Cli): Promise<OptionProposal> {
+  const { optionProposal } = await request<{ optionProposal: OptionProposal }>(
+    `${processPath(processId)}/option-proposals/${encodeURIComponent(proposalId)}/attempts`,
+    { method: "POST", body: JSON.stringify({ cli }) },
+  );
+  return optionProposal;
+}
+
+const optionPath = (processId: string, optionId: string) => `${processPath(processId)}/options/${encodeURIComponent(optionId)}`;
+
+// Acrescenta uma Opção sua, já aceita.
+export async function addOption(processId: string, option: { statement: string; description: string | null }): Promise<Option> {
+  const { option: added } = await request<{ option: Option }>(`${processPath(processId)}/options`, {
+    method: "POST",
+    body: JSON.stringify(option),
+  });
+  return added;
+}
+
+// Aceita uma sugestão da IA, como veio (sem `edited`) ou editada.
+export async function acceptOption(
+  processId: string,
+  optionId: string,
+  edited?: { statement: string; description: string | null },
+): Promise<Option> {
+  const { option } = await request<{ option: Option }>(`${optionPath(processId, optionId)}/acceptance`, {
+    method: "POST",
+    body: JSON.stringify(edited ?? {}),
+  });
+  return option;
+}
+
+export async function discardOption(processId: string, optionId: string): Promise<Option> {
+  const { option } = await request<{ option: Option }>(`${optionPath(processId, optionId)}/discard`, { method: "POST" });
+  return option;
+}
+
+const optionCheckPath = (processId: string, checkId: string) => `${processPath(processId)}/option-checks/${encodeURIComponent(checkId)}`;
+
+// Nova tentativa da Avaliação de violação, depois de uma falha do Jev.
+export async function retryOptionAssessment(processId: string, checkId: string): Promise<OptionCheck> {
+  const { optionCheck } = await request<{ optionCheck: OptionCheck }>(`${optionCheckPath(processId, checkId)}/option-assessments`, {
+    method: "POST",
+  });
+  return optionCheck;
+}
+
+// A sua decisão sobre pares em que o Jev não teve certeza ou não respondeu, sobre a Avaliação que você viu.
+export async function decideOptions(
+  processId: string,
+  checkId: string,
+  decision: { optionAssessmentId: string; pairIds: string[]; decision: "violates" | "complies" },
+): Promise<OptionCheck> {
+  const { optionCheck } = await request<{ optionCheck: OptionCheck }>(`${optionCheckPath(processId, checkId)}/decision`, {
+    method: "POST",
+    body: JSON.stringify(decision),
+  });
+  return optionCheck;
 }
 
 export async function getUnderstanding(processId: string): Promise<Understanding> {

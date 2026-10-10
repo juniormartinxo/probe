@@ -39,6 +39,7 @@ describe("Understanding of the Process", () => {
       preferences: [],
       blocks: [],
       openPendencies: [],
+      options: [],
     });
   });
 
@@ -86,6 +87,7 @@ describe("Understanding of the Process", () => {
         },
       ],
       openPendencies: [{ reason: "unknown_information", wording: free.wording }],
+      options: [],
     });
     expect(assistant.block.attempts.length + assistant.synthesis.attempts.length).toBe(calls);
   });

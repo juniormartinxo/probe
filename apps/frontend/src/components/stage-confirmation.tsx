@@ -44,7 +44,21 @@ const confirmErrorText: Record<string, string> = {
   assessment_required: "Peça a Avaliação do Jev antes de confirmar.",
   justification_required: "Diga por que você confirma contra a Avaliação do Jev.",
   stage_not_current: "Esta Etapa já não é a atual.",
+  pending_option_suggestions: "Há sugestões de Opção da IA sem resposta sua, ou uma proposta em andamento. Aceite ou descarte cada uma antes de confirmar.",
+  undecided_options: "Há Opções cuja viabilidade ainda espera o Jev ou a sua decisão. Decida antes de confirmar.",
+  no_viable_option: "Nenhuma Opção aceita atende às Restrições. Veja acima os impedimentos.",
 };
+
+// Na Etapa O, o que as Opções seguram na Confirmação, na ordem em que o backend verifica; null quando nada.
+function optionsProblem(process: ProcessDetail): string | null {
+  if (process.currentStage !== "O") return null;
+  const pending =
+    process.optionProposals.at(-1)?.status === "running" || process.options.some((option) => option.status === "suggested");
+  if (pending) return "pending_option_suggestions";
+  const accepted = process.options.filter((option) => option.status === "accepted");
+  if (accepted.some((option) => option.viability === "undecided")) return "undecided_options";
+  return accepted.some((option) => option.viability === "viable") ? null : "no_viable_option";
+}
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 
@@ -77,7 +91,8 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
       ),
     ),
   ];
-  const blocking = [...unknown, ...reviews, ...conflicts];
+  const options = optionsProblem(process);
+  const blocking = [...unknown, ...reviews, ...conflicts, ...(options ? [options] : [])];
 
   const [assessing, setAssessing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -150,6 +165,14 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
         <p className="text-destructive text-sm">
           Há respostas em conflito, ou à espera de decisão sobre conflito, nesta Etapa ou nas anteriores. Veja acima as respostas em
           conflito.
+        </p>
+      )}
+
+      {options && (
+        <p className="text-destructive text-sm">
+          {options === "no_viable_option"
+            ? "A Etapa O só se confirma com pelo menos uma Opção aceita e viável."
+            : confirmErrorText[options]}
         </p>
       )}
 

@@ -14,7 +14,12 @@ import {
 
 // Operações que o backend pede à IA. Cada uma tem a sua solicitação; uma nova chance depois de
 // uma falha é uma nova tentativa da mesma solicitação.
-export type Operation = "refine_problem_statement" | "generate_block" | "synthesize_block" | "formulate_resolution_question";
+export type Operation =
+  | "refine_problem_statement"
+  | "generate_block"
+  | "synthesize_block"
+  | "formulate_resolution_question"
+  | "propose_options";
 
 export type AttemptStatus = "running" | "completed" | "failed" | "timed_out" | "canceled" | "interrupted";
 

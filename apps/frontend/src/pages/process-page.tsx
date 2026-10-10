@@ -45,6 +45,7 @@ export function ProcessPage() {
     (state.process.refinement?.status === "running" ||
       state.process.blockRequests.at(-1)?.status === "running" ||
       state.process.blocks.some((block) => block.synthesisRequests.at(-1)?.status === "running") ||
+      state.process.optionProposals.at(-1)?.status === "running" ||
       state.process.pendencies.some((pendency) => pendency.conflict?.resolutionQuestion?.status === "running"));
   useEffect(() => {
     if (!running) return;

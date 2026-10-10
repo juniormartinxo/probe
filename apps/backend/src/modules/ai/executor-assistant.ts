@@ -9,6 +9,7 @@ import {
 } from "./assistant.ts";
 import { resolutionQuestionPrompt, parseResolutionQuestion } from "./formulate-resolution-question.ts";
 import { blockPrompt, parseGeneratedBlock } from "./generate-block.ts";
+import { optionsPrompt, parseGeneratedOptions } from "./propose-options.ts";
 import { parseStatementProposal, refinementPrompt } from "./refine-problem-statement.ts";
 import { parseGeneratedSynthesis, synthesisPrompt } from "./synthesize-block.ts";
 
@@ -220,6 +221,9 @@ export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSett
     },
     formulateResolutionQuestion(input, context) {
       return generate(resolutionQuestionPrompt(input), parseResolutionQuestion, context);
+    },
+    proposeOptions(input, context) {
+      return generate(optionsPrompt(input), (output) => parseGeneratedOptions(output, input), context);
     },
     testConnection(context) {
       // Qualquer resposta não vazia mostra que a CLI respondeu com o modelo pedido.

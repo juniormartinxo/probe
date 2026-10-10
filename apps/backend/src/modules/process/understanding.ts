@@ -1,6 +1,7 @@
 import { describeAnswer } from "./answers.ts";
 import type { StageWork } from "./blocks.ts";
 import { inForceOf, statementsOf, type ConstraintsAndPreferencesState, type ItemStatements } from "./constraints-and-preferences.ts";
+import type { Option } from "./options.ts";
 import type { Pendency, PendencyReason } from "./pendencies.ts";
 import type { ProblemStatement } from "./problem-statement.ts";
 import type { StagePointState } from "./stage-point-coverage.ts";
@@ -23,6 +24,8 @@ export interface Understanding extends ItemStatements {
     answers: { questionId: string; wording: string; answer: string | null; confirmed: boolean; unknown: boolean }[];
   }[];
   openPendencies: { reason: PendencyReason; wording: string }[];
+  // As Opções aceitas, com a viabilidade e as Restrições que violam.
+  options: Pick<Option, "statement" | "viability" | "violations">[];
 }
 
 export function understandingOf(process: {
@@ -32,6 +35,7 @@ export function understandingOf(process: {
   stagePoints: StageWork["stagePoints"];
   blocks: StageWork["blocks"];
   pendencies: Pendency[];
+  options: Option[];
 } & ConstraintsAndPreferencesState): Understanding {
   return {
     originalDescription: process.originalDescription,
@@ -63,5 +67,8 @@ export function understandingOf(process: {
         // Sem Pergunta, a de uma Revisão de Restrição: a Confirmação da Etapa a reconfirmar.
         wording: pendency.question?.wording ?? `Confirmação da Etapa ${pendency.reassessment!.confirmation.stage}, depois de uma Revisão de Restrição`,
       })),
+    options: process.options
+      .filter((option) => option.status === "accepted")
+      .map(({ statement, viability, violations }) => ({ statement, viability, violations })),
   };
 }

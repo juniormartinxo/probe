@@ -9,6 +9,7 @@ import { blocks } from "./modules/process/blocks.ts";
 import { conflicts as conflictsModule } from "./modules/process/conflicts.ts";
 import { constraintReassessments as constraintReassessmentsModule } from "./modules/process/constraint-reassessments.ts";
 import { constraintsAndPreferences } from "./modules/process/constraints-and-preferences.ts";
+import { options as optionsModule } from "./modules/process/options.ts";
 import { pendencies } from "./modules/process/pendencies.ts";
 import { problemStatements } from "./modules/process/problem-statement.ts";
 import { reassessments as reassessmentsModule } from "./modules/process/reassessments.ts";
@@ -32,7 +33,13 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
   const runner = new AiRequestRunner(db, app.log);
   const settings = settingsModule({ db, assistant, defaultAiModel });
   const constraintReassessments = constraintReassessmentsModule({ db, assessor, log: app.log });
-  // Uma Revisão de Restrição tem o impacto sobre as Confirmações de Etapa que a sustentavam avaliado.
+  const optionsOfProcess = optionsModule({ db, assistant, assessor, runner, settings, log: app.log });
+  // Uma Revisão de Restrição tem o impacto avaliado sobre as Confirmações de Etapa que a sustentavam, e
+  // a Restrição que entra em vigor, avaliada contra as Opções aceitas.
+  const afterConstraintRevision = async (processId: string) => {
+    await constraintReassessments.assessOpen(processId);
+    await optionsOfProcess.assessMissing(processId);
+  };
   const conflicts = conflictsModule({
     db,
     assessor,
@@ -40,7 +47,7 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
     runner,
     settings,
     log: app.log,
-    afterConstraintRevision: (processId) => constraintReassessments.assessOpen(processId),
+    afterConstraintRevision,
   });
   // Respostas que passam a confirmadas têm o conflito com as já confirmadas avaliado.
   const afterConfirm = (processId: string, answerVersionIds: string[]) => conflicts.assessConfirmed(processId, answerVersionIds);
@@ -70,13 +77,11 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
           stagePointCoverage: stagePointCoverage({ db }),
           stageAssessments: stageAssessments({ db, assessor }),
           stageConfirmations: stageConfirmations({ db }),
-          constraintsAndPreferences: constraintsAndPreferences({
-            db,
-            afterConstraintRevision: (processId) => constraintReassessments.assessOpen(processId),
-          }),
+          constraintsAndPreferences: constraintsAndPreferences({ db, afterConstraintRevision }),
           reassessments,
           constraintReassessments,
           conflicts,
+          options: optionsOfProcess,
         }),
       );
       await api.register(settingsRoutes({ settings }));

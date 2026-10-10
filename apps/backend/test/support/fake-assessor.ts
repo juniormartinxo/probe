@@ -7,6 +7,8 @@ import type {
   ConstraintImpactInput,
   CoverageInput,
   ImpactInput,
+  OptionPairInput,
+  OptionViolationInput,
   Verdict,
 } from "../../src/modules/assessments/assessor.ts";
 
@@ -50,21 +52,46 @@ export const conflictOutcome =
     result: Object.fromEntries(input.pairs.map((pair) => [pair.key, judge(pair) ?? verdict("no")])),
   });
 
+// Desfecho concluído de uma Avaliação de violação: o julgamento que `judge` der a cada par, ou `no`
+// com confiança (a Opção cumpre a Restrição).
+export const optionOutcome =
+  (judge: (pair: OptionPairInput) => Verdict | undefined = () => undefined) =>
+  (input: OptionViolationInput): AssessorOutcome<Verdicts> => ({
+    status: "completed",
+    model: JEV_MODEL,
+    result: Object.fromEntries(input.pairs.map((pair) => [pair.key, judge(pair) ?? verdict("no")])),
+  });
+
+type OptionStep = AssessorOutcome<Verdicts> | ((input: OptionViolationInput) => AssessorOutcome<Verdicts>);
+
 type ConflictStep = AssessorOutcome<Verdicts> | ((input: ConflictInput) => AssessorOutcome<Verdicts>);
 
 // `Assessor` falso: desfechos na ordem; sem roteiro, `yes` em todos os Pontos, no impacto (de uma Versão
 // nova ou de uma Revisão de Restrição) `no` com confiança (a Confirmação continua valendo) e, no
-// conflito, `no` com confiança em todos os pares.
+// conflito e na violação de Restrição por Opção, `no` com confiança em todos os pares.
 export class FakeAssessor implements Assessor {
   readonly model = JEV_MODEL;
   readonly inputs: CoverageInput[] = [];
   readonly impactInputs: ImpactInput[] = [];
   readonly conflictInputs: ConflictInput[] = [];
   readonly constraintImpactInputs: ConstraintImpactInput[] = [];
+  readonly optionInputs: OptionViolationInput[] = [];
   private readonly steps: Step[] = [];
   private readonly impactSteps: AssessorOutcome<Verdict>[] = [];
   private readonly conflictSteps: ConflictStep[] = [];
   private readonly constraintImpactSteps: AssessorOutcome<Verdict>[] = [];
+  private readonly optionSteps: OptionStep[] = [];
+
+  willAssessOptions(...steps: OptionStep[]): this {
+    this.optionSteps.push(...steps);
+    return this;
+  }
+
+  async assessOptions(input: OptionViolationInput): Promise<AssessorOutcome<Verdicts>> {
+    this.optionInputs.push(input);
+    const step = this.optionSteps.shift() ?? optionOutcome();
+    return typeof step === "function" ? step(input) : step;
+  }
 
   willRespond(...steps: Step[]): this {
     this.steps.push(...steps);
