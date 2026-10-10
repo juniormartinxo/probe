@@ -12,13 +12,12 @@ import {
   type ConflictingAnswer,
   type ConflictPair,
   type ConflictVerdict,
-  type ItemKind,
   type Pendency,
   type ProcessDetail,
   undecidedConflictStatuses,
 } from "@/api";
 import { AttemptList } from "@/components/attempt-list";
-import { itemDetails } from "@/components/constraints-and-preferences";
+import { ConstraintRevisionForm } from "@/components/constraints-and-preferences";
 import { NewAttempt } from "@/components/new-attempt";
 import { FailedJudgment, JudgmentLine } from "@/components/reassessments";
 import { Badge } from "@/components/ui/badge";
@@ -39,8 +38,6 @@ const errorText: Record<string, string> = {
   unknown_assessment: "Há uma Avaliação mais recente do que a que você viu. Confira-a antes de decidir.",
   conflict_assessed: "O Jev já avaliou estes pares.",
   pendency_resolved: "Esta Pendência já foi resolvida.",
-  already_withdrawn: "Esta Restrição já foi retirada.",
-  no_constraint_or_preference: "Sem substituta, o Ponto que distingue Restrições de Preferências ficaria sem nenhuma.",
   resolution_question_generated: "A IA já formulou a pergunta.",
 };
 
@@ -205,7 +202,14 @@ function ConflictPendency({ process, pendency, onChange }: { process: ProcessDet
         registre um esclarecimento.
       </p>
       <Clarification processId={process.id} pendencyId={pendency.id} onChange={onChange} />
-      {canRevise && <ConstraintRevision processId={process.id} pendencyId={pendency.id} constraints={constraints} onChange={onChange} />}
+      {canRevise && (
+        <ConstraintRevisionForm
+          idPrefix={`revision-${pendency.id}`}
+          constraints={constraints}
+          revise={(constraintId, revision) => reviseConstraintForConflict(process.id, pendency.id, constraintId, revision)}
+          onChange={onChange}
+        />
+      )}
     </div>
   );
 }
@@ -275,104 +279,5 @@ function Clarification({ processId, pendencyId, onChange }: { processId: string;
         </Button>
       </div>
     </form>
-  );
-}
-
-function ConstraintRevision({
-  processId,
-  pendencyId,
-  constraints,
-  onChange,
-}: {
-  processId: string;
-  pendencyId: string;
-  constraints: ProcessDetail["constraints"];
-  onChange: () => void;
-}) {
-  const [constraintId, setConstraintId] = useState(constraints[0]!.id);
-  const [kind, setKind] = useState<ItemKind | "none">("constraint");
-  const [statement, setStatement] = useState("");
-  const [note, setNote] = useState("");
-  const { saving, error, act } = useAction(onChange);
-  const prefix = `revision-${pendencyId}`;
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    await act(
-      () =>
-        reviseConstraintForConflict(processId, pendencyId, {
-          constraintId,
-          replacement: kind === "none" ? null : { kind, statement, scope: null, unit: null },
-          note: note.trim() === "" ? null : note,
-        }),
-      "Não foi possível rever a Restrição; tente de novo.",
-    );
-  }
-
-  return (
-    <details className="text-xs">
-      <summary className="cursor-pointer">Rever uma Restrição</summary>
-      <form onSubmit={submit} className="mt-2 flex flex-col gap-2">
-        <p className="text-muted-foreground">
-          As Confirmações de Etapa que já valiam com a Restrição passam pela Avaliação de impacto do Jev, e você revê as afetadas.
-        </p>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`${prefix}-constraint`} className="text-xs font-normal">
-            Restrição a retirar (fica no histórico)
-          </Label>
-          <select
-            id={`${prefix}-constraint`}
-            value={constraintId}
-            disabled={saving}
-            onChange={(event) => setConstraintId(event.target.value)}
-            className="border-input bg-background h-8 rounded-md border px-2 text-sm"
-          >
-            {constraints.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.statement}
-                {itemDetails(item) ? ` (${itemDetails(item)})` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`${prefix}-kind`} className="text-xs font-normal">
-            Substituir por
-          </Label>
-          <select
-            id={`${prefix}-kind`}
-            value={kind}
-            disabled={saving}
-            onChange={(event) => setKind(event.target.value as ItemKind | "none")}
-            className="border-input bg-background h-8 rounded-md border px-2 text-sm"
-          >
-            <option value="constraint">Uma Restrição revista</option>
-            <option value="preference">Uma Preferência (deixa de ser inegociável)</option>
-            <option value="none">Nada: só retirar</option>
-          </select>
-          {kind !== "none" && (
-            <Input
-              aria-label="O que a substituta diz"
-              value={statement}
-              disabled={saving}
-              placeholder="Por exemplo: entregar em cinco semanas"
-              onChange={(event) => setStatement(event.target.value)}
-            />
-          )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`${prefix}-note`} className="text-xs font-normal">
-            Nota (opcional)
-          </Label>
-          <Textarea id={`${prefix}-note`} value={note} rows={2} disabled={saving} onChange={(event) => setNote(event.target.value)} />
-        </div>
-        {error && <p className="text-destructive text-xs">{error}</p>}
-        <div className="flex justify-end">
-          <Button type="submit" size="sm" disabled={saving || (kind !== "none" && statement.trim() === "")}>
-            {saving ? "Revendo…" : "Rever a Restrição"}
-          </Button>
-        </div>
-      </form>
-    </details>
   );
 }

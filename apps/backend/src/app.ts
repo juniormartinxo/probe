@@ -70,7 +70,10 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
           stagePointCoverage: stagePointCoverage({ db }),
           stageAssessments: stageAssessments({ db, assessor }),
           stageConfirmations: stageConfirmations({ db }),
-          constraintsAndPreferences: constraintsAndPreferences({ db }),
+          constraintsAndPreferences: constraintsAndPreferences({
+            db,
+            afterConstraintRevision: (processId) => constraintReassessments.assessOpen(processId),
+          }),
           reassessments,
           constraintReassessments,
           conflicts,

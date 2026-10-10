@@ -823,18 +823,34 @@ export async function clarifyConflict(processId: string, pendencyId: string, cla
   return pendency;
 }
 
+// O que o usuário pede ao rever uma Restrição: a substituta, se houver, e uma nota.
+export interface ConstraintRevisionRequest {
+  replacement: (ItemStatement & { kind: ItemKind }) | null;
+  note: string | null;
+}
+
 // Resolve a Pendência de conflito com uma Revisão de Restrição: retira a Restrição e, se houver,
 // registra a que a substitui. Vale em qualquer Etapa a partir de R.
 export async function reviseConstraintForConflict(
   processId: string,
   pendencyId: string,
-  revision: { constraintId: string; replacement: (ItemStatement & { kind: ItemKind }) | null; note: string | null },
+  constraintId: string,
+  revision: ConstraintRevisionRequest,
 ): Promise<Pendency> {
   const { pendency } = await request<{ pendency: Pendency }>(`${pendencyPath(processId, pendencyId)}/constraint-revision`, {
     method: "POST",
-    body: JSON.stringify(revision),
+    body: JSON.stringify({ constraintId, ...revision }),
   });
   return pendency;
+}
+
+// Revisão de Restrição avulsa, sem conflito, numa Etapa depois de R.
+export async function reviseConstraint(processId: string, constraintId: string, revision: ConstraintRevisionRequest): Promise<ConstraintRevision> {
+  const { constraintRevision } = await request<{ constraintRevision: ConstraintRevision }>(
+    `${processPath(processId)}/constraints/${encodeURIComponent(constraintId)}/revision`,
+    { method: "POST", body: JSON.stringify(revision) },
+  );
+  return constraintRevision;
 }
 
 // Pede a pergunta de resolução à IA, ou uma nova tentativa dela, com a CLI escolhida.

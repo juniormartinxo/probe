@@ -965,3 +965,71 @@ describe("A clarification of the user", () => {
     });
   });
 });
+
+describe("A standalone Constraint revision", () => {
+  const reviseStandalone = (id: string, constraintId: string, payload: Record<string, unknown>) =>
+    api.inject({ method: "POST", url: `/api/processes/${id}/constraints/${constraintId}/revision`, payload });
+
+  // Etapa O atual, com a Etapa R confirmada com o prazo como Restrição e sem conflito.
+  async function stageOWithDeadline() {
+    let constraintId = "";
+    const { id } = await confirmStageRBlock({
+      before: async (processId) => {
+        constraintId = (await register(processId, "constraints", "Entregar em duas semanas")).json().constraint.id;
+      },
+    });
+    expect((await confirmStageR(id)).statusCode).toBe(201);
+    return { id, constraintId };
+  }
+
+  it("revises a Constraint in a later Stage, without a conflict, with history and reassessment", async () => {
+    const { id, constraintId } = await stageOWithDeadline();
+    assessor.willAssessConstraintImpact(impactOutcome("yes"));
+
+    const response = await reviseStandalone(id, constraintId, {
+      replacement: { kind: "preference", statement: "Entregar em duas semanas", scope: "Primeira versão" },
+      note: " A diretoria aceita mais prazo. ",
+    });
+
+    expect(response.statusCode).toBe(201);
+    const process = await api.getProcess(id);
+    const [preference] = process.preferences;
+    expect(response.json().constraintRevision).toEqual({
+      id: expect.any(String),
+      constraint: expect.objectContaining({ id: constraintId, withdrawnAt: expect.any(String) }),
+      replacement: { kind: "preference", item: preference },
+      note: "A diretoria aceita mais prazo.",
+      conflictPendencyId: null,
+      revisedAt: expect.any(String),
+    });
+    expect(assessor.constraintImpactInputs).toEqual([
+      expect.objectContaining({ confirmation: expect.objectContaining({ kind: "stage", stage: "R" }) }),
+    ]);
+    expect(process.constraintReassessments).toMatchObject([
+      { confirmation: { kind: "stage", stage: "R" }, revision: { id: response.json().constraintRevision.id }, status: "pendency_open" },
+    ]);
+  });
+
+  it("refuses a Constraint not in force, unknown or a malformed revision, recording nothing; registering stays in Stage R", async () => {
+    const { id, constraintId } = await stageOWithDeadline();
+
+    const unknown = await reviseStandalone(id, "00000000-0000-4000-8000-000000000000", { replacement: null, note: null });
+    const malformed = await reviseStandalone(id, constraintId, { replacement: { kind: "desejo", statement: "Cinco semanas" } });
+    const registered = await register(id, "constraints", "Sem downtime");
+    const revised = await reviseStandalone(id, constraintId, { replacement: null, note: null });
+    const again = await reviseStandalone(id, constraintId, { replacement: null, note: null });
+
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.json()).toEqual({ error: "constraint_not_found" });
+    expect(malformed.statusCode).toBe(400);
+    expect(registered.statusCode).toBe(409);
+    expect(registered.json()).toEqual({ error: "stage_not_current" });
+    expect(revised.statusCode).toBe(201);
+    expect(revised.json().constraintRevision).toMatchObject({ replacement: null, note: null });
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toEqual({ error: "already_withdrawn" });
+    const process = await api.getProcess(id);
+    expect(process.constraints).toHaveLength(1);
+    expect(process.preferences).toEqual([]);
+  });
+});

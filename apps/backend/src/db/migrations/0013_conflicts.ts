@@ -92,7 +92,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   // Revisão de Restrição: o usuário retira uma Restrição em vigor e, se houver, registra a que a
   // substitui (uma Restrição nova ou uma Preferência), com uma nota; as duas ficam no histórico. Vale
   // em qualquer Etapa a partir de R, e as Confirmações de Etapa que sustentavam a Restrição passam
-  // pela Avaliação de impacto. Por ora, só como resolução de uma Pendência de conflito.
+  // pela Avaliação de impacto. Resolve uma Pendência de conflito ou é avulsa.
   await db.schema
     .createTable("constraint_revisions")
     .addColumn("id", "uuid", (col) => col.primaryKey().defaultTo(sql`gen_random_uuid()`))

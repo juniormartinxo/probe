@@ -1,6 +1,6 @@
 # Revisão de Restrição reavalia as Confirmações de Etapa que a sustentavam
 
-Uma Restrição só muda, depois da Etapa R, por uma Revisão de Restrição: o usuário retira a Restrição em vigor e, se houver, registra a que a substitui (Restrição nova ou Preferência), com uma nota. A revisão é um registro próprio, ligado à Pendência de conflito que resolveu, e vale em qualquer Etapa a partir de R. Por ora, só nasce de uma Pendência de conflito; a revisão avulsa nas Etapas seguintes vai usar o mesmo registro.
+Uma Restrição só muda, depois da Etapa R, por uma Revisão de Restrição: o usuário retira a Restrição em vigor e, se houver, registra a que a substitui (Restrição nova ou Preferência), com uma nota. A revisão é um registro próprio e vale em qualquer Etapa a partir de R: resolve uma Pendência de conflito, e fica ligada a ela, ou é avulsa, depois da Etapa R. Na Etapa R, o registro e a retirada avulsos continuam como estavam.
 
 O que se reavalia são as Confirmações de Etapa que sustentavam a Restrição revista, ou seja, as que foram feitas com ela em vigor. Cada uma passa pela Avaliação de impacto do Jev, com rubrica própria, no mesmo fluxo da Versão nova: com `yes` confiante abre a Pendência de reavaliação, que fica na Confirmação da Etapa e não numa Pergunta; com `no` confiante, a Confirmação passa a sustentar a revisão; com julgamento incerto ou falha do Jev, quem decide é o usuário. Enquanto não há decisão, a Confirmação da Etapa atual espera. Numa Etapa R ainda não confirmada, nenhuma Confirmação sustentava a Restrição, e nada é reavaliado.
 

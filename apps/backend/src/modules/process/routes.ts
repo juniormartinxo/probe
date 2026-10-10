@@ -10,6 +10,7 @@ import { constraintReassessmentsOf, type ConstraintReassessments } from "./const
 import {
   constraintsAndPreferencesOf,
   itemPaths,
+  type ConstraintRevisionRequest,
   type ConstraintsAndPreferences,
   type ItemKind,
   type ItemReplacement,
@@ -154,14 +155,21 @@ function itemReplacementFrom(value: unknown): { ok: true; replacement: ItemRepla
 }
 
 // A Restrição revista, a que a substitui (se houver) e uma nota opcional.
-function constraintRevisionFrom(body: unknown): ConflictConstraintRevision | undefined {
+function revisionRequestFrom(body: unknown): ConstraintRevisionRequest | undefined {
   if (typeof body !== "object" || body === null) return undefined;
-  const { constraintId, replacement, note } = body as Record<string, unknown>;
-  if (typeof constraintId !== "string" || !uuidPattern.test(constraintId)) return undefined;
+  const { replacement, note } = body as Record<string, unknown>;
   if (!optionalText(note)) return undefined;
   const replaced = itemReplacementFrom(replacement);
   if (!replaced.ok) return undefined;
-  return { constraintId, replacement: replaced.replacement, note: note ?? null };
+  return { replacement: replaced.replacement, note: note ?? null };
+}
+
+// Na resolução de um conflito, a Restrição a rever vem no corpo.
+function constraintRevisionFrom(body: unknown): ConflictConstraintRevision | undefined {
+  const request = revisionRequestFrom(body);
+  const { constraintId } = (body ?? {}) as Record<string, unknown>;
+  if (!request || typeof constraintId !== "string" || !uuidPattern.test(constraintId)) return undefined;
+  return { constraintId, ...request };
 }
 
 // A CLI que o usuário escolheu para uma nova tentativa; sem corpo ou sem `cli`, nenhuma escolha
@@ -660,6 +668,19 @@ export const processRoutes =
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(201).send({ [kind]: result.item });
       });
+
+      if (kind === "constraint") {
+        app.post<{ Params: { id: string; itemId: string } }>(`/processes/:id/${path}/:itemId/revision`, async (request, reply) => {
+          const { id, itemId } = request.params;
+          if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+          if (!uuidPattern.test(itemId)) return reply.code(404).send({ error: "constraint_not_found" });
+          const revision = revisionRequestFrom(request.body);
+          if (!revision) return reply.code(400).send({ error: "revision_required" });
+          const result = await constraintsAndPreferences.revise(id, itemId, revision);
+          if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+          return reply.code(201).send({ constraintRevision: result.revision });
+        });
+      }
 
       app.post<{ Params: { id: string; itemId: string } }>(`/processes/:id/${path}/:itemId/withdrawal`, async (request, reply) => {
         const { id, itemId } = request.params;

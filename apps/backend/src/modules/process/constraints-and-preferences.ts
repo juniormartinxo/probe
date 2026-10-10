@@ -1,5 +1,6 @@
 import { sql } from "kysely";
 import type { Db } from "../../db/database.ts";
+import { lockOpenProcess } from "./process.ts";
 import { stagePointStates } from "./stage-point-coverage.ts";
 import { findStagePoint } from "./stage-points.ts";
 import { stages, type Stage } from "./stage.ts";
@@ -50,6 +51,13 @@ export interface ConstraintsAndPreferences {
   // Registra uma Restrição ou Preferência enquanto a Etapa R é a atual.
   register(processId: string, kind: ItemKind, item: ItemStatement): Promise<{ ok: true; item: StatedItem } | { ok: false; error: ItemClosed }>;
   withdraw(processId: string, kind: ItemKind, itemId: string): Promise<{ ok: true; item: StatedItem } | { ok: false; error: WithdrawalError }>;
+  // Revisão de Restrição avulsa, sem Pendência de conflito, em qualquer Etapa a partir de R; as
+  // Confirmações de Etapa que sustentavam a Restrição passam pela Avaliação de impacto.
+  revise(
+    processId: string,
+    constraintId: string,
+    revision: ConstraintRevisionRequest,
+  ): Promise<{ ok: true; revision: ConstraintRevision } | { ok: false; error: "process_not_found" | "process_not_open" | ConstraintRevisionError }>;
 }
 
 // Tabela, e caminho na API, de cada tipo de item.
@@ -166,7 +174,7 @@ export interface ItemReplacement {
 
 // Revisão de Restrição: o usuário retirou uma Restrição em vigor e registrou a que a substitui, se
 // houver (uma Restrição nova ou uma Preferência), com uma nota; as duas ficam no histórico. Vale em
-// qualquer Etapa a partir de R; por ora, só como resolução de uma Pendência de conflito.
+// qualquer Etapa a partir de R: como resolução de uma Pendência de conflito ou avulsa.
 export interface ConstraintRevision {
   id: string;
   constraint: StatedItem;
@@ -208,13 +216,20 @@ export async function constraintRevisionsOf(db: Db, processId: string, ids?: str
 
 export type ConstraintRevisionError = "constraint_not_found" | "already_withdrawn" | ItemsRequired;
 
+// O que o usuário pede ao rever uma Restrição: a substituta, se houver, e uma nota.
+export interface ConstraintRevisionRequest {
+  replacement: ItemReplacement | null;
+  note: string | null;
+}
+
 // Revisão de Restrição: retira a Restrição em vigor, registra a que a substitui, se houver, e grava a
-// revisão. Chamar com o Processo aberto travado; numa Etapa antes de R não há Restrição a rever.
+// revisão, com a Pendência de conflito que ela resolve, se for o caso. Chamar com o Processo aberto
+// travado; numa Etapa antes de R não há Restrição a rever.
 export async function reviseConstraintIn(
   trx: Db,
   process: { id: string; stagePointsVersion: number },
   constraintId: string,
-  { replacement, note, conflictPendencyId }: { replacement: ItemReplacement | null; note: string | null; conflictPendencyId: string | null },
+  { replacement, note, conflictPendencyId }: ConstraintRevisionRequest & { conflictPendencyId: string | null },
 ): Promise<{ ok: true; revision: ConstraintRevision } | { ok: false; error: ConstraintRevisionError }> {
   // Verificada antes de registrar a substituta: uma recusa não deixa nada gravado.
   const found = await trx
@@ -245,7 +260,15 @@ export async function reviseConstraintIn(
   return { ok: true, revision: revision! };
 }
 
-export function constraintsAndPreferences({ db }: { db: Db }): ConstraintsAndPreferences {
+// `afterConstraintRevision`: chamado depois de uma Revisão de Restrição; quem o recebe avalia o impacto
+// dela sobre as Confirmações de Etapa. Não lança.
+export function constraintsAndPreferences({
+  db,
+  afterConstraintRevision,
+}: {
+  db: Db;
+  afterConstraintRevision: (processId: string) => Promise<void>;
+}): ConstraintsAndPreferences {
   return {
     async register(processId, kind, item) {
       return db.transaction().execute(async (trx) => {
@@ -261,6 +284,16 @@ export function constraintsAndPreferences({ db }: { db: Db }): ConstraintsAndPre
         if (!locked.ok) return locked;
         return withdrawIn(trx, locked.process, kind, itemId);
       });
+    },
+
+    async revise(processId, constraintId, revision) {
+      const revised = await db.transaction().execute(async (trx) => {
+        const locked = await lockOpenProcess(trx, processId);
+        if (!locked.ok) return locked;
+        return reviseConstraintIn(trx, locked.process, constraintId, { ...revision, conflictPendencyId: null });
+      });
+      if (revised.ok) await afterConstraintRevision(processId);
+      return revised;
     },
   };
 }

@@ -183,7 +183,7 @@ _Code_: `Constraint`
 _Avoid_: Restrição inegociável, requisito, condição
 
 **Revisão de Restrição**:
-Mudança explícita de uma Restrição em vigor: o usuário a retira e, se houver, registra a que a substitui (uma Restrição nova ou uma Preferência), com uma nota; as duas ficam no histórico. Vale em qualquer Etapa a partir de R; por ora, só como resolução de uma Pendência de conflito. Cada Confirmação de Etapa que sustentava a Restrição passa pela Avaliação de impacto do Jev, numa Reavaliação.
+Mudança explícita de uma Restrição em vigor: o usuário a retira e, se houver, registra a que a substitui (uma Restrição nova ou uma Preferência), com uma nota; as duas ficam no histórico. Vale em qualquer Etapa a partir de R, como resolução de uma Pendência de conflito ou avulsa, depois da Etapa R. Cada Confirmação de Etapa que sustentava a Restrição passa pela Avaliação de impacto do Jev, numa Reavaliação.
 _Code_: `ConstraintRevision`
 _Avoid_: Edição de Restrição, afrouxamento
 

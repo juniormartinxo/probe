@@ -28,7 +28,7 @@ import {
   reviseConstraintIn,
   statementsOf,
   type ConstraintRevisionError,
-  type ItemReplacement,
+  type ConstraintRevisionRequest,
 } from "./constraints-and-preferences.ts";
 import { listPendencies, stagesUpTo, type Pendency } from "./pendencies.ts";
 import { confirmedStatementOf } from "./problem-statement.ts";
@@ -98,10 +98,8 @@ export interface ConflictDecision {
 }
 
 // Revisão de Restrição como resolução: a Restrição retirada, a que a substitui (se houver) e uma nota.
-export interface ConflictConstraintRevision {
+export interface ConflictConstraintRevision extends ConstraintRevisionRequest {
   constraintId: string;
-  replacement: ItemReplacement | null;
-  note: string | null;
 }
 
 export interface Conflicts {
