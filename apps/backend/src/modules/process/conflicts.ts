@@ -31,6 +31,7 @@ import {
   type ItemReplacement,
 } from "./constraints-and-preferences.ts";
 import { listPendencies, stagesUpTo, type Pendency } from "./pendencies.ts";
+import { confirmedStatementOf } from "./problem-statement.ts";
 import { lockOpenProcess } from "./process.ts";
 import type { Stage } from "./stage.ts";
 
@@ -254,11 +255,6 @@ async function openConflictPendency(trx: Db, processId: string, pendencyId: stri
   return { ok: true, pairId: pendency.conflictPairId! } as const;
 }
 
-async function problemStatementOf(db: Db, processId: string): Promise<string> {
-  const { statement } = await db.selectFrom("problemStatements").select("statement").where("processId", "=", processId).executeTakeFirstOrThrow();
-  return statement;
-}
-
 export function conflicts(deps: {
   db: Db;
   assessor: Assessor;
@@ -293,7 +289,7 @@ export function conflicts(deps: {
     const pairs = (await conflictPairsOf(db, processId)).filter((pair) => pair.checkId === checkId);
     const items = inForceOf(await constraintsAndPreferencesOf(db, processId));
     const input: ConflictInput = {
-      problemStatement: await problemStatementOf(db, processId),
+      problemStatement: await confirmedStatementOf(db, processId),
       ...statementsOf(items),
       pairs: pairs.map((pair) => ({ key: pairKey(pair.position), answer: conflictingAnswerOf(pair.answer), other: conflictingAnswerOf(pair.other) })),
     };
@@ -395,7 +391,7 @@ export function conflicts(deps: {
         ).id;
       const [pair] = await conflictPairsOf(trx, processId, [pendency.pairId]);
       const input: ResolutionQuestionInput = {
-        problemStatement: await problemStatementOf(trx, processId),
+        problemStatement: await confirmedStatementOf(trx, processId),
         ...statementsOf(inForceOf(await constraintsAndPreferencesOf(trx, processId))),
         answers: [conflictingAnswerOf(pair!.answer), conflictingAnswerOf(pair!.other)],
       };

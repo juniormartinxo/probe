@@ -137,20 +137,20 @@ function UndecidedCheck({ processId, check, onChange }: { processId: string; che
         <div className="flex flex-col gap-2">
           <FailureLine assessment={latest} />
           <p className="text-muted-foreground text-xs">
-            {pending.length === 1 ? "Um par de respostas" : `${pending.length} pares de respostas`} sem Avaliação. Tente de novo ou siga
-            sem o Jev; a decisão fica registrada.
+            {pending.length === 1 ? "Um par de respostas ficou" : `${pending.length} pares de respostas ficaram`} sem Avaliação. Tente
+            de novo ou decida sem o Jev, par a par ou todos de uma vez como sem conflito; a decisão fica registrada.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" disabled={saving} onClick={retry}>
               Tentar de novo
             </Button>
             <Button size="sm" disabled={saving} onClick={() => decide(pending.map((pair) => pair.id), "dismiss")}>
-              Seguir sem a Avaliação
+              {pending.length === 1 ? "Não é conflito" : `Nenhum dos ${pending.length} é conflito`}
             </Button>
           </div>
         </div>
       )}
-      {check.status === "awaiting_decision" && (
+      {(check.status === "assessment_failed" || check.status === "awaiting_decision") && (
         <ul className="flex flex-col gap-3">
           {pending.map((pair) => (
             <li key={pair.id} className="flex flex-col gap-2">
@@ -159,7 +159,9 @@ function UndecidedCheck({ processId, check, onChange }: { processId: string; che
                 <AnswerLine answer={pair.other} />
               </ul>
               {pair.verdict && <VerdictLine verdict={pair.verdict} />}
-              <p className="text-muted-foreground text-xs">O Jev não tem certeza. Decida se estas respostas estão em conflito.</p>
+              <p className="text-muted-foreground text-xs">
+                {pair.verdict ? "O Jev não tem certeza." : "Sem Avaliação do Jev."} Decida se estas respostas estão em conflito.
+              </p>
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" disabled={saving} onClick={() => decide([pair.id], "open_pendency")}>
                   Abrir Pendência de conflito

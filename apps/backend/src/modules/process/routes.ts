@@ -73,10 +73,11 @@ function synthesisConfirmationFrom(body: unknown): SynthesisConfirmation | undef
   return { proposalId, synthesis, coveredStagePoints };
 }
 
-function justificationFrom(body: unknown): string | undefined {
+// O texto do campo dado (uma justificativa, um esclarecimento); ausente ou em branco, nenhum.
+function filledTextFrom(body: unknown, field: "justification" | "clarification"): string | undefined {
   if (typeof body !== "object" || body === null) return undefined;
-  const { justification } = body as Record<string, unknown>;
-  return typeof justification === "string" && justification.trim() !== "" ? justification : undefined;
+  const text = (body as Record<string, unknown>)[field];
+  return typeof text === "string" && text.trim() !== "" ? text : undefined;
 }
 
 const optionalText = (value: unknown): value is string | null | undefined =>
@@ -98,7 +99,7 @@ function stageConfirmationFrom(body: unknown): StageConfirmationRequest | undefi
   if (stageAssessmentId !== null && (typeof stageAssessmentId !== "string" || !uuidPattern.test(stageAssessmentId))) {
     return undefined;
   }
-  return { stageAssessmentId, justification: justificationFrom(body)?.trim() ?? null };
+  return { stageAssessmentId, justification: filledTextFrom(body, "justification")?.trim() ?? null };
 }
 
 // A Confirmação afetada: a síntese de um Bloco ou a de uma Etapa.
@@ -160,12 +161,6 @@ function constraintRevisionFrom(body: unknown): ConflictConstraintRevision | und
   const replaced = itemReplacementFrom(replacement);
   if (!replaced.ok) return undefined;
   return { constraintId, replacement: replaced.replacement, note: note ?? null };
-}
-
-function clarificationFrom(body: unknown): string | undefined {
-  if (typeof body !== "object" || body === null) return undefined;
-  const { clarification } = body as Record<string, unknown>;
-  return typeof clarification === "string" && clarification.trim() !== "" ? clarification : undefined;
 }
 
 // A CLI que o usuário escolheu para uma nova tentativa; sem corpo ou sem `cli`, nenhuma escolha
@@ -469,7 +464,7 @@ export const processRoutes =
       async (request, reply) => {
         const { id, key } = request.params;
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
-        const justification = justificationFrom(request.body);
+        const justification = filledTextFrom(request.body, "justification");
         if (justification === undefined) return reply.code(400).send({ error: "justification_required" });
         const result = await stagePointCoverage.declareInapplicable(id, key, justification);
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
@@ -579,7 +574,7 @@ export const processRoutes =
         const { id, pendencyId } = request.params;
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
         if (!uuidPattern.test(pendencyId)) return reply.code(404).send({ error: "pendency_not_found" });
-        const clarification = clarificationFrom(request.body);
+        const clarification = filledTextFrom(request.body, "clarification");
         if (clarification === undefined) return reply.code(400).send({ error: "clarification_required" });
         const result = await conflicts.clarify(id, pendencyId, clarification);
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });

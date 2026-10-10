@@ -3,6 +3,12 @@ import { findAiRequest, type AiRequestRunner, type Attempt, type AttemptStatus }
 import type { Assistant, Cli, StatementProposal } from "../ai/assistant.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 
+// O enunciado confirmado do Processo; chamar só depois da Confirmação dele.
+export async function confirmedStatementOf(db: Db, processId: string): Promise<string> {
+  const { statement } = await db.selectFrom("problemStatements").select("statement").where("processId", "=", processId).executeTakeFirstOrThrow();
+  return statement;
+}
+
 // Como o enunciado confirmado nasceu: aceito como a IA propôs, corrigido a partir da proposta ou
 // escrito pelo usuário sem proposta.
 export type StatementOrigin = "proposal" | "corrected" | "written";

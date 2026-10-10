@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { GeneratedBlock, GeneratedSynthesis } from "../src/modules/ai/assistant.ts";
 import { FakeAssistant, completed, defaultResolutionQuestion } from "./support/fake-assistant.ts";
-import { FakeAssessor, JEV_MODEL, conflictOutcome, verdict } from "./support/fake-assessor.ts";
+import { FakeAssessor, JEV_MODEL, conflictOutcome, impactOutcome, verdict } from "./support/fake-assessor.ts";
 import { processApi, statement } from "./support/process-api.ts";
 import { createTestApp, resetDatabase, waitFor, type TestApp } from "./support/test-app.ts";
 
@@ -64,6 +64,13 @@ const stageRSynthesis: GeneratedSynthesis = {
 // O par prazo × integração, pelas referências das Perguntas do Bloco 2.
 const isDeadlineAndIntegration = (pair: { answer: { ref: string }; other: { ref: string } }) =>
   [pair.answer.ref, pair.other.ref].toSorted().join("+") === "2.1+2.2";
+
+// O mesmo par, como a API o devolve.
+const isDeadlineAndIntegrationPair = (pair: { answer: { question: { blockNumber: number; number: number } }; other: { question: { blockNumber: number; number: number } } }) =>
+  isDeadlineAndIntegration({
+    answer: { ref: `${pair.answer.question.blockNumber}.${pair.answer.question.number}` },
+    other: { ref: `${pair.other.question.blockNumber}.${pair.other.question.number}` },
+  });
 
 // Etapa R atual, com o Bloco 2 (prazo e integração) respondido e a síntese dele confirmada. `before`
 // roda antes do Bloco ser pedido, com a Etapa R já aberta.
@@ -408,6 +415,20 @@ describe("An uncertain conflict result", () => {
     expect(response.json()).toEqual({ error: "undecided_conflicts" });
   });
 
+  it("with a low-confidence `no`, also waits for the user", async () => {
+    assessor.willAssessConflicts(conflictOutcome(), conflictOutcome((pair) => (isDeadlineAndIntegration(pair) ? verdict("no", 0.65) : undefined)));
+    const { id } = await confirmStageRBlock();
+
+    const process = await api.getProcess(id);
+    const check = process.conflictChecks.at(-1);
+    expect(process.pendencies).toEqual([]);
+    expect(check.status).toBe("awaiting_decision");
+    expect(check.pairs.filter((pair: { status: string }) => pair.status === "awaiting_decision")).toEqual([
+      expect.objectContaining({ verdict: expect.objectContaining({ choice: "no", confidence: 0.65, needsDecision: true }) }),
+    ]);
+    expect((await confirmStageR(id)).json()).toEqual({ error: "undecided_conflicts" });
+  });
+
   it("can be dismissed by the user: no Pendency, recorded on the Assessment they saw, and the Stage can be confirmed", async () => {
     assessor.willAssessConflicts(conflictOutcome(), conflictOutcome((pair) => (isDeadlineAndIntegration(pair) ? verdict("insufficient", 0.5) : undefined)));
     const { id } = await confirmStageRBlock();
@@ -499,6 +520,22 @@ describe("Jev unavailable for the conflict", () => {
     expect(response.statusCode).toBe(201);
     expect((await api.getProcess(id)).conflictChecks.at(-1).status).toBe("decided");
     expect((await confirmStageR(id)).statusCode).toBe(201);
+  });
+
+  it("lets the user open the Pendency of one pair by hand, linked to the failed Assessment they saw", async () => {
+    assessor.willAssessConflicts(conflictOutcome(), unavailable);
+    const { id } = await confirmStageRBlock();
+    const check = (await api.getProcess(id)).conflictChecks.at(-1);
+    const pair = check.pairs.find(isDeadlineAndIntegrationPair);
+
+    const response = await decide(id, check.id, { conflictAssessmentId: check.assessments[0].id, pairIds: [pair.id], decision: "open_pendency" });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().pendencies).toMatchObject([
+      { conflict: { pairId: pair.id, openedBy: "user", conflictAssessment: { status: "failed", failureReason: "jev_unavailable" } } },
+    ]);
+    // Os outros pares continuam à espera de decisão.
+    expect((await api.getProcess(id)).conflictChecks.at(-1).status).toBe("assessment_failed");
   });
 
   it("is what an Assessor that throws becomes, and the synthesis stays confirmed", async () => {
@@ -600,5 +637,69 @@ describe("Reopening the Process with a conflict open", () => {
 
     expect(after).toEqual(before);
     expect(after.pendencies[0].conflict.resolutionQuestion.question).toBe(defaultResolutionQuestion.question);
+  });
+});
+
+describe("A new Version that a Confirmation comes to hold", () => {
+  const changedIntegration = "Depende da nova API de artefatos, mas o registro atual serve até ela sair.";
+
+  // Bloco 2 confirmado sem conflito; muda a resposta da integração (Pergunta 2.2).
+  async function changeIntegration() {
+    const { id, block } = await confirmStageRBlock();
+    const question = block.questions[1];
+    const response = await api.answer(id, question.id, { text: changedIntegration, basedOnVersionId: question.answer.current.id });
+    expect(response.statusCode).toBe(201);
+    return { id, block, version: response.json().answerVersion };
+  }
+
+  // A última Avaliação de conflito pedida é a da Versão nova, contra as outras respostas confirmadas.
+  const assessedNewVersion = () =>
+    expect(assessor.conflictInputs.at(-1)!.pairs.map((pair) => [pair.answer.answer, pair.other.ref])).toEqual([
+      [changedIntegration, "1.1"],
+      [changedIntegration, "1.2"],
+      [changedIntegration, "1.3"],
+      [changedIntegration, "2.1"],
+    ]);
+
+  it("kept by the user has its conflict assessed, and not before", async () => {
+    assessor.willAssessImpact(impactOutcome("no", 0.55));
+    const { id, block, version } = await changeIntegration();
+    expect(assessor.conflictInputs).toHaveLength(2);
+    const [impactAssessment] = (await api.getProcess(id)).impactAssessments;
+
+    const response = await api.decideImpact(id, version.id, {
+      confirmation: { kind: "block_synthesis", blockId: block.id },
+      impactAssessmentId: impactAssessment.id,
+      decision: "keep_confirmation",
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(assessor.conflictInputs).toHaveLength(3);
+    assessedNewVersion();
+  });
+
+  it("reconfirmed has its conflict assessed", async () => {
+    assessor.willAssessImpact(impactOutcome("yes"));
+    const { id } = await changeIntegration();
+    expect(assessor.conflictInputs).toHaveLength(2);
+    const [pendency] = (await api.getProcess(id)).pendencies;
+
+    const response = await api.reconfirm(id, pendency.id);
+
+    expect(response.statusCode).toBe(200);
+    expect(assessor.conflictInputs).toHaveLength(3);
+    assessedNewVersion();
+  });
+
+  it("held after a new try of the impact Assessment has its conflict assessed", async () => {
+    assessor.willAssessImpact({ status: "failed", reason: "jev_unavailable", message: "O Jev não respondeu em 60 s." });
+    const { id, block, version } = await changeIntegration();
+    expect(assessor.conflictInputs).toHaveLength(2);
+
+    const response = await api.retryImpact(id, version.id, { kind: "block_synthesis", blockId: block.id });
+
+    expect(response.statusCode).toBe(201);
+    expect(assessor.conflictInputs).toHaveLength(3);
+    assessedNewVersion();
   });
 });

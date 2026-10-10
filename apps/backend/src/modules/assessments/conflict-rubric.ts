@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { stageNames } from "../ai/prompt-parts.ts";
 import type { AssessmentChoice, ConflictAnswer, ConflictInput } from "./assessor.ts";
 import type { ChoiceQuestion } from "./coverage-rubric.ts";
+import { IMPACT_CONFIDENCE_THRESHOLD } from "./impact-rubric.ts";
 
 // Rubrica da Avaliação de conflito, versionada com o código e enviada em português (ADR 0001). Mudar
 // qualquer texto abaixo muda a revisão gravada em cada Avaliação.
@@ -32,7 +33,7 @@ export const CONFLICT_RUBRIC_REVISION = `sha256:${createHash("sha256")
 // Abaixo desta confiança, o julgamento de um par não decide sozinho: o usuário vê a Avaliação e decide
 // se abre a Pendência de conflito. É o limite da Avaliação de impacto (ADR 0003), estendido ao conflito
 // pelo ADR 0004; não esconde nada.
-export const CONFLICT_CONFIDENCE_THRESHOLD = 0.7;
+export const CONFLICT_CONFIDENCE_THRESHOLD = IMPACT_CONFIDENCE_THRESHOLD;
 
 // Substituição em passagem única: as referências vêm da aplicação.
 const instructionFor = (a: string, b: string): string =>

@@ -15,6 +15,7 @@ import {
 import { IMPACT_RUBRIC_REVISION } from "../assessments/impact-rubric.ts";
 import { describeAnswer } from "./answers.ts";
 import { listPendencies, stagesUpTo, type Pendency } from "./pendencies.ts";
+import { confirmedStatementOf } from "./problem-statement.ts";
 import { lockOpenProcess } from "./process.ts";
 import { findStagePoint, stagePointsOf, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
@@ -341,11 +342,7 @@ export function reassessments({
   // O que o Jev recebe: a Confirmação como está e a mudança.
   async function impactInputOf(processId: string, reassessment: Reassessment): Promise<PreparedImpact> {
     const process = await db.selectFrom("processes").select(["id", "stagePointsVersion"]).where("id", "=", processId).executeTakeFirstOrThrow();
-    const { statement } = await db
-      .selectFrom("problemStatements")
-      .select("statement")
-      .where("processId", "=", processId)
-      .executeTakeFirstOrThrow();
+    const statement = await confirmedStatementOf(db, processId);
     const { question } = reassessment;
     const { confirmation, analyzedAnswerVersionIds } = await impactedConfirmationOf(db, process, reassessment.confirmation);
     return {
