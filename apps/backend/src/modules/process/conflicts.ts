@@ -2,7 +2,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { Db } from "../../db/database.ts";
 import { listAiRequests, type AiRequestRunner } from "../ai/ai-requests.ts";
 import type { Assistant, Cli, GeneratedResolutionQuestion, ResolutionQuestionInput } from "../ai/assistant.ts";
-import type { Assessor, AssessorOutcome, ConflictInput, Verdict } from "../assessments/assessor.ts";
+import { failureOnThrow, type Assessor, type AssessorOutcome, type ConflictInput, type Verdict } from "../assessments/assessor.ts";
 import {
   conflictAssessmentsOf,
   conflictDecidesAlone,
@@ -10,7 +10,7 @@ import {
   type ConflictVerdict,
 } from "../assessments/conflict-assessments.ts";
 import { CONFLICT_RUBRIC_REVISION } from "../assessments/conflict-rubric.ts";
-import { caught, verdictProblem } from "../assessments/impact-assessments.ts";
+import { verdictProblem } from "../assessments/impact-assessments.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 import { confirmedVersionIdsOf } from "./answers.ts";
 import {
@@ -27,7 +27,6 @@ import {
   inForceOf,
   reviseConstraintIn,
   statementsOf,
-  type ConstraintRevision,
   type ConstraintRevisionError,
   type ItemReplacement,
 } from "./constraints-and-preferences.ts";
@@ -257,8 +256,8 @@ async function openConflictPendency(trx: Db, processId: string, pendencyId: stri
   return { ok: true, pairId: pendency.conflictPairId! } as const;
 }
 
-// `afterConstraintRevision`: chamado depois de uma Revisão de Restrição, com ela; quem o recebe avalia o
-// impacto dela sobre as Confirmações de Etapa. Não lança.
+// `afterConstraintRevision`: chamado depois de uma Revisão de Restrição; quem o recebe avalia o impacto
+// dela sobre as Confirmações de Etapa. Não lança.
 export function conflicts(deps: {
   db: Db;
   assessor: Assessor;
@@ -266,13 +265,13 @@ export function conflicts(deps: {
   runner: AiRequestRunner;
   settings: SettingsModule;
   log: FastifyBaseLogger;
-  afterConstraintRevision: (processId: string, revision: ConstraintRevision) => Promise<void>;
+  afterConstraintRevision: (processId: string) => Promise<void>;
 }): Conflicts {
   const { db, assessor, assistant, runner, settings, log, afterConstraintRevision } = deps;
 
   // Um julgamento válido para cada par, ou a falha, qualquer que seja o Assessor.
   async function judge(input: ConflictInput): Promise<AssessorOutcome<Record<string, Verdict>>> {
-    const outcome = await caught(() => assessor.assessConflicts(input));
+    const outcome = await failureOnThrow(() => assessor.assessConflicts(input));
     if (outcome.status !== "completed") return outcome;
     for (const { key } of input.pairs) {
       const verdict = outcome.result[key];
@@ -512,7 +511,7 @@ export function conflicts(deps: {
         if (!pendency.ok) return pendency;
         await trx
           .updateTable("pendencies")
-          .set((eb) => ({ resolvedAt: eb.fn<Date>("clock_timestamp"), resolution: "clarified" as const, resolutionNote: clarification.trim() }))
+          .set((eb) => ({ resolvedAt: eb.fn<Date>("clock_timestamp"), resolution: "clarified" as const, clarification: clarification.trim() }))
           .where("id", "=", pendencyId)
           .execute();
         const [resolved] = await listPendencies(trx, locked.process, [pendencyId]);
@@ -534,10 +533,10 @@ export function conflicts(deps: {
           .where("id", "=", pendencyId)
           .execute();
         const [resolved] = await listPendencies(trx, locked.process, [pendencyId]);
-        return { ok: true, pendency: resolved!, revision: revision.revision } as const;
+        return { ok: true, pendency: resolved! } as const;
       });
       if (!revised.ok) return revised;
-      await afterConstraintRevision(processId, revised.revision);
+      await afterConstraintRevision(processId);
       return { ok: true, pendency: revised.pendency };
     },
 

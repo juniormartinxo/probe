@@ -40,11 +40,17 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
     runner,
     settings,
     log: app.log,
-    afterConstraintRevision: (processId, revision) => constraintReassessments.assessRevision(processId, revision),
+    afterConstraintRevision: (processId) => constraintReassessments.assessOpen(processId),
   });
   // Respostas que passam a confirmadas têm o conflito com as já confirmadas avaliado.
   const afterConfirm = (processId: string, answerVersionIds: string[]) => conflicts.assessConfirmed(processId, answerVersionIds);
-  const reassessments = reassessmentsModule({ db, assessor, log: app.log, afterConfirm });
+  const reassessments = reassessmentsModule({
+    db,
+    assessor,
+    log: app.log,
+    afterConfirm,
+    afterRevisionHeld: (processId) => constraintReassessments.assessOpen(processId),
+  });
 
   // Ao subir, o que ficou em andamento de uma execução anterior não tem mais quem o receba.
   app.addHook("onReady", () => runner.interruptAbandoned());

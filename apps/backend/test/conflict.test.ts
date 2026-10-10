@@ -886,6 +886,36 @@ describe("A Constraint revision after Stage R", () => {
     expect((await confirmStageO(id)).statusCode).toBe(201);
   });
 
+  it("reassesses a chained revision once the Stage Confirmation holds the one before it", async () => {
+    const { id, constraintId, pendency } = await conflictInStageO();
+    assessor.willAssessConstraintImpact(impactOutcome("yes"));
+    const first = (await revise(id, pendency.id, constraintId)).json().pendency.conflict.constraintRevision;
+    const [{ pendencyId }] = (await api.getProcess(id)).constraintReassessments;
+
+    // A integração muda de novo e volta a conflitar; a Restrição que substituiu o prazo é revista também.
+    assessor.willAssessConflicts(deadlineVersusIntegration());
+    const question = (await api.getProcess(id)).blocks[1].questions[1];
+    await api.answer(id, question.id, { text: "Depende da nova API, que agora sai em oito semanas.", basedOnVersionId: question.answer.current.id });
+    const conflictPendency = (await api.getProcess(id)).pendencies.find(
+      (item: { reason: string; resolvedAt: string | null }) => item.reason === "conflict" && item.resolvedAt === null,
+    );
+    const second = await reviseConstraint(id, conflictPendency.id, {
+      constraintId: first.replacement.item.id,
+      replacement: { kind: "constraint", statement: "Entregar em oito semanas" },
+      note: null,
+    });
+    expect(second.statusCode).toBe(200);
+    // A Etapa R ainda sustenta a Restrição original: a segunda revisão espera a primeira.
+    expect(assessor.constraintImpactInputs).toHaveLength(1);
+
+    expect((await api.reconfirm(id, pendencyId)).statusCode).toBe(200);
+
+    expect(assessor.constraintImpactInputs).toHaveLength(2);
+    expect(assessor.constraintImpactInputs[1]!.revision.constraint.statement).toBe("Entregar em cinco semanas");
+    expect((await api.getProcess(id)).constraintReassessments).toEqual([]);
+    expect((await confirmStageO(id)).statusCode).toBe(201);
+  });
+
   it("lets the user open the Pendency of reassessment when the Jev is uncertain", async () => {
     const { id, constraintId, pendency } = await conflictInStageO();
     assessor.willAssessConstraintImpact(impactOutcome("no", 0.55));

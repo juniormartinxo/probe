@@ -166,7 +166,7 @@ export interface PendencyTable {
   // quando resolvida por ele.
   conflictPairId: Generated<string | null>;
   conflictAssessmentId: Generated<string | null>;
-  resolutionNote: Generated<string | null>;
+  clarification: Generated<string | null>;
 }
 
 export interface ConstraintRevisionTable {

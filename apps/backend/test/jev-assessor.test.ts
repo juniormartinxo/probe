@@ -357,7 +357,7 @@ describe("conflict Assessment through the Jev API", () => {
     expect(body.questions.par_0!.instructions).toContain("As respostas [2.1] e [2.2] são incompatíveis entre si");
     // Preferência não é obrigação.
     expect(body.questions.par_0!.instructions).toContain("deixar de atender uma Preferência não é conflito");
-    expect(body.questions.par_0!.instructions).toContain("considere-os, mas julgue as respostas atuais");
+    expect(body.questions.par_0!.instructions).toContain("Um esclarecimento explica por que respostas anteriores não conflitavam; considere-o, mas julgue as respostas atuais.");
     expect(Object.keys(body.questions.par_1!.criteria)).toEqual(["yes", "no", "insufficient"]);
     expect(outcome).toEqual({
       status: "completed",

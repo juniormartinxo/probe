@@ -313,17 +313,21 @@ export async function impactedConfirmationOf(
 }
 
 // `afterConfirm`: chamado depois que uma Confirmação passa a sustentar uma Versão nova (sem impacto,
-// mantida ou reconfirmada), com essa Versão; quem o recebe avalia só as que ficaram confirmadas. Não lança.
+// mantida ou reconfirmada), com essa Versão; quem o recebe avalia só as que ficaram confirmadas.
+// `afterRevisionHeld`: chamado depois que uma Confirmação de Etapa é reconfirmada com uma Revisão de
+// Restrição; quem o recebe avalia a seguinte da cadeia, se houver. Nenhum dos dois lança.
 export function reassessments({
   db,
   assessor,
   log,
   afterConfirm,
+  afterRevisionHeld,
 }: {
   db: Db;
   assessor: Assessor;
   log: FastifyBaseLogger;
   afterConfirm: (processId: string, answerVersionIds: string[]) => Promise<void>;
+  afterRevisionHeld: (processId: string) => Promise<void>;
 }): Reassessments {
   // O que o Jev recebe: a Confirmação como está e a mudança.
   async function impactInputOf(processId: string, reassessment: Reassessment): Promise<PreparedImpact> {
@@ -550,6 +554,7 @@ export function reassessments({
       });
       if (!reconfirmed.ok) return reconfirmed;
       if (reconfirmed.answerVersionId !== null) await afterConfirm(processId, [reconfirmed.answerVersionId]);
+      else await afterRevisionHeld(processId);
       return { ok: true, pendency: reconfirmed.pendency };
     },
   };

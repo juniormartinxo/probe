@@ -102,7 +102,7 @@ export async function conflictPairsOf(db: Db, processId: string, pairIds?: strin
 export async function clarificationsOf(db: Db, processId: string) {
   const rows = await db
     .selectFrom("pendencies")
-    .select(["conflictPairId", "resolutionNote"])
+    .select(["conflictPairId", "clarification"])
     .where("processId", "=", processId)
     .where("resolution", "=", "clarified")
     .orderBy("resolvedAt")
@@ -120,7 +120,7 @@ export async function clarificationsOf(db: Db, processId: string) {
         ReturnType<typeof conflictingAnswerOf>,
         ReturnType<typeof conflictingAnswerOf>,
       ],
-      clarification: row.resolutionNote!,
+      clarification: row.clarification!,
     };
   });
 }

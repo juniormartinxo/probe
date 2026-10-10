@@ -44,9 +44,11 @@ export interface ConstraintImpactDecision {
 }
 
 export interface ConstraintReassessments {
-  // Depois de uma Revisão de Restrição, avalia o impacto dela sobre cada Confirmação de Etapa que
-  // sustentava a Restrição revista. Não lança: uma falha fica no log e a reavaliação, "não avaliada".
-  assessRevision(processId: string, revision: ConstraintRevision): Promise<void>;
+  // Avalia o impacto de cada Revisão de Restrição ainda sem Avaliação sobre a Confirmação de Etapa que
+  // sustentava a Restrição revista. Chamar depois de uma revisão e sempre que uma Confirmação passa a
+  // sustentar uma: numa cadeia (a substituta revista de novo), a seguinte só se abre então. Não lança:
+  // uma falha fica no log e a reavaliação, "não avaliada".
+  assessOpen(processId: string): Promise<void>;
   // Nova tentativa, quando a Avaliação de impacto falhou (ou se perdeu).
   retry(
     processId: string,
@@ -140,10 +142,37 @@ export async function undecidedConstraintReassessmentsBlocking(db: Db, processId
   );
 }
 
+const reassessmentKey = ({ revision, confirmation }: ConstraintReassessment) => `${revision.id}:${confirmation.stage}`;
+
 async function findConstraintReassessment(db: Db, processId: string, constraintRevisionId: string, stage: Stage) {
   return (await constraintReassessmentsOf(db, processId)).find(
     (item) => item.revision.id === constraintRevisionId && item.confirmation.stage === stage,
   );
+}
+
+// A Pendência de reavaliação da revisão, na Confirmação da Etapa, sem Pergunta.
+async function openPendency(
+  trx: Db,
+  processId: string,
+  { constraintRevisionId, stage, impactAssessmentId }: { constraintRevisionId: string; stage: Stage; impactAssessmentId: string },
+  openedBy: "jev" | "user",
+): Promise<string> {
+  const { id } = await trx
+    .insertInto("pendencies")
+    .values({
+      processId,
+      reason: "reassessment",
+      questionId: null,
+      answerVersionId: null,
+      constraintRevisionId,
+      impactAssessmentId,
+      openedBy,
+      blockId: null,
+      stage,
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  return id;
 }
 
 export function constraintReassessments({
@@ -205,20 +234,7 @@ export function constraintReassessments({
       const still = await findConstraintReassessment(trx, processId, revision.id, confirmation.stage);
       if (!still || still.status === "pendency_open") return { ok: true, id } as const;
       if (outcome.result.choice === "yes") {
-        await trx
-          .insertInto("pendencies")
-          .values({
-            processId,
-            reason: "reassessment",
-            questionId: null,
-            answerVersionId: null,
-            constraintRevisionId: revision.id,
-            impactAssessmentId: id,
-            openedBy: "jev",
-            blockId: null,
-            stage: confirmation.stage,
-          })
-          .execute();
+        await openPendency(trx, processId, { constraintRevisionId: revision.id, stage: confirmation.stage, impactAssessmentId: id }, "jev");
       } else {
         await trx
           .insertInto("confirmationConstraintRevisions")
@@ -232,24 +248,31 @@ export function constraintReassessments({
     return { ok: true, impactAssessment };
   }
 
-  return {
-    async assessRevision(processId, revision) {
-      try {
-        const pending = (await constraintReassessmentsOf(db, processId)).filter(
-          (item) => item.revision.id === revision.id && item.status === "not_assessed",
+  async function assessOpen(processId: string): Promise<void> {
+    // Cada reavaliação uma vez por chamada: uma que falha sem gravar a Avaliação não volta a ser tentada.
+    const tried = new Set<string>();
+    try {
+      for (;;) {
+        const next = (await constraintReassessmentsOf(db, processId)).find(
+          (item) => item.status === "not_assessed" && !tried.has(reassessmentKey(item)),
         );
-        for (const item of pending) {
-          await assess(processId, item).catch((error: unknown) => {
-            log.error(
-              { err: error, processId, constraintRevisionId: revision.id, stage: item.confirmation.stage },
-              "Não foi possível avaliar o impacto da Revisão de Restrição.",
-            );
-          });
-        }
-      } catch (error) {
-        log.error({ err: error, processId, constraintRevisionId: revision.id }, "Não foi possível encontrar as Confirmações a reavaliar.");
+        if (!next) return;
+        tried.add(reassessmentKey(next));
+        // Sem impacto, a Confirmação passa a sustentar a revisão, e a seguinte da cadeia se abre.
+        await assess(processId, next).catch((error: unknown) => {
+          log.error(
+            { err: error, processId, constraintRevisionId: next.revision.id, stage: next.confirmation.stage },
+            "Não foi possível avaliar o impacto da Revisão de Restrição.",
+          );
+        });
       }
-    },
+    } catch (error) {
+      log.error({ err: error, processId }, "Não foi possível encontrar as Confirmações a reavaliar.");
+    }
+  }
+
+  return {
+    assessOpen,
 
     async retry(processId, constraintRevisionId, stage) {
       const process = await db.selectFrom("processes").select("status").where("id", "=", processId).executeTakeFirst();
@@ -278,25 +301,14 @@ export function constraintReassessments({
             .execute();
           return { ok: true, pendencyId: null, process: locked.process } as const;
         }
-        const { id } = await trx
-          .insertInto("pendencies")
-          .values({
-            processId,
-            reason: "reassessment",
-            questionId: null,
-            answerVersionId: null,
-            constraintRevisionId,
-            impactAssessmentId,
-            openedBy: "user",
-            blockId: null,
-            stage,
-          })
-          .returning("id")
-          .executeTakeFirstOrThrow();
+        const id = await openPendency(trx, processId, { constraintRevisionId, stage, impactAssessmentId }, "user");
         return { ok: true, pendencyId: id, process: locked.process } as const;
       });
       if (!decided.ok) return decided;
-      if (decided.pendencyId === null) return { ok: true, pendency: null };
+      if (decided.pendencyId === null) {
+        await assessOpen(processId);
+        return { ok: true, pendency: null };
+      }
       const [pendency] = await listPendencies(db, decided.process, [decided.pendencyId]);
       return { ok: true, pendency: pendency! };
     },

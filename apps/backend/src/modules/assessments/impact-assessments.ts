@@ -1,6 +1,13 @@
 import type { Db } from "../../db/database.ts";
 import type { Stage } from "../process/stage.ts";
-import { assessmentChoices, type AssessmentChoice, type AssessorFailureReason, type AssessorOutcome, type Verdict } from "./assessor.ts";
+import {
+  assessmentChoices,
+  failureOnThrow,
+  type AssessmentChoice,
+  type AssessorFailureReason,
+  type AssessorOutcome,
+  type Verdict,
+} from "./assessor.ts";
 import { IMPACT_CONFIDENCE_THRESHOLD } from "./impact-rubric.ts";
 
 // Confirmação que depende de respostas: a síntese de um Bloco ou a de uma Etapa.
@@ -63,19 +70,9 @@ export function verdictProblem({ choice, confidence, probabilities }: Verdict): 
   return undefined;
 }
 
-// O desfecho do Jev, qualquer que seja o Assessor: uma exceção vira falha.
-export const caught = <T>(call: () => Promise<AssessorOutcome<T>>): Promise<AssessorOutcome<T>> =>
-  call().catch(
-    (error: unknown): AssessorOutcome<never> => ({
-      status: "failed",
-      reason: "jev_error",
-      message: error instanceof Error ? error.message : String(error),
-    }),
-  );
-
 // Um julgamento único válido, ou a falha.
 export async function judgedImpact(call: () => Promise<AssessorOutcome<Verdict>>): Promise<AssessorOutcome<Verdict>> {
-  const outcome = await caught(call);
+  const outcome = await failureOnThrow(call);
   if (outcome.status !== "completed") return outcome;
   const problem = verdictProblem(outcome.result);
   return problem ? { status: "failed", reason: "invalid_output", message: problem } : outcome;

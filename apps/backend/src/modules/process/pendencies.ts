@@ -203,7 +203,7 @@ export async function listPendencies(db: Db, process: ProcessPoints, ids?: strin
       "pendencies.openedBy",
       "pendencies.conflictPairId",
       "pendencies.conflictAssessmentId",
-      "pendencies.resolutionNote",
+      "pendencies.clarification",
       "pendencies.constraintRevisionId",
       "questions.id as questionId",
       "questions.wording",
@@ -239,7 +239,7 @@ export async function listPendencies(db: Db, process: ProcessPoints, ids?: strin
       openedBy: row.openedBy!,
       conflictAssessment: conflictAssessments.find((assessment) => assessment.id === row.conflictAssessmentId)!,
       resolutionQuestion: questions.get(row.id) ?? null,
-      clarification: row.resolutionNote,
+      clarification: row.clarification,
       constraintRevision: revisions.find((revision) => revision.conflictPendencyId === row.id) ?? null,
     };
   };

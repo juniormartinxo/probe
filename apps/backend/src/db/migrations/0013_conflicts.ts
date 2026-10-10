@@ -86,7 +86,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("conflict_pair_id", "uuid", (col) => col.references("conflict_pairs.id").onDelete("cascade"))
     .addColumn("conflict_assessment_id", "uuid", (col) => col.references("conflict_assessments.id").onDelete("cascade"))
     // O esclarecimento do usuário que resolveu o conflito.
-    .addColumn("resolution_note", "text", (col) => col.check(sql`resolution_note is null or btrim(resolution_note) <> ''`))
+    .addColumn("clarification", "text", (col) => col.check(sql`clarification is null or btrim(clarification) <> ''`))
     .execute();
 
   // Revisão de Restrição: o usuário retira uma Restrição em vigor e, se houver, registra a que a
@@ -135,7 +135,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
           and constraint_revision_id is null and coalesce(resolution = 'answered', true)
       end`,
   ).execute(db);
-  await addCheck("pendencies", "pendencies_clarification", sql`(resolution_note is not null) = coalesce(resolution = 'clarified', false)`).execute(db);
+  await addCheck("pendencies", "pendencies_clarification", sql`(clarification is not null) = coalesce(resolution = 'clarified', false)`).execute(db);
   // Uma Pendência de conflito por par.
   await sql`create unique index pendencies_one_conflict on pendencies (conflict_pair_id) where reason = 'conflict'`.execute(db);
   // Uma Pendência de reavaliação por mudança (Versão nova ou Revisão de Restrição) e Confirmação afetada.
@@ -208,7 +208,6 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   await sql`alter table impact_assessments alter column answer_version_id set not null`.execute(db);
 
   await sql`delete from pendencies where reason = 'conflict' or constraint_revision_id is not null`.execute(db);
-  await sql`update pendencies set resolution_note = null`.execute(db);
   await sql`drop index pendencies_one_reassessment`.execute(db);
   await sql`create unique index pendencies_one_reassessment
     on pendencies (answer_version_id, block_id, stage) nulls not distinct where reason = 'reassessment'`.execute(db);
@@ -220,7 +219,7 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   await db.schema.dropTable("constraint_revisions").execute();
   await db.schema
     .alterTable("pendencies")
-    .dropColumn("resolution_note")
+    .dropColumn("clarification")
     .dropColumn("conflict_assessment_id")
     .dropColumn("conflict_pair_id")
     .execute();

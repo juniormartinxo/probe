@@ -101,6 +101,16 @@ export type AssessorOutcome<T> =
   | { status: "completed"; model: string; result: T }
   | { status: "failed"; reason: AssessorFailureReason; message: string };
 
+// O desfecho de uma chamada ao Assessor, qualquer que seja ele: uma exceção vira falha do Jev.
+export const failureOnThrow = <T>(call: () => Promise<AssessorOutcome<T>>): Promise<AssessorOutcome<T>> =>
+  call().catch(
+    (error: unknown): AssessorOutcome<never> => ({
+      status: "failed",
+      reason: "jev_error",
+      message: error instanceof Error ? error.message : String(error),
+    }),
+  );
+
 export interface Assessor {
   // O modelo do Jev pedido em cada chamada.
   readonly model: string;
