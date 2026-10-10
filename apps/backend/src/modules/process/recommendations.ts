@@ -12,7 +12,7 @@ import { recommendationProblem } from "../ai/recommend-option.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 import { comparisonMatrixOf } from "./comparison-matrix.ts";
 import { statementsInForceOf } from "./constraints-and-preferences.ts";
-import { optionRefOf, optionsOf } from "./options.ts";
+import { optionRefOf, optionsOf, type NamedOption } from "./options.ts";
 import { confirmedStatementOf } from "./problem-statement.ts";
 import { lockOpenProcess } from "./process.ts";
 import { confirmedStagesOf } from "./stage-readiness.ts";
@@ -32,7 +32,6 @@ export interface RecommendationResult {
   comparisons: (ComparisonCells & { optionId: string })[];
 }
 
-type NamedOption = { id: string; statement: string };
 
 // Recomendação da IA a favor de uma Opção viável, com a linha da matriz que ela sugere para cada
 // Opção viável. É sugestão: nunca vira Escolha sem ato do usuário.

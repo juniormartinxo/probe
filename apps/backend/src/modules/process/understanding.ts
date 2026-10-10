@@ -27,8 +27,9 @@ export interface Understanding extends ItemStatements {
   openPendencies: { reason: PendencyReason; wording: string }[];
   // As Opções aceitas, com a viabilidade e as Restrições que violam.
   options: Pick<Option, "statement" | "viability" | "violations">[];
-  // A Escolha em vigor, com o motivo de cada descarte; null enquanto não há.
-  chosenOption: { statement: string; discards: { statement: string; reason: string }[] } | null;
+  // A Escolha em vigor, com o motivo de cada descarte e se a Opção escolhida ainda é viável; null
+  // enquanto não há.
+  chosenOption: { statement: string; viable: boolean; discards: { statement: string; reason: string }[] } | null;
 }
 
 export function understandingOf(process: {
@@ -76,7 +77,11 @@ export function understandingOf(process: {
       .filter((option) => option.status === "accepted")
       .map(({ statement, viability, violations }) => ({ statement, viability, violations })),
     chosenOption: chosen
-      ? { statement: chosen.option.statement, discards: chosen.discards.map(({ option, reason }) => ({ statement: option.statement, reason })) }
+      ? {
+          statement: chosen.option.statement,
+          viable: process.options.find((option) => option.id === chosen.option.id)?.viability === "viable",
+          discards: chosen.discards.map(({ option, reason }) => ({ statement: option.statement, reason })),
+        }
       : null,
   };
 }

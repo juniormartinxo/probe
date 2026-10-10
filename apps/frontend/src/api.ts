@@ -537,8 +537,8 @@ export interface Understanding {
   openPendencies: { reason: PendencyReason; wording: string }[];
   // As Opções aceitas, com a viabilidade.
   options: Pick<Option, "statement" | "viability" | "violations">[];
-  // A Escolha em vigor, com o motivo de cada descarte.
-  chosenOption: { statement: string; discards: { statement: string; reason: string }[] } | null;
+  // A Escolha em vigor, com o motivo de cada descarte e se a Opção escolhida ainda é viável.
+  chosenOption: { statement: string; viable: boolean; discards: { statement: string; reason: string }[] } | null;
 }
 
 export type AssessmentChoice = "yes" | "no" | "insufficient";

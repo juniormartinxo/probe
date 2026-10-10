@@ -405,6 +405,8 @@ describe("A Constraint revision in Stage B", () => {
     const refused = await confirmStageB(id);
     expect(refused.statusCode).toBe(409);
     expect(refused.json()).toEqual({ error: "chosen_option_not_viable" });
+    const understanding = (await api.inject({ method: "GET", url: `/api/processes/${id}/understanding` })).json().understanding;
+    expect(understanding.chosenOption).toMatchObject({ statement: runner, viable: false });
 
     // O cache, agora a única viável, é escolhido sem descarte a justificar.
     expect((await choose(id, { optionId: cacheId, discards: [] })).statusCode).toBe(201);
@@ -432,6 +434,6 @@ describe("The understanding of the Process", () => {
 
     const response = await api.inject({ method: "GET", url: `/api/processes/${id}/understanding` });
 
-    expect(response.json().understanding.chosenOption).toEqual({ statement: cache, discards: [{ statement: runner, reason: "Mais caro." }] });
+    expect(response.json().understanding.chosenOption).toEqual({ statement: cache, viable: true, discards: [{ statement: runner, reason: "Mais caro." }] });
   });
 });

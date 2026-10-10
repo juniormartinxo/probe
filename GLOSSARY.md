@@ -204,7 +204,7 @@ _Avoid_: Opção eliminada, opção descartada
 
 **Matriz qualitativa**:
 Comparação das Opções aceitas na Etapa B, uma linha por Opção: atendimento às Restrições (dos pares Opção × Restrição, nunca da IA nem do usuário), ganhos, perdas, esforço, escala, manutenção e reversibilidade, em texto, sem nota nem peso. Cada linha é do usuário: escrita por ele ou aceita, como veio ou editada, da que uma Recomendação sugeriu; reescrevê-la guarda a anterior no histórico. Uma Opção inviável aparece como tal.
-_Code_: `ComparisonMatrix` (cada linha: `OptionComparison`)
+_Code_: `ComparisonMatrix` (cada linha: `ComparisonMatrixRow`; o que o usuário gravou nela: `OptionComparison`)
 _Avoid_: Pontuação, ranking, tabela de pesos
 
 **Recomendação**:
@@ -213,7 +213,7 @@ _Code_: `Recommendation`
 _Avoid_: Sugestão de escolha, decisão da IA
 
 **Escolha**:
-Opção viável selecionada pelo usuário, da Etapa B em diante, com o motivo de descarte de cada outra Opção viável (as inviáveis já estão descartadas pela Restrição que violam). Continua revisável enquanto o Processo estiver aberto: trocar de Escolha registra uma nova e a anterior fica no histórico. É o que cobre o Ponto "Escolha com os motivos dos descartes", que nenhum Bloco cobre; se a Opção escolhida deixa de ser viável (por uma Revisão de Restrição), a Confirmação da Etapa B espera uma nova Escolha.
+Opção viável selecionada pelo usuário, da Etapa B em diante, com o motivo de descarte de cada outra Opção viável (as inviáveis já estão descartadas pela Restrição que violam). Continua revisável enquanto o Processo estiver aberto: trocar de Escolha registra uma nova e a anterior fica no histórico. É o que cobre o Ponto "Escolha com os motivos dos descartes" (estado `chosen` do Ponto, distinto do coberto por Bloco), que nenhum Bloco cobre; se a Opção escolhida deixa de ser viável (por uma Revisão de Restrição), a Confirmação da Etapa B espera uma nova Escolha.
 _Code_: `ChosenOption` (cada descarte: `ChoiceDiscard`)
 _Avoid_: Seleção, decisão
 

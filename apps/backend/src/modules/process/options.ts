@@ -23,6 +23,9 @@ export type OptionOrigin = "ai" | "user";
 
 export type OptionStatus = "suggested" | "accepted" | "discarded";
 
+// A Opção pelo que basta para nomeá-la: na Recomendação, na Escolha e nos descartes.
+export type NamedOption = { id: string; statement: string };
+
 export interface Option {
   id: string;
   statement: string;

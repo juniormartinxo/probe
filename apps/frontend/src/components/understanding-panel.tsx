@@ -94,6 +94,9 @@ function UnderstandingView({ understanding }: { understanding: Understanding }) 
         <div>
           <p className="text-muted-foreground text-xs">Escolha</p>
           <p>{understanding.chosenOption.statement}</p>
+          {!understanding.chosenOption.viable && (
+            <p className="text-destructive text-xs">A Opção escolhida deixou de ser viável: registre uma nova Escolha.</p>
+          )}
           {understanding.chosenOption.discards.length > 0 && (
             <ul className="text-muted-foreground flex flex-col gap-0.5 text-xs">
               {understanding.chosenOption.discards.map((discard, index) => (

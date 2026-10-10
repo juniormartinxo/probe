@@ -231,7 +231,7 @@ function ComparisonForm({
   const [cells, setCells] = useState<ComparisonCells>(pick(start));
   const { saving, error, act } = useAction(onChange);
   // Só quando parte da sugestão (não de uma linha sua) a linha fica ligada à Recomendação.
-  const fromSuggestion = row.comparison === null && suggestion !== null;
+  const [fromSuggestion, setFromSuggestion] = useState(row.comparison === null && suggestion !== null);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -248,6 +248,23 @@ function ComparisonForm({
         Linha de “{row.option.statement}”
         {fromSuggestion && <span className="text-muted-foreground font-normal"> · a partir da sugestão da IA</span>}
       </p>
+      {row.comparison && suggestion && !fromSuggestion && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-muted-foreground text-xs">A Recomendação mais recente sugere outra linha para esta Opção.</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={saving}
+            onClick={() => {
+              setCells(pick(suggestion));
+              setFromSuggestion(true);
+            }}
+          >
+            Usar a sugestão da IA
+          </Button>
+        </div>
+      )}
       <div className="grid gap-2 md:grid-cols-2">
         {dimensions.map((dimension) => (
           <div key={dimension.key} className="flex flex-col gap-1">

@@ -1,10 +1,9 @@
 import type { Db } from "../../db/database.ts";
-import { optionsOf, type Option } from "./options.ts";
+import { optionsOf, type NamedOption, type Option } from "./options.ts";
 import { lockOpenProcessFrom } from "./process.ts";
 import type { StagePointState } from "./stage-point-coverage.ts";
 import type { Stage } from "./stage.ts";
 
-type NamedOption = { id: string; statement: string };
 
 // Descarte: uma Opção viável que a Escolha deixou de lado, com o motivo. Não muda o estado da Opção.
 export interface ChoiceDiscard {
