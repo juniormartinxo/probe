@@ -1,7 +1,8 @@
 import type { StagePoint } from "../process/stage-points.ts";
 import type { ItemStatement, ItemStatements } from "../process/constraints-and-preferences.ts";
+import type { OptionStatus } from "../process/options.ts";
 import type { Stage } from "../process/stage.ts";
-import type { AskedQuestion, ConfirmedStageAnswers } from "./assistant.ts";
+import type { AskedQuestion, ConfirmedStageAnswers, KnownOption } from "./assistant.ts";
 
 export const stageNames = { P: "Problema", R: "Restrições", O: "Opções", B: "Balanceamento", E: "Execução" } as const;
 
@@ -42,6 +43,10 @@ export function confirmedStagesText(confirmed: ConfirmedStageAnswers[]): string 
 
 // O que cada Etapa pede de particular às Perguntas, além dos Pontos.
 const stageGuidance: Partial<Record<Stage, string>> = {
+  O:
+    "Nesta Etapa, ajude a pessoa a explorar caminhos para o problema: se ele pode deixar de existir, qual a solução mais simples " +
+    "(inclusive manual), qual entrega a maior parte do resultado com pouco esforço e o quanto cada Opção é reversível. " +
+    "As Opções que ela já aceitou vêm abaixo; pergunte sobre elas quando ajudar, sem inventar Opções nem escolher uma.",
   R:
     "Nesta Etapa, ajude a pessoa a separar Restrições (condições inegociáveis, que eliminam Opções) de Preferências (desejáveis, mas negociáveis). " +
     "Quando uma resposta envolver prazo, valor, volume ou outro limite, pergunte o escopo a que ele se aplica e a unidade em que é medido " +
@@ -64,3 +69,17 @@ const itemsText = (items: ItemStatement[]): string => (items.length > 0 ? items.
 // dentro dos delimitadores de dado.
 export const constraintsAndPreferencesText = ({ constraints, preferences }: ItemStatements): string =>
   `Restrições (inegociáveis):\n${itemsText(constraints)}\nPreferências (negociáveis):\n${itemsText(preferences)}`;
+
+const optionStatusNames: Record<OptionStatus, string> = { suggested: "sugerida", accepted: "aceita", discarded: "descartada" };
+
+// Opções já registradas, como entram nos prompts: o estado e, numa aceita, as Restrições que ela viola.
+// O texto é do usuário ou da IA e vai dentro dos delimitadores de dado.
+export function knownOptionsText(options: KnownOption[]): string {
+  if (options.length === 0) return "(nenhuma)";
+  return options
+    .map(({ statement, description, status, violatedConstraints }) => {
+      const violations = violatedConstraints.length > 0 ? `\nViola: ${violatedConstraints.join("; ")}` : "";
+      return `- (${optionStatusNames[status]}) ${statement}${description ? `\n${description}` : ""}${violations}`;
+    })
+    .join("\n");
+}

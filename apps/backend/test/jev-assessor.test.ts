@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ConflictInput, ConstraintImpactInput, CoverageInput, ImpactInput } from "../src/modules/assessments/assessor.ts";
+import type { ConflictInput, ConstraintImpactInput, CoverageInput, ImpactInput, OptionViolationInput } from "../src/modules/assessments/assessor.ts";
 import { createJevAssessor } from "../src/modules/assessments/jev-assessor.ts";
 import { stagePointsOf } from "../src/modules/process/stage-points.ts";
 
@@ -373,5 +373,61 @@ describe("conflict Assessment through the Jev API", () => {
     const { url } = await startJev(() => ({ model: "jev-1.13.0", answers: { par_0: validAnswers.real_problem }, usage: {} }));
 
     expect(await assessConflicts(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
+  });
+});
+
+describe("option Assessment through the Jev API", () => {
+  const optionInput: OptionViolationInput = {
+    problemStatement: "O deploy leva 40 minutos e bloqueia o time durante a manhã.",
+    pairs: [
+      {
+        key: "par_0",
+        option: { ref: "O1", statement: "Contratar uma plataforma de CI", description: "Plano de 2.000 reais por mês." },
+        constraint: { ref: "R1", statement: "Custo de até 500", scope: "Produção", unit: "reais por mês" },
+      },
+      {
+        key: "par_1",
+        option: { ref: "O1", statement: "Contratar uma plataforma de CI", description: "Plano de 2.000 reais por mês." },
+        constraint: { ref: "R2", statement: "Sem downtime", scope: null, unit: null },
+      },
+    ],
+  };
+  const assessOptions = (url: string) =>
+    createJevAssessor({ url, apiKey: API_KEY, model: "jev-latest", timeoutMs: 5_000 }).assessOptions(optionInput);
+
+  it("sends each Option and each Constraint once, as data, and one Choice question per pair", async () => {
+    const answers = { par_0: validAnswers.real_problem, par_1: validAnswers.consequence };
+    const { url, requests } = await startJev(() => ({ model: "jev-1.13.0", answers, usage: {} }));
+
+    const outcome = await assessOptions(url);
+
+    const body = requests[0]!.body as { state: unknown; questions: Record<string, { instructions: string; criteria: object }> };
+    expect(body.state).toEqual({
+      enunciado: optionInput.problemStatement,
+      opcoes: [{ opcao: "[O1] Contratar uma plataforma de CI", detalhes: "Plano de 2.000 reais por mês." }],
+      restricoes: [
+        { restricao: "[R1] Custo de até 500", escopo: "Produção", unidade: "reais por mês" },
+        { restricao: "[R2] Sem downtime", escopo: null, unidade: null },
+      ],
+    });
+    expect(Object.keys(body.questions)).toEqual(["par_0", "par_1"]);
+    expect(body.questions.par_1!.instructions).toContain("Adotar a Opção [O1] viola a Restrição [R2]?");
+    // Nada compensa a violação.
+    expect(body.questions.par_0!.instructions).toContain("quaisquer que sejam as suas vantagens");
+    expect(Object.keys(body.questions.par_0!.criteria)).toEqual(["yes", "no", "insufficient"]);
+    expect(outcome).toEqual({
+      status: "completed",
+      model: "jev-1.13.0",
+      result: {
+        par_0: { choice: "yes", probabilities: { yes: 0.88, no: 0.1, insufficient: 0.02 }, confidence: 0.81 },
+        par_1: { choice: "insufficient", probabilities: { yes: 0.3, no: 0.3, insufficient: 0.4 }, confidence: 0.12 },
+      },
+    });
+  });
+
+  it("refuses an answer that leaves a pair without judgment as invalid output", async () => {
+    const { url } = await startJev(() => ({ model: "jev-1.13.0", answers: { par_0: validAnswers.real_problem }, usage: {} }));
+
+    expect(await assessOptions(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
   });
 });

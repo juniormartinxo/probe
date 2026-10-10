@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AttemptContext, BlockInput, ResolutionQuestionInput, SynthesisInput } from "../src/modules/ai/assistant.ts";
+import type { AttemptContext, BlockInput, OptionProposalInput, ResolutionQuestionInput, SynthesisInput } from "../src/modules/ai/assistant.ts";
 import { createExecutorAssistant } from "../src/modules/ai/executor-assistant.ts";
 import { stagePointsOf } from "../src/modules/process/stage-points.ts";
 import { waitFor } from "./support/test-app.ts";
@@ -140,6 +140,7 @@ const blockInput: BlockInput = {
   askedQuestions: [],
   confirmedSyntheses: [],
   ambiguousAnswers: [],
+  options: [],
 };
 
 const blockQuestions = [
@@ -541,6 +542,95 @@ describe("Conflict resolution question through the executor", () => {
     const { url } = await startExecutor(answering(output));
 
     expect(await formulate(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
+  });
+});
+
+const optionProposalInput: OptionProposalInput = {
+  originalDescription: description,
+  problemStatement: "O deploy leva 40 minutos e bloqueia o time durante a manhã.",
+  confirmedStages: [{ stage: "R", answers: [{ ref: "2.1", wording: "Até quando?", answer: "Fim do trimestre." }] }],
+  constraints: [{ statement: "Custo de até 500", scope: null, unit: "reais por mês" }],
+  preferences: [{ statement: "Manter o GitHub Actions", scope: null, unit: null }],
+  stagePoints: stagePointsOf(1, "O"),
+  askedQuestions: [],
+  options: [
+    { statement: "Contratar uma plataforma de CI cara", description: null, status: "accepted", violatedConstraints: ["Custo de até 500"] },
+    { statement: "Desistir do deploy", description: "Ninguém aprovou.", status: "discarded", violatedConstraints: [] },
+  ],
+};
+
+describe("Option proposal through the executor", () => {
+  const propose = (url: string) =>
+    createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).proposeOptions(optionProposalInput, attemptContext());
+
+  it("sends the Points of Stage O, the Constraints and the Options already recorded, as data, in the prompt", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify({ options: [] })));
+
+    await propose(url);
+
+    const { operation, prompt } = requests[0]!.body as { operation: string; prompt: string };
+    expect(operation).toBe("generate_text");
+    expect(prompt).toContain("Etapa O (Opções)");
+    expect(prompt).toContain("- eighty_twenty: Alternativa 80/20.");
+    expect(prompt).toContain("Não invente Opções só para atingir uma quantidade");
+    expect(prompt).toContain("Restrições (inegociáveis):\n- Custo de até 500 (unidade: reais por mês)");
+    expect(prompt).toContain("Etapa R (Restrições)\n[2.1] Até quando?\nResposta: Fim do trimestre.");
+    expect(prompt).toContain(
+      "<<<OPCOES\n- (aceita) Contratar uma plataforma de CI cara\nViola: Custo de até 500\n- (descartada) Desistir do deploy\nNinguém aprovou.\nOPCOES>>>",
+    );
+  });
+
+  it("brings the Options, each with the Points of Stage O it represents", async () => {
+    const options = [
+      { statement: " Cachear dependências ", description: " No GitHub Actions. ", stagePoints: ["eighty_twenty", "eighty_twenty"] },
+      { statement: "Rodar à mão", stagePoints: [] },
+    ];
+    const { url } = await startExecutor(answering(JSON.stringify({ options })));
+
+    expect(await propose(url)).toEqual({
+      status: "completed",
+      usage: null,
+      result: {
+        options: [
+          { statement: "Cachear dependências", description: "No GitHub Actions.", stagePoints: ["eighty_twenty"] },
+          { statement: "Rodar à mão", description: null, stagePoints: [] },
+        ],
+      },
+    });
+  });
+
+  it("accepts an empty list: no Option is invented to reach a number", async () => {
+    const { url } = await startExecutor(answering(JSON.stringify({ options: [] })));
+
+    expect(await propose(url)).toEqual({ status: "completed", usage: null, result: { options: [] } });
+  });
+
+  it.each([
+    ["prose instead of JSON", "Cachear dependências."],
+    ["an Option without statement", JSON.stringify({ options: [{ statement: " ", stagePoints: [] }] })],
+    ["a Point outside Stage O", JSON.stringify({ options: [{ statement: "Cachear", stagePoints: ["deadline"] }] })],
+  ])("never takes %s as completed Options", async (_case, output) => {
+    const { url } = await startExecutor(answering(output));
+
+    expect(await propose(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
+  });
+});
+
+describe("Block generation in Stage O, through the executor", () => {
+  it("sends the accepted Options, with the Constraints each one violates, as data", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify({ questions: [] })));
+    const input: BlockInput = {
+      ...blockInput,
+      stage: "O",
+      openStagePoints: stagePointsOf(1, "O"),
+      options: [{ statement: "Contratar uma plataforma de CI cara", description: null, status: "accepted", violatedConstraints: ["Custo de até 500"] }],
+    };
+
+    await createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).generateBlock(input, attemptContext());
+
+    const { prompt } = requests[0]!.body as { prompt: string };
+    expect(prompt).toContain("<<<OPCOES\n- (aceita) Contratar uma plataforma de CI cara\nViola: Custo de até 500\nOPCOES>>>");
+    expect(prompt).toMatch(/reversível/);
   });
 });
 

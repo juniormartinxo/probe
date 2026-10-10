@@ -8,6 +8,7 @@ import {
 import { conflictRequest } from "./conflict-rubric.ts";
 import { coverageRequest, type ChoiceQuestion } from "./coverage-rubric.ts";
 import { constraintImpactRequest, IMPACT_KEY, impactRequest } from "./impact-rubric.ts";
+import { optionRequest } from "./option-rubric.ts";
 
 // Endpoint da API do Jev. Fixo: só os testes apontam o Assessor para outro endereço.
 export const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
@@ -124,6 +125,10 @@ export function createJevAssessor({ url, apiKey, model, timeoutMs }: JevSettings
     },
     assessConflicts(input) {
       const { state, questions } = conflictRequest(input);
+      return ask(state, questions);
+    },
+    assessOptions(input) {
+      const { state, questions } = optionRequest(input);
       return ask(state, questions);
     },
   };

@@ -6,7 +6,9 @@ import type {
   GeneratedResolutionQuestion,
   ResolutionQuestionInput,
   GeneratedBlock,
+  GeneratedOptions,
   GeneratedSynthesis,
+  OptionProposalInput,
   StatementProposal,
   SynthesisInput,
   Usage,
@@ -69,6 +71,14 @@ export const defaultSynthesis: GeneratedSynthesis = {
   ambiguousAnswers: [],
 };
 
+// Proposta padrão de Opções: uma que elimina o problema e uma manual.
+export const defaultOptions: GeneratedOptions = {
+  options: [
+    { statement: "Fazer o deploy só dos serviços alterados", description: null, stagePoints: ["eliminate_problem"] },
+    { statement: "Rodar o deploy à mão, fora do horário do time", description: null, stagePoints: ["simplest_solution"] },
+  ],
+};
+
 export function completed<T = StatementProposal>(
   result: T = defaultProposal as T,
   usage: Usage | null = null,
@@ -120,6 +130,7 @@ export class FakeAssistant implements Assistant {
   readonly block = new Script<BlockInput, GeneratedBlock>(() => completed(defaultBlock));
   readonly synthesis = new Script<SynthesisInput, GeneratedSynthesis>(() => completed(defaultSynthesis));
   readonly resolutionQuestion = new Script<ResolutionQuestionInput, GeneratedResolutionQuestion>(() => completed(defaultResolutionQuestion));
+  readonly options = new Script<OptionProposalInput, GeneratedOptions>(() => completed(defaultOptions));
   readonly connection = new Script<null, string>(() => completed("ok"));
 
   refineProblemStatement(input: { originalDescription: string }, context: AttemptContext) {
@@ -136,6 +147,10 @@ export class FakeAssistant implements Assistant {
 
   formulateResolutionQuestion(input: ResolutionQuestionInput, context: AttemptContext) {
     return this.resolutionQuestion.run(input, context);
+  }
+
+  proposeOptions(input: OptionProposalInput, context: AttemptContext) {
+    return this.options.run(input, context);
   }
 
   testConnection(context: AttemptContext) {

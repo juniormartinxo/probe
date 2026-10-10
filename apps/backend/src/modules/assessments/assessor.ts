@@ -86,6 +86,32 @@ export interface ConflictInput extends ItemStatements {
   pairs: ConflictPairInput[];
 }
 
+// Opção aceita, como o Jev a recebe: "O1", a primeira Opção registrada no Processo.
+export interface AssessedOption {
+  ref: string;
+  statement: string;
+  description: string | null;
+}
+
+// Restrição em vigor, como o Jev a recebe: "R1", a primeira registrada no Processo.
+export interface AssessedConstraint extends ItemStatement {
+  ref: string;
+}
+
+// Par de uma Opção aceita e uma Restrição em vigor. `key` identifica o par no julgamento.
+export interface OptionPairInput {
+  key: string;
+  option: AssessedOption;
+  constraint: AssessedConstraint;
+}
+
+// O que o Jev recebe para avaliar, par a par, se Opções violam Restrições. Só as Restrições vão como
+// dado: uma Preferência não elimina Opção.
+export interface OptionViolationInput {
+  problemStatement: string;
+  pairs: OptionPairInput[];
+}
+
 export type AssessorFailureReason =
   // A chave do Jev não está no ambiente do backend.
   | "jev_not_configured"
@@ -122,4 +148,6 @@ export interface Assessor {
   assessConstraintImpact(input: ConstraintImpactInput): Promise<AssessorOutcome<Verdict>>;
   // Um julgamento para cada par recebido, pela chave do par: `yes`, as respostas são incompatíveis.
   assessConflicts(input: ConflictInput): Promise<AssessorOutcome<Record<string, Verdict>>>;
+  // Um julgamento para cada par recebido, pela chave do par: `yes`, a Opção viola a Restrição.
+  assessOptions(input: OptionViolationInput): Promise<AssessorOutcome<Record<string, Verdict>>>;
 }

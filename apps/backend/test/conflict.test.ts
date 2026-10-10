@@ -743,8 +743,11 @@ describe("A Constraint revision after Stage R", () => {
   const revise = (id: string, pendencyId: string, constraintId: string) =>
     reviseConstraint(id, pendencyId, { constraintId, replacement: { kind: "constraint", statement: "Entregar em cinco semanas" }, note });
 
-  // Fecha os Pontos da Etapa O, inaplicáveis, e pede a Confirmação dela (sem Ponto coberto a avaliar).
+  // Fecha os Pontos da Etapa O, inaplicáveis, acrescenta uma Opção viável e pede a Confirmação dela (sem
+  // Ponto coberto a avaliar).
   async function confirmStageO(id: string) {
+    const option = await api.inject({ method: "POST", url: `/api/processes/${id}/options`, payload: { statement: "Fazer o deploy à noite" } });
+    expect(option.statusCode).toBe(201);
     for (const key of ["eliminate_problem", "simplest_solution", "eighty_twenty", "reversibility"]) {
       await api.declareInapplicable(id, key, { justification: "Fora deste exemplo." });
     }

@@ -146,7 +146,7 @@ _Code_: `AnswerVersion`
 _Avoid_: Revisão, edição
 
 **Avaliação**:
-Julgamento estruturado do Jev sobre o estado do Processo, como cobertura de um Ponto, violação de Restrição, impacto de uma nova Versão ou conflito entre respostas. Informa o usuário, nunca confirma nada.
+Julgamento estruturado do Jev sobre o estado do Processo, como cobertura de um Ponto, violação de Restrição por uma Opção, impacto de uma nova Versão ou conflito entre respostas. Informa o usuário, nunca confirma nada.
 _Code_: `Assessment`
 _Avoid_: Julgamento, questão, análise
 
@@ -193,9 +193,14 @@ _Code_: `Preference`
 _Avoid_: Restrição negociável, desejo, critério
 
 **Opção**:
-Caminho concreto considerado para resolver o problema, inclusive eliminá-lo ou resolvê-lo manualmente.
-_Code_: `Option`
+Caminho concreto considerado para resolver o problema, inclusive eliminá-lo ou resolvê-lo manualmente. É item próprio do Processo, registrado na Etapa O: proposto pela IA, como sugestão até o usuário aceitá-lo (como veio ou editado) ou descartá-lo, ou acrescentado pelo próprio usuário. Aceita, não se edita; descartada, fica no histórico.
+_Code_: `Option` (origem `ai` ou `user`; estado `suggested`, `accepted` ou `discarded`; a proposta da IA: `OptionProposal`)
 _Avoid_: Alternativa, solução, proposta
+
+**Opção inviável**:
+Opção aceita que viola uma Restrição em vigor, segundo o Jev (com confiança) ou segundo o usuário, quando o Jev não teve certeza ou não respondeu. Nenhuma vantagem em outra dimensão a compensa; só uma Revisão de Restrição a devolve. A Etapa O só se confirma com pelo menos uma Opção viável: sem nenhuma, a aplicação mostra os impedimentos e oferece novas Opções ou a revisão de Restrições.
+_Code_: `viability` (`viable`, `inviable`, `undecided`); cada par: `OptionConstraintPair`, avaliado numa `OptionCheck` (a Avaliação: `OptionAssessment`)
+_Avoid_: Opção eliminada, opção descartada
 
 **Recomendação**:
 Sugestão da IA a favor de uma Opção; nunca se torna Escolha sem ato do usuário.

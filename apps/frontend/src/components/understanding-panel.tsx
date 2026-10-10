@@ -77,6 +77,19 @@ function UnderstandingView({ understanding }: { understanding: Understanding }) 
           ))}
         </div>
       )}
+      {understanding.options.length > 0 && (
+        <div>
+          <p className="text-muted-foreground text-xs">Opções aceitas</p>
+          <ul className="flex flex-col gap-0.5">
+            {understanding.options.map((option, index) => (
+              <li key={index}>
+                {option.statement}
+                <span className="text-muted-foreground"> ({viabilitySummary(option)})</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {understanding.blocks.map((block) => (
         <div key={block.number} className="flex flex-col gap-1">
           <p className="text-muted-foreground text-xs">Bloco {block.number}</p>
@@ -111,4 +124,10 @@ function UnderstandingView({ understanding }: { understanding: Understanding }) 
       )}
     </>
   );
+}
+
+function viabilitySummary({ viability, violations }: Understanding["options"][number]): string {
+  if (viability === "viable") return "viável";
+  if (viability === "inviable") return `inviável: viola ${violations.map((violation) => `“${violation.statement}”`).join(", ")}`;
+  return "viabilidade sem decisão";
 }

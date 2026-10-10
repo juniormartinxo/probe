@@ -2,6 +2,7 @@ import type { Db } from "../../db/database.ts";
 import { stageAssessmentsOf } from "../assessments/stage-assessments.ts";
 import { undecidedConflictsBlocking } from "./conflicts.ts";
 import { undecidedConstraintReassessmentsBlocking } from "./constraint-reassessments.ts";
+import { optionsBlockingStage, type OptionImpediment } from "./options.ts";
 import { pendenciesBlockingStage } from "./pendencies.ts";
 import { undecidedReassessmentsBlocking } from "./reassessments.ts";
 import type { ProcessPoints } from "./stage-point-coverage.ts";
@@ -31,6 +32,9 @@ export type StageConfirmationError =
   | "blocking_pendencies"
   | "undecided_reassessments"
   | "undecided_conflicts"
+  | "pending_option_suggestions"
+  | "undecided_options"
+  | "no_viable_option"
   | "unknown_assessment"
   | "assessment_outdated"
   | "assessment_required"
@@ -44,7 +48,8 @@ export interface StageConfirmations {
   ): Promise<
     | { ok: true; stageConfirmation: StageConfirmation }
     | { ok: false; error: "blocking_pendencies"; pendencyIds: string[] }
-    | { ok: false; error: Exclude<StageConfirmationError, "blocking_pendencies"> }
+    | { ok: false; error: "no_viable_option"; impediments: OptionImpediment[] }
+    | { ok: false; error: Exclude<StageConfirmationError, "blocking_pendencies" | "no_viable_option"> }
   >;
 }
 
@@ -87,6 +92,9 @@ export function stageConfirmations({ db }: { db: Db }): StageConfirmations {
         if ((await undecidedConflictsBlocking(trx, processId, stage)).length > 0) {
           return { ok: false, error: "undecided_conflicts" } as const;
         }
+        // Na Etapa O, as Opções: nenhuma sugestão sem resposta, nenhum par sem decisão e alguma viável.
+        const options = await optionsBlockingStage(trx, process, stage);
+        if (options) return { ok: false, ...options } as const;
 
         // Nenhuma Avaliação confirma nada: ela só precisa ser a que o usuário viu, e valer ainda.
         if (stageAssessmentId === null) {

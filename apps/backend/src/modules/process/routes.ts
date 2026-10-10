@@ -17,6 +17,8 @@ import {
   type ItemReplacement,
   type ItemStatement,
 } from "./constraints-and-preferences.ts";
+import { optionChecksOf } from "./option-checks.ts";
+import { optionProposalsOf, optionsOf, type OptionDecision, type Options, type OptionStatement, type UserOption } from "./options.ts";
 import type { Pendencies } from "./pendencies.ts";
 import type { ProblemStatements, StatementConfirmation } from "./problem-statement.ts";
 import { reassessmentsOf, type ImpactDecision, type Reassessments } from "./reassessments.ts";
@@ -95,6 +97,32 @@ function itemStatementFrom(body: unknown): ItemStatement | undefined {
   return { statement, scope: scope ?? null, unit: unit ?? null };
 }
 
+// O que a Opção é e, opcionalmente, o que ela envolve. Os espaços, o módulo tira.
+function optionStatementFrom(body: unknown): OptionStatement | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { statement, description } = body as Record<string, unknown>;
+  if (typeof statement !== "string" || statement.trim() === "" || !optionalText(description)) return undefined;
+  return { statement, description: description ?? null };
+}
+
+// A Opção do usuário, com os Pontos da Etapa O que ela representa, se algum. Se as chaves são
+// da Etapa O, o módulo decide.
+function userOptionFrom(body: unknown): UserOption | undefined {
+  const option = optionStatementFrom(body);
+  const { stagePoints = [] } = (body ?? {}) as Record<string, unknown>;
+  if (!option || !Array.isArray(stagePoints) || !stagePoints.every((key) => typeof key === "string")) return undefined;
+  return { ...option, stagePoints };
+}
+
+// A sugestão editada, ao aceitá-la; sem corpo ou sem `statement`, aceita como veio.
+function editedOptionFrom(body: unknown): { ok: true; edited: OptionStatement | null } | { ok: false } {
+  if (body === undefined || body === null) return { ok: true, edited: null };
+  if (typeof body !== "object") return { ok: false };
+  if ((body as Record<string, unknown>).statement === undefined) return { ok: true, edited: null };
+  const edited = optionStatementFrom(body);
+  return edited ? { ok: true, edited } : { ok: false };
+}
+
 // A Avaliação que o usuário viu (a concluída ou a que falhou) e, se houver, a justificativa.
 function stageConfirmationFrom(body: unknown): StageConfirmationRequest | undefined {
   if (typeof body !== "object" || body === null) return undefined;
@@ -143,6 +171,18 @@ function conflictDecisionFrom(body: unknown): ConflictDecision | undefined {
   }
   if (decision !== "open_pendency" && decision !== "dismiss") return undefined;
   return { conflictAssessmentId, pairIds, decision };
+}
+
+// A decisão do usuário sobre pares Opção × Restrição em que o Jev não teve certeza ou não respondeu.
+function optionDecisionFrom(body: unknown): OptionDecision | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { optionAssessmentId, pairIds, decision } = body as Record<string, unknown>;
+  if (typeof optionAssessmentId !== "string" || !uuidPattern.test(optionAssessmentId)) return undefined;
+  if (!Array.isArray(pairIds) || pairIds.length === 0 || !pairIds.every((id) => typeof id === "string" && uuidPattern.test(id))) {
+    return undefined;
+  }
+  if (decision !== "violates" && decision !== "complies") return undefined;
+  return { optionAssessmentId, pairIds, decision };
 }
 
 // O que substitui a Restrição revista, se houver: uma Restrição nova ou uma Preferência.
@@ -243,6 +283,20 @@ const errorStatus = {
   conflict_pair_not_found: 404,
   conflict_decided: 409,
   resolution_question_generated: 409,
+  option_proposal_already_requested: 409,
+  option_proposal_not_found: 404,
+  options_proposed: 409,
+  option_not_found: 404,
+  option_not_suggested: 409,
+  option_discarded: 409,
+  invalid_stage_points: 422,
+  option_check_not_found: 404,
+  option_check_assessed: 409,
+  option_pair_not_found: 404,
+  option_pair_decided: 409,
+  pending_option_suggestions: 409,
+  undecided_options: 409,
+  no_viable_option: 409,
 } as const;
 
 // Restrições e Preferências seguem as mesmas rotas, cada uma no seu caminho.
@@ -263,6 +317,7 @@ export const processRoutes =
     reassessments,
     constraintReassessments,
     conflicts,
+    options,
   }: {
     db: Db;
     problemStatements: ProblemStatements;
@@ -277,6 +332,7 @@ export const processRoutes =
     reassessments: Reassessments;
     constraintReassessments: ConstraintReassessments;
     conflicts: Conflicts;
+    options: Options;
   }): FastifyPluginAsync =>
   async (app) => {
     app.post("/processes", async (request, reply) => {
@@ -314,6 +370,11 @@ export const processRoutes =
         ).flat(),
         stageConfirmations: await stageConfirmationsOf(db, process),
         ...(await constraintsAndPreferencesOf(db, id)),
+        // As Opções da Etapa O, inclusive as descartadas, e as propostas pedidas à IA.
+        options: await optionsOf(db, process),
+        optionProposals: await optionProposalsOf(db, id),
+        // As verificações de viabilidade, com os pares Opção × Restrição e as Avaliações do Jev.
+        optionChecks: await optionChecksOf(db, id),
       };
     }
 
@@ -513,8 +574,9 @@ export const processRoutes =
       if (!confirmation) return reply.code(400).send({ error: "stage_assessment_id_required" });
       const result = await stageConfirmations.confirm(id, stage, confirmation);
       if (!result.ok) {
-        const { error } = result;
-        return reply.code(errorStatus[error]).send({ error, ...("pendencyIds" in result ? { pendencyIds: result.pendencyIds } : {}) });
+        // Com o erro, o que o explica: as Pendências que bloqueiam ou os impedimentos das Opções.
+        const { ok: _, ...body } = result;
+        return reply.code(errorStatus[result.error]).send(body);
       }
       return reply.code(201).send({ stageConfirmation: result.stageConfirmation });
     });
@@ -659,6 +721,92 @@ export const processRoutes =
         return reply.code(202).send({ resolutionQuestion: result.resolutionQuestion });
       },
     );
+
+    app.post<{ Params: { id: string } }>("/processes/:id/option-proposals", async (request, reply) => {
+      const { id } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      const result = await options.requestProposal(id);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(202).send({ optionProposal: result.optionProposal });
+    });
+
+    app.post<{ Params: { id: string; proposalId: string } }>(
+      "/processes/:id/option-proposals/:proposalId/attempts",
+      async (request, reply) => {
+        const { id, proposalId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(proposalId)) return reply.code(404).send({ error: "option_proposal_not_found" });
+        const chosen = attemptCliFrom(request.body);
+        if (!chosen.ok) return reply.code(400).send({ error: "invalid_cli" });
+        const result = await options.newProposalAttempt(id, proposalId, chosen.cli);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(202).send({ optionProposal: result.optionProposal });
+      },
+    );
+
+    app.post<{ Params: { id: string } }>("/processes/:id/options", async (request, reply) => {
+      const { id } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      const option = userOptionFrom(request.body);
+      if (!option) return reply.code(400).send({ error: "statement_required" });
+      const result = await options.add(id, option);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ option: result.option });
+    });
+
+    app.post<{ Params: { id: string; optionId: string } }>("/processes/:id/options/:optionId/acceptance", async (request, reply) => {
+      const { id, optionId } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      if (!uuidPattern.test(optionId)) return reply.code(404).send({ error: "option_not_found" });
+      const edited = editedOptionFrom(request.body);
+      if (!edited.ok) return reply.code(400).send({ error: "statement_required" });
+      const result = await options.accept(id, optionId, edited.edited);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return { option: result.option };
+    });
+
+    app.post<{ Params: { id: string; optionId: string } }>("/processes/:id/options/:optionId/discard", async (request, reply) => {
+      const { id, optionId } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      if (!uuidPattern.test(optionId)) return reply.code(404).send({ error: "option_not_found" });
+      const result = await options.discard(id, optionId);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return { option: result.option };
+    });
+
+    // Pares de Opções aceitas e Restrições em vigor que ficaram sem verificação (ela se perdeu): forma-os
+    // e pede a Avaliação ao Jev.
+    app.post<{ Params: { id: string } }>("/processes/:id/option-checks", async (request, reply) => {
+      const { id } = request.params;
+      const process = uuidPattern.test(id) ? await findProcess(db, id) : undefined;
+      if (!process) return reply.code(404).send({ error: "process_not_found" });
+      if (process.status !== "open") return reply.code(409).send({ error: "process_not_open" });
+      await options.assessMissing(id);
+      return reply.code(201).send({ optionChecks: await optionChecksOf(db, id) });
+    });
+
+    app.post<{ Params: { id: string; checkId: string } }>(
+      "/processes/:id/option-checks/:checkId/option-assessments",
+      async (request, reply) => {
+        const { id, checkId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(checkId)) return reply.code(404).send({ error: "option_check_not_found" });
+        const result = await options.retry(id, checkId);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ optionCheck: result.optionCheck });
+      },
+    );
+
+    app.post<{ Params: { id: string; checkId: string } }>("/processes/:id/option-checks/:checkId/decision", async (request, reply) => {
+      const { id, checkId } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      if (!uuidPattern.test(checkId)) return reply.code(404).send({ error: "option_check_not_found" });
+      const decision = optionDecisionFrom(request.body);
+      if (!decision) return reply.code(400).send({ error: "decision_required" });
+      const result = await options.decide(id, checkId, decision);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ optionCheck: result.optionCheck });
+    });
 
     for (const kind of itemKinds) {
       const path = itemPaths[kind];
