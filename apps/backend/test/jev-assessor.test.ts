@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { CoverageInput } from "../src/modules/assessments/assessor.ts";
+import type { CoverageInput, ImpactInput } from "../src/modules/assessments/assessor.ts";
 import { createJevAssessor } from "../src/modules/assessments/jev-assessor.ts";
 import { stagePointsOf } from "../src/modules/process/stage-points.ts";
 
@@ -170,5 +170,85 @@ describe("coverage Assessment through the Jev API", () => {
     const { url } = await startJev(() => ({ model: "jev-1.13.0", answers, usage: {} }));
 
     expect(await assess(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
+  });
+});
+
+const impactInput: ImpactInput = {
+  problemStatement: "O deploy leva 40 minutos e bloqueia o time durante a manhã.",
+  confirmation: {
+    kind: "block_synthesis",
+    stage: "P",
+    blockNumber: 1,
+    synthesis: "A demora é o problema em si e já atrasou entregas.",
+    coveredStagePoints: [realProblem!],
+  },
+  question: { ref: "1.1", wording: "A demora é o problema em si?" },
+  previousAnswer: "A demora é o problema em si",
+  newAnswer: "A demora é sintoma de outra coisa",
+};
+
+describe("impact Assessment through the Jev API", () => {
+  const assessImpact = (url: string, input: ImpactInput = impactInput) =>
+    createJevAssessor({ url, apiKey: API_KEY, model: "jev-latest", timeoutMs: 5_000 }).assessImpact(input);
+
+  it("sends the Confirmation and the change in Portuguese, as data, with one Choice question", async () => {
+    const { url, requests } = await startJev(() => ({ model: "jev-1.13.0", answers: { impacto: validAnswers.real_problem }, usage: {} }));
+
+    await assessImpact(url);
+
+    const body = requests[0]!.body as { state: unknown; model: string; questions: Record<string, Record<string, unknown>> };
+    expect(body.model).toBe("jev-latest");
+    expect(body.state).toEqual({
+      enunciado: impactInput.problemStatement,
+      confirmacao: {
+        tipo: "Síntese do Bloco 1",
+        etapa: "P (Problema)",
+        sintese: "A demora é o problema em si e já atrasou entregas.",
+        pontosCobertos: [{ ponto: realProblem!.name, pede: realProblem!.description }],
+      },
+      mudanca: {
+        pergunta: "[1.1] A demora é o problema em si?",
+        respostaAnterior: "A demora é o problema em si",
+        respostaNova: "A demora é sintoma de outra coisa",
+      },
+    });
+    expect(Object.keys(body.questions)).toEqual(["impacto"]);
+    expect(body.questions.impacto).toMatchObject({ type: "choice" });
+    expect(Object.keys(body.questions.impacto!.criteria as object)).toEqual(["yes", "no", "insufficient"]);
+  });
+
+  it("sends a Stage Confirmation with its Points and confirmed answers", async () => {
+    const { url, requests } = await startJev(() => ({ model: "jev-1.13.0", answers: { impacto: validAnswers.real_problem }, usage: {} }));
+
+    await assessImpact(url, {
+      ...impactInput,
+      confirmation: { kind: "stage", stage: "P", stagePoints: [realProblem!], answers: input.answers },
+    });
+
+    expect((requests[0]!.body as { state: Record<string, unknown> }).state.confirmacao).toEqual({
+      tipo: "Confirmação da Etapa",
+      etapa: "P (Problema)",
+      pontos: [{ ponto: realProblem!.name, pede: realProblem!.description }],
+      respostas: [
+        { pergunta: "[1.1] A demora é o problema em si?", resposta: "A demora é sintoma de outra coisa" },
+        { pergunta: "[1.2] O que a demora já causou?", resposta: "Atraso nas entregas" },
+      ],
+    });
+  });
+
+  it("brings the judgment as it came", async () => {
+    const { url } = await startJev(() => ({ model: "jev-1.13.0", answers: { impacto: validAnswers.consequence }, usage: {} }));
+
+    expect(await assessImpact(url)).toEqual({
+      status: "completed",
+      model: "jev-1.13.0",
+      result: { choice: "insufficient", probabilities: { yes: 0.3, no: 0.3, insufficient: 0.4 }, confidence: 0.12 },
+    });
+  });
+
+  it("refuses an answer without the judgment as invalid output", async () => {
+    const { url } = await startJev(() => ({ model: "jev-1.13.0", answers: {}, usage: {} }));
+
+    expect(await assessImpact(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
   });
 });

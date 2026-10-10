@@ -3,6 +3,7 @@ import type {
   Assessor,
   AssessorOutcome,
   CoverageInput,
+  ImpactInput,
   Verdict,
 } from "../../src/modules/assessments/assessor.ts";
 
@@ -29,15 +30,35 @@ export const coverageOutcome =
 
 type Step = AssessorOutcome<Verdicts> | ((input: CoverageInput) => AssessorOutcome<Verdicts>);
 
-// `Assessor` falso: desfechos na ordem; sem roteiro, `yes` em todos os Pontos.
+// Desfecho concluído de uma Avaliação de impacto, com o julgamento dado.
+export const impactOutcome = (choice: AssessmentChoice, confidence = 0.9): AssessorOutcome<Verdict> => ({
+  status: "completed",
+  model: JEV_MODEL,
+  result: verdict(choice, confidence),
+});
+
+// `Assessor` falso: desfechos na ordem; sem roteiro, `yes` em todos os Pontos e, no impacto, `no`
+// com confiança (a Confirmação continua valendo).
 export class FakeAssessor implements Assessor {
   readonly model = JEV_MODEL;
   readonly inputs: CoverageInput[] = [];
+  readonly impactInputs: ImpactInput[] = [];
   private readonly steps: Step[] = [];
+  private readonly impactSteps: AssessorOutcome<Verdict>[] = [];
 
   willRespond(...steps: Step[]): this {
     this.steps.push(...steps);
     return this;
+  }
+
+  willAssessImpact(...outcomes: AssessorOutcome<Verdict>[]): this {
+    this.impactSteps.push(...outcomes);
+    return this;
+  }
+
+  async assessImpact(input: ImpactInput): Promise<AssessorOutcome<Verdict>> {
+    this.impactInputs.push(input);
+    return this.impactSteps.shift() ?? impactOutcome("no");
   }
 
   async assessCoverage(input: CoverageInput): Promise<AssessorOutcome<Verdicts>> {

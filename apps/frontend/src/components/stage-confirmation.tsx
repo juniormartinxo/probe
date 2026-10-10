@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/lib/format";
-import { stageName } from "@/stages";
+import { stageName, stages } from "@/stages";
 
 const choiceText: Record<AssessmentChoice, string> = {
   yes: "cobre",
@@ -23,7 +23,7 @@ const choiceText: Record<AssessmentChoice, string> = {
   insufficient: "informação insuficiente",
 };
 
-const failureText: Record<AssessorFailureReason, string> = {
+export const failureText: Record<AssessorFailureReason, string> = {
   jev_not_configured: "A chave do Jev não está configurada no backend.",
   jev_unavailable: "O Jev está indisponível.",
   jev_unauthenticated: "O Jev recusou a chave configurada.",
@@ -34,7 +34,8 @@ const failureText: Record<AssessorFailureReason, string> = {
 
 const confirmErrorText: Record<string, string> = {
   open_stage_points: "Ainda há Pontos abertos nesta Etapa.",
-  blocking_pendencies: "Há Pendências abertas nas Perguntas desta Etapa. Resolva-as antes de confirmar.",
+  blocking_pendencies: "Há Pendências abertas que bloqueiam esta Etapa. Resolva-as antes de confirmar.",
+  undecided_reassessments: "Há revisões sem decisão sobre o impacto de uma mudança. Decida-as antes de confirmar.",
   unknown_assessment: "Há uma Avaliação mais recente do que a que você viu. Confira-a antes de confirmar.",
   assessment_outdated: "As respostas ou os Pontos mudaram depois da Avaliação. Peça uma Avaliação nova.",
   assessment_required: "Peça a Avaliação do Jev antes de confirmar.",
@@ -51,10 +52,14 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
   const stage = process.currentStage;
   const latest = process.stageAssessments.filter((item) => item.stage === stage).at(-1) ?? null;
   const toAssess = process.stagePoints.some((point) => point.status === "covered");
-  const stageQuestionIds = new Set(
-    process.blocks.filter((block) => block.stage === stage).flatMap((block) => block.questions.map((question) => question.id)),
+  // Bloqueiam a Confirmação: a informação desconhecida nas Perguntas desta Etapa e as revisões (com
+  // Pendência ou ainda sem decisão) desta Etapa ou das anteriores, em que ela se apoia.
+  const upTo = stages.slice(0, stages.findIndex((item) => item.stage === stage) + 1).map((item) => item.stage);
+  const unknown = process.pendencies.filter(
+    (pendency) => pendency.resolvedAt === null && pendency.reason === "unknown_information" && pendency.question.stage === stage,
   );
-  const blocking = process.pendencies.filter((pendency) => pendency.resolvedAt === null && stageQuestionIds.has(pendency.question.id));
+  const reviews = process.reassessments.filter((reassessment) => upTo.includes(reassessment.question.stage));
+  const blocking = [...unknown, ...reviews];
 
   const [assessing, setAssessing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -110,10 +115,16 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
         </p>
       </div>
 
-      {blocking.length > 0 && (
+      {unknown.length > 0 && (
         <p className="text-destructive text-sm">
-          {blocking.length === 1 ? "Uma Pendência aberta" : `${blocking.length} Pendências abertas`} nas Perguntas desta Etapa
-          bloqueia a Confirmação. Responda a Pergunta para resolvê-la.
+          {unknown.length === 1 ? "Uma Pendência de informação desconhecida" : `${unknown.length} Pendências de informação desconhecida`}{" "}
+          nas Perguntas desta Etapa bloqueia a Confirmação. Responda a Pergunta para resolvê-la.
+        </p>
+      )}
+      {reviews.length > 0 && (
+        <p className="text-destructive text-sm">
+          {reviews.length === 1 ? "Uma Confirmação em revisão" : `${reviews.length} Confirmações em revisão`} bloqueia a Confirmação
+          desta Etapa. Veja acima o que precisa ser revisto.
         </p>
       )}
 

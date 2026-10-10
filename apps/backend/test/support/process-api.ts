@@ -147,8 +147,21 @@ export function processApi(current: () => TestApp) {
     return { id, block };
   }
 
+  // Avaliação de impacto, decisão do usuário e reconfirmação, sobre a Confirmação afetada.
+  const retryImpact = (id: string, versionId: string, confirmation: Record<string, unknown>) =>
+    inject({ method: "POST", url: `/api/processes/${id}/answer-versions/${versionId}/impact-assessments`, payload: { confirmation } });
+
+  const decideImpact = (id: string, versionId: string, payload: Record<string, unknown>) =>
+    inject({ method: "POST", url: `/api/processes/${id}/answer-versions/${versionId}/impact-decision`, payload });
+
+  const reconfirm = (id: string, pendencyId: string, payload?: Record<string, unknown>) =>
+    inject({ method: "POST", url: `/api/processes/${id}/pendencies/${pendencyId}/reconfirmation`, ...(payload && { payload }) });
+
   return {
     inject,
+    retryImpact,
+    decideImpact,
+    reconfirm,
     processInStageR,
     getProcess,
     createProcess,

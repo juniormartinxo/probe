@@ -448,14 +448,15 @@ describe("Going back to Stage P while in Stage R", () => {
     const process = await api.getProcess(id);
     expect(process.currentStage).toBe("R");
     const changed = process.blocks.find((block: { id: string }) => block.id === blockP.id).questions[0];
-    expect(changed.answer.current).toMatchObject({ id: response.json().answerVersion.id, confirmed: false });
+    // Sem impacto, segundo o Jev, a síntese do Bloco passa a sustentar a Versão nova.
+    expect(changed.answer.current).toMatchObject({ id: response.json().answerVersion.id, confirmed: true });
     expect(changed.answer.previous).toEqual([confirmed]);
-    // A IA continua recebendo de P o que foi confirmado; a mudança ainda não foi.
+    // A IA passa a receber de P a resposta que vale.
     assistant.block.willRespond(completed(stageRBlock));
     await api.generateBlock(id);
     expect(assistant.block.attempts.at(-1)!.input.confirmedStages[0]!.answers[0]).toMatchObject({
       ref: "1.1",
-      answer: "A demora é o problema em si",
+      answer: "A demora é sintoma de outra coisa",
     });
   });
 

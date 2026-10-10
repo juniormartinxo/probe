@@ -4,7 +4,8 @@ import type { AttemptStatus, Operation } from "../modules/ai/ai-requests.ts";
 import type { AnswerType, Cli, CloakProfile, FailureReason } from "../modules/ai/assistant.ts";
 import type { AssessmentChoice, AssessorFailureReason } from "../modules/assessments/assessor.ts";
 import type { AssessmentType } from "../modules/assessments/stage-assessments.ts";
-import type { PendencyReason } from "../modules/process/pendencies.ts";
+import type { PendencyReason, PendencyResolution } from "../modules/process/pendencies.ts";
+import type { ConfirmationBasis } from "../modules/process/reassessments.ts";
 import type { StatementOrigin } from "../modules/process/problem-statement.ts";
 import type { CoverageStatus } from "../modules/process/stage-point-coverage.ts";
 import type { SynthesisOrigin } from "../modules/process/syntheses.ts";
@@ -149,6 +150,14 @@ export interface PendencyTable {
   openedAt: Generated<Date>;
   resolvedAt: Date | null;
   resolvedByAnswerVersionId: string | null;
+  resolution: PendencyResolution | null;
+  // Só nas de reavaliação: a Versão nova, a Avaliação de impacto que a originou, quem a abriu e a
+  // Confirmação afetada (a síntese de um Bloco ou a de uma Etapa).
+  answerVersionId: string | null;
+  impactAssessmentId: string | null;
+  openedBy: "jev" | "user" | null;
+  blockId: string | null;
+  stage: Stage | null;
 }
 
 export interface StageAssessmentTable {
@@ -180,6 +189,40 @@ export interface AssessmentTable {
   confidence: number;
   // Gravado como JSON; lido como objeto.
   probabilities: ColumnType<Record<AssessmentChoice, number>, string, never>;
+}
+
+// A Confirmação que depende de respostas: a síntese de um Bloco ou a de uma Etapa.
+interface ConfirmationColumns {
+  blockId: string | null;
+  stage: Stage | null;
+}
+
+export interface ImpactAssessmentTable extends ConfirmationColumns {
+  id: Generated<string>;
+  processId: string;
+  answerVersionId: string;
+  previousAnswerVersionId: string;
+  status: "completed" | "failed";
+  requestedModel: string;
+  jevModel: string | null;
+  rubricRevision: string;
+  choice: AssessmentChoice | null;
+  confidence: number | null;
+  // Gravado como JSON; lido como objeto.
+  probabilities: ColumnType<Record<AssessmentChoice, number> | null, string | null, never>;
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  createdAt: Generated<Date>;
+}
+
+export interface ConfirmationAnswerVersionTable extends ConfirmationColumns {
+  id: Generated<string>;
+  processId: string;
+  answerVersionId: string;
+  basis: ConfirmationBasis;
+  impactAssessmentId: string;
+  correctedSynthesis: string | null;
+  recordedAt: Generated<Date>;
 }
 
 export interface StageConfirmationTable {
@@ -224,6 +267,8 @@ export interface Database {
   stageAssessmentAnswerVersions: StageAssessmentAnswerVersionTable;
   assessments: AssessmentTable;
   stageConfirmations: StageConfirmationTable;
+  impactAssessments: ImpactAssessmentTable;
+  confirmationAnswerVersions: ConfirmationAnswerVersionTable;
   settings: SettingsTable;
 }
 

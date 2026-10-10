@@ -4,6 +4,7 @@ import {
   confirmSynthesis,
   newSynthesisAttempt,
   requestSynthesis,
+  synthesisInForce,
   type Block,
   type ConfirmedSynthesis,
   type StagePoint,
@@ -61,7 +62,21 @@ function Confirmed({ synthesis }: { synthesis: ConfirmedSynthesis }) {
           {originText[synthesis.origin]} · {formatDate(synthesis.confirmedAt)}
         </span>
       </div>
-      <p className="text-sm whitespace-pre-wrap">{synthesis.synthesis}</p>
+      <p className="text-sm whitespace-pre-wrap">{synthesisInForce(synthesis)}</p>
+      {synthesis.corrections.length > 0 && (
+        <details className="text-muted-foreground text-xs">
+          <summary className="cursor-pointer">
+            Corrigida ao reconfirmar · {formatDate(synthesis.corrections.at(-1)!.correctedAt)}
+          </summary>
+          <ol className="mt-2 flex flex-col gap-1">
+            {[synthesis.synthesis, ...synthesis.corrections.slice(0, -1).map((item) => item.synthesis)].map((text, index) => (
+              <li key={index} className="whitespace-pre-wrap">
+                {index === 0 ? "Texto confirmado" : `Correção ${index}`}: {text}
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
       <p className="text-muted-foreground text-xs">
         {synthesis.coveredStagePoints.length > 0
           ? `Pontos que você deu por cobertos: ${synthesis.coveredStagePoints.map((point) => point.name).join(", ")}.`

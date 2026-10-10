@@ -19,7 +19,7 @@ import { confirmedStagesOf } from "./stage-readiness.ts";
 import { askedQuestionOf, currentVersionsOf, stageQuestions } from "./stage-questions.ts";
 import { namedStagePoint, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
-import { synthesesOf, type BlockSynthesisState } from "./syntheses.ts";
+import { synthesesOf, synthesisCorrectionsOf, synthesisInForce, type BlockSynthesisState } from "./syntheses.ts";
 
 // Solicitação à IA de um Bloco de Perguntas; `blockId` é o Bloco que a tentativa concluída gerou.
 export interface BlockRequest {
@@ -134,12 +134,16 @@ async function lockOpenProcess(
     .selectFrom("blocks")
     .leftJoin("blockSyntheses", "blockSyntheses.blockId", "blocks.id")
     .leftJoin("aiRequestAttempts", "aiRequestAttempts.id", "blockSyntheses.proposalId")
-    .select(["blocks.number", "blockSyntheses.synthesis", "aiRequestAttempts.result"])
+    .select(["blocks.id", "blocks.number", "blockSyntheses.synthesis", "aiRequestAttempts.result"])
     .where("blocks.processId", "=", processId)
     .where("blocks.stage", "=", stage)
     .orderBy("blocks.number")
     .execute();
   const confirmedSyntheses = syntheses.filter((row) => row.synthesis !== null);
+  const corrections = await synthesisCorrectionsOf(
+    trx,
+    confirmedSyntheses.map((row) => row.id),
+  );
   const openStagePoints = openPoints(await stagePointStates(trx, process, stage));
   const open = new Set(openStagePoints.map((point) => point.key));
   // Uma resposta ambígua só é oferecida para reformular enquanto não ganhou reformulação e ainda
@@ -167,7 +171,9 @@ async function lockOpenProcess(
         ...(await statementsInForceOf(trx, processId)),
         openStagePoints,
         askedQuestions: questions.map(askedQuestionOf),
-        confirmedSyntheses: confirmedSyntheses.map((row) => row.synthesis!),
+        confirmedSyntheses: confirmedSyntheses.map((row) =>
+          synthesisInForce({ synthesis: row.synthesis!, corrections: corrections.get(row.id)! }),
+        ),
         ambiguousAnswers,
       },
       usedVersionIds: currentVersionsOf(questions),

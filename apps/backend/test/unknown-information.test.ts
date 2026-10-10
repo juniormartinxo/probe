@@ -35,11 +35,13 @@ describe("Unknown information", () => {
     const pendency = {
       id: expect.any(String),
       reason: "unknown_information",
-      question: { id: free.id, wording: free.wording, blockNumber: 1, number: 3 },
+      question: { id: free.id, wording: free.wording, stage: "P", blockNumber: 1, number: 3 },
       stagePoints: [{ key: "urgency", name: "Motivo da urgência" }],
       openedAt: expect.any(String),
       resolvedAt: null,
       resolvedByAnswerVersionId: null,
+      resolution: null,
+      reassessment: null,
     };
     expect(response.json().pendency).toEqual(pendency);
     await testApp.close();
@@ -76,6 +78,7 @@ describe("Unknown information", () => {
     expect(pendency).toMatchObject({
       resolvedAt: answered.json().answerVersion.createdAt,
       resolvedByAnswerVersionId: answered.json().answerVersion.id,
+      resolution: "answered",
     });
     expect((await api.blockOf(id, (await api.getProcess(id)).blocks[0].id)).questions[2].unknown).toBe(false);
   });

@@ -156,8 +156,8 @@ _Code_: `Confirmation`
 _Avoid_: Conclusão, aprovação, validação
 
 **Pendência**:
-Impedimento visível que bloqueia as Confirmações que dependem dele, por um de três motivos: reavaliação (depende de Versão superada), conflito (respostas incompatíveis) ou informação desconhecida.
-_Code_: `Pendency`
+Impedimento visível que bloqueia as Confirmações que dependem dele, por um de três motivos: reavaliação (depende de Versão superada), conflito (respostas incompatíveis) ou informação desconhecida. A de reavaliação nasce de uma Avaliação de impacto e se resolve reconfirmando a Confirmação afetada (numa síntese de bloco, com o texto corrigido, se preciso) ou corrigindo a resposta com uma Versão nova.
+_Code_: `Pendency` (`reassessment`; resolução `reconfirmed` ou `corrected`)
 _Avoid_: Bloqueio, alerta, issue
 
 ## Restrições e opções

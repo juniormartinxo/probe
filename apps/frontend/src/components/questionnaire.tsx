@@ -75,10 +75,13 @@ function describe(question: Question, stored: Stored): string {
 export function Questionnaire({
   processId,
   block,
+  underReassessment,
   onChange,
 }: {
   processId: string;
   block: Block;
+  // As Perguntas cuja resposta mudou e cujas Confirmações estão em revisão.
+  underReassessment: Set<string>;
   onChange: () => void;
 }) {
   const [index, setIndex] = useState(0);
@@ -193,6 +196,7 @@ export function Questionnaire({
         processId={processId}
         question={question}
         synthesized={block.synthesis !== null}
+        reassessing={underReassessment.has(question.id)}
         edit={edits[question.id] ?? storedEdit(question)}
         onEdit={(value) => edit(question, value)}
         onSettled={(settled) => setEdits((current) => ({ ...current, [question.id]: settled }))}
@@ -220,6 +224,7 @@ function QuestionView({
   processId,
   question,
   synthesized,
+  reassessing,
   edit,
   onEdit,
   onSettled,
@@ -230,6 +235,8 @@ function QuestionView({
   question: Question;
   // A síntese do Bloco já foi confirmada.
   synthesized: boolean;
+  // A resposta mudou e uma Confirmação que dependia da anterior está em revisão.
+  reassessing: boolean;
   edit: Edit;
   onEdit: (value: AnswerValue) => void;
   onSettled: (edit: Edit) => void;
@@ -324,7 +331,7 @@ function QuestionView({
 
       <AnswerInput question={question} value={edit.value} onChange={onEdit} disabled={saving} />
 
-      {question.answer && <SavedAnswer question={question} synthesized={synthesized} />}
+      {question.answer && <SavedAnswer question={question} synthesized={synthesized} reassessing={reassessing} />}
 
       {question.unknown && (
         <div className="flex flex-col gap-1 rounded-md border border-dashed p-3 text-sm">
@@ -459,21 +466,23 @@ function AnswerInput({
   );
 }
 
-// Uma Versão nova depois da síntese confirmada não volta a ser confirmada por ela: a síntese do Bloco
-// não se confirma de novo.
-function savedAnswerStatus(confirmed: boolean, synthesized: boolean): string {
+// Uma Versão nova depois da síntese confirmada passa pela reavaliação: a síntese a confirma quando o Jev
+// não vê impacto ou o usuário a mantém ou reconfirma. Uma resposta dada depois da síntese a uma
+// Pergunta que estava sem resposta não tem o que reavaliar e segue sem confirmação.
+function savedAnswerStatus(confirmed: boolean, synthesized: boolean, reassessing: boolean): string {
   if (confirmed) return "confirmada pela síntese do Bloco";
-  if (synthesized) return "alterada depois da síntese confirmada do Bloco; ainda não confirmada";
+  if (reassessing) return "alterada depois da síntese confirmada do Bloco; em revisão";
+  if (synthesized) return "dada depois da síntese confirmada do Bloco; ainda não confirmada";
   return "provisória até a síntese do Bloco ser confirmada";
 }
 
-function SavedAnswer({ question, synthesized }: { question: Question; synthesized: boolean }) {
+function SavedAnswer({ question, synthesized, reassessing }: { question: Question; synthesized: boolean; reassessing: boolean }) {
   const { current, previous } = question.answer!;
   return (
     <div className="bg-muted/50 flex flex-col gap-1 rounded-md p-3 text-sm">
       <p className="text-muted-foreground text-xs">
         Resposta salva · Versão {current.number} · {formatDate(current.createdAt)} ·{" "}
-        {savedAnswerStatus(current.confirmed, synthesized)}
+        {savedAnswerStatus(current.confirmed, synthesized, reassessing)}
       </p>
       <p className="whitespace-pre-wrap">{describe(question, current)}</p>
       {previous.length > 0 && (

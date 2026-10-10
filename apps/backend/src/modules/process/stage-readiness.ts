@@ -11,7 +11,8 @@ import type { ConfirmedStageAnswers } from "../ai/assistant.ts";
 import { stages, type Stage } from "./stage.ts";
 
 // Resposta confirmada de uma Pergunta da Etapa: a Versão mais recente que uma Confirmação da síntese
-// de bloco confirmou. Uma Versão posterior, ainda provisória, não entra.
+// de bloco confirmou ou passou a sustentar depois de uma mudança. Uma Versão posterior, ainda
+// provisória ou em reavaliação, não entra.
 export interface ConfirmedAnswer {
   answerVersionId: string;
   questionId: string;
@@ -41,13 +42,23 @@ export async function confirmedAnswersOf(db: Db, processId: string, stage: Stage
     .where("blocks.processId", "=", processId)
     .where("blocks.stage", "=", stage)
     .where((eb) =>
-      eb.exists(
-        eb
-          .selectFrom("attemptAnswerVersions")
-          .innerJoin("blockSyntheses", "blockSyntheses.proposalId", "attemptAnswerVersions.attemptId")
-          .select("attemptAnswerVersions.answerVersionId")
-          .whereRef("attemptAnswerVersions.answerVersionId", "=", "answerVersions.id"),
-      ),
+      eb.or([
+        eb.exists(
+          eb
+            .selectFrom("attemptAnswerVersions")
+            .innerJoin("blockSyntheses", "blockSyntheses.proposalId", "attemptAnswerVersions.attemptId")
+            .select("attemptAnswerVersions.answerVersionId")
+            .whereRef("attemptAnswerVersions.answerVersionId", "=", "answerVersions.id"),
+        ),
+        // A Versão que a síntese passou a sustentar depois de uma mudança.
+        eb.exists(
+          eb
+            .selectFrom("confirmationAnswerVersions")
+            .select("confirmationAnswerVersions.answerVersionId")
+            .whereRef("confirmationAnswerVersions.answerVersionId", "=", "answerVersions.id")
+            .where("confirmationAnswerVersions.blockId", "is not", null),
+        ),
+      ]),
     )
     .orderBy("answerVersions.questionId")
     .orderBy("answerVersions.number", "desc")

@@ -33,14 +33,42 @@ export interface SynthesisRequest {
   attempts: Attempt[];
 }
 
+// Texto da síntese corrigido pelo usuário ao reconfirmá-la, numa Pendência de reavaliação.
+export interface SynthesisCorrection {
+  synthesis: string;
+  correctedAt: Date;
+}
+
 // Confirmação da síntese de bloco: confirma em conjunto as respostas que a proposta sintetizou e os
-// Pontos que o usuário deu por cobertos.
+// Pontos que o usuário deu por cobertos. `synthesis` é o texto confirmado; as correções feitas ao
+// reconfirmá-la vêm na ordem, e a última é a que vale.
 export interface ConfirmedSynthesis {
   synthesis: string;
   origin: SynthesisOrigin;
   proposalId: string;
   confirmedAt: Date;
   coveredStagePoints: NamedStagePoint[];
+  corrections: SynthesisCorrection[];
+}
+
+// O texto da síntese confirmada que vale: a última correção, ou o confirmado.
+export const synthesisInForce = ({ synthesis, corrections }: Pick<ConfirmedSynthesis, "synthesis" | "corrections">): string =>
+  corrections.at(-1)?.synthesis ?? synthesis;
+
+// As correções de síntese de cada Bloco, na ordem.
+export async function synthesisCorrectionsOf(db: Db, blockIds: string[]): Promise<Map<string, SynthesisCorrection[]>> {
+  const found = new Map<string, SynthesisCorrection[]>(blockIds.map((id) => [id, []]));
+  if (blockIds.length === 0) return found;
+  const rows = await db
+    .selectFrom("confirmationAnswerVersions")
+    .select(["blockId", "correctedSynthesis", "recordedAt"])
+    .where("blockId", "in", blockIds)
+    .where("correctedSynthesis", "is not", null)
+    .orderBy("recordedAt")
+    .orderBy("id")
+    .execute();
+  for (const row of rows) found.get(row.blockId!)!.push({ synthesis: row.correctedSynthesis!, correctedAt: row.recordedAt });
+  return found;
 }
 
 export interface BlockSynthesisState {
@@ -214,6 +242,10 @@ export async function synthesesOf(
     .where("processId", "=", process.id)
     .where("status", "=", "covered")
     .execute();
+  const corrections = await synthesisCorrectionsOf(
+    db,
+    blocks.map((block) => block.id),
+  );
   const proposalIds = [...requests.values()].flat().flatMap((request) => (request.result ? [request.result.attemptId] : []));
   const used = await usedVersionsOf(db, proposalIds);
 
@@ -233,6 +265,7 @@ export async function synthesesOf(
             proposalId: confirmed.proposalId,
             confirmedAt: confirmed.confirmedAt,
             coveredStagePoints: coverageRows.filter((row) => row.blockId === block.id).map((row) => pointRef(row.stagePoint)),
+            corrections: corrections.get(block.id)!,
           }
         : null,
       synthesisRequests: (requests.get(block.id) ?? []).map(({ id, status, attempts, result }) => ({
@@ -421,6 +454,7 @@ export function syntheses(deps: { db: Db; assistant: Assistant; runner: AiReques
           synthesis: {
             ...row,
             coveredStagePoints: covered.map((key) => namedStagePoint(block.stagePointsVersion, block.stage, key)),
+            corrections: [],
           },
         } as const;
       });
