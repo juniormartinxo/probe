@@ -391,7 +391,14 @@ function QuestionView({
             disabled={saving || !changed || !isComplete(question, edit.value)}
             onClick={() => save(edit.basedOnVersionId)}
           >
-            {saving ? "Salvando…" : question.answer ? "Salvar nova Versão" : "Salvar resposta"}
+            {saving
+              ? // Uma Versão nova sobre resposta que uma síntese confirmou espera a Avaliação de impacto do Jev.
+                synthesized && question.answer
+                ? "Salvando e avaliando o impacto…"
+                : "Salvando…"
+              : question.answer
+                ? "Salvar nova Versão"
+                : "Salvar resposta"}
           </Button>
         </div>
       )}

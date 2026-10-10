@@ -1,3 +1,4 @@
+import type { FastifyBaseLogger } from "fastify";
 import type { Db } from "../../db/database.ts";
 import type { Assessor, AssessorOutcome, ImpactedConfirmation, ImpactInput, Verdict } from "../assessments/assessor.ts";
 import {
@@ -70,6 +71,7 @@ export interface ImpactDecision {
 
 export interface Reassessments {
   // Depois de uma Versão nova, avalia o impacto dela sobre cada Confirmação que dependia da anterior.
+  // Não lança: uma falha fica no log e a reavaliação, "não avaliada".
   assessChange(processId: string, questionId: string): Promise<void>;
   // Nova tentativa, quando a Avaliação de impacto falhou (ou se perdeu).
   retry(
@@ -322,7 +324,7 @@ async function impactedConfirmationOf(
   };
 }
 
-export function reassessments({ db, assessor }: { db: Db; assessor: Assessor }): Reassessments {
+export function reassessments({ db, assessor, log }: { db: Db; assessor: Assessor; log: FastifyBaseLogger }): Reassessments {
   async function judge(input: ImpactInput): Promise<AssessorOutcome<Verdict>> {
     const outcome = await assessor.assessImpact(input).catch(
       (error: unknown): AssessorOutcome<never> => ({
@@ -425,18 +427,30 @@ export function reassessments({ db, assessor }: { db: Db; assessor: Assessor }):
 
   return {
     async assessChange(processId, questionId) {
-      const pending = (await reassessmentsOf(db, processId)).filter(
-        (item) => item.question.id === questionId && item.status === "not_assessed",
-      );
-      // Uma Avaliação que não chega a ser gravada deixa a reavaliação "não
-      // avaliada": o usuário pede uma nova tentativa. A Versão nova continua gravada.
-      await Promise.all(
-        pending.map((item) =>
-          impactInputOf(processId, item)
-            .then((prepared) => assess(processId, item, prepared))
-            .catch(() => undefined),
-        ),
-      );
+      // Nunca lança: a Versão nova já está gravada. Uma Avaliação que não chega a ser gravada deixa a
+      // reavaliação "não avaliada", e o usuário pede uma nova tentativa; o erro fica no log.
+      try {
+        const pending = (await reassessmentsOf(db, processId)).filter(
+          (item) => item.question.id === questionId && item.status === "not_assessed",
+        );
+        const failed = (item: Reassessment) => (error: unknown) => {
+          log.error(
+            { err: error, processId, questionId, confirmation: item.confirmation },
+            "Não foi possível avaliar o impacto da Versão nova.",
+          );
+          return null;
+        };
+        // Todas as entradas antes de chamar o Jev: as chamadas saem na ordem das reavaliações.
+        const prepared = await Promise.all(pending.map((item) => impactInputOf(processId, item).catch(failed(item))));
+        await Promise.all(
+          pending.map((item, index) => {
+            const input = prepared[index];
+            return input ? assess(processId, item, input).catch(failed(item)) : null;
+          }),
+        );
+      } catch (error) {
+        log.error({ err: error, processId, questionId }, "Não foi possível encontrar as Confirmações a reavaliar.");
+      }
     },
 
     async retry(processId, answerVersionId, confirmation) {

@@ -29,7 +29,7 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
   const app = Fastify({ logger: options.logger ?? false });
   const runner = new AiRequestRunner(db, app.log);
   const settings = settingsModule({ db, assistant, defaultAiModel });
-  const reassessments = reassessmentsModule({ db, assessor });
+  const reassessments = reassessmentsModule({ db, assessor, log: app.log });
 
   // Ao subir, o que ficou em andamento de uma execução anterior não tem mais quem o receba.
   app.addHook("onReady", () => runner.interruptAbandoned());

@@ -174,7 +174,7 @@ async function lockQuestion(
 }
 
 // `afterChange`: chamado depois de gravada a Versão, fora da transação, para avaliar o impacto dela
-// sobre as Confirmações que dependiam da anterior. Uma falha ali não desfaz a Versão.
+// sobre as Confirmações que dependiam da anterior. Não lança: uma falha ali não desfaz a Versão.
 export function answers({
   db,
   afterChange,
@@ -209,8 +209,7 @@ export function answers({
         return { ok: true, answerVersion } as const;
       });
       if (!recorded.ok || recorded.answerVersion.number === 1) return recorded;
-      // A Versão já está gravada: uma reavaliação que falha fica "não avaliada", para nova tentativa.
-      await afterChange(processId, questionId).catch(() => undefined);
+      await afterChange(processId, questionId);
       // Sem impacto, segundo o Jev, a síntese do Bloco passa a sustentar a Versão nova.
       const { answerVersion } = recorded;
       return { ok: true, answerVersion: { ...answerVersion, confirmed: (await confirmedVersionIdsOf(db, [answerVersion.id])).has(answerVersion.id) } };
