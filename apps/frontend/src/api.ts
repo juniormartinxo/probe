@@ -178,13 +178,18 @@ export interface SynthesisRequest {
   attempts: Attempt[];
 }
 
+// `synthesis` é o texto confirmado; as correções feitas ao reconfirmá-la vêm na ordem, e a última vale.
 export interface ConfirmedSynthesis {
   synthesis: string;
   origin: SynthesisOrigin;
   proposalId: string;
   confirmedAt: string;
   coveredStagePoints: { key: string; name: string }[];
+  corrections: { synthesis: string; correctedAt: string }[];
 }
+
+export const synthesisInForce = ({ synthesis, corrections }: ConfirmedSynthesis): string =>
+  corrections.at(-1)?.synthesis ?? synthesis;
 
 export interface Block {
   id: string;
@@ -208,15 +213,66 @@ export interface StagePointState extends StagePoint {
   recordedAt: string | null;
 }
 
-// Pendência de informação desconhecida, aberta numa Pergunta até uma resposta resolvê-la.
+// Confirmação que depende de respostas: a síntese de um Bloco ou a de uma Etapa.
+export type ConfirmationRef = { kind: "block_synthesis"; blockId: string } | { kind: "stage"; stage: Stage };
+
+export type DependentConfirmation =
+  | { kind: "block_synthesis"; blockId: string; blockNumber: number; stage: Stage }
+  | { kind: "stage"; stage: Stage };
+
+// Avaliação de impacto do Jev, bruta: se a Versão nova de uma resposta afeta a Confirmação que
+// dependia da anterior. `needsDecision`: `insufficient` ou confiança baixa; quem decide é o usuário.
+export interface ImpactAssessment {
+  id: string;
+  answerVersionId: string;
+  previousAnswerVersionId: string;
+  confirmation: DependentConfirmation;
+  status: "completed" | "failed";
+  requestedModel: string;
+  jevModel: string | null;
+  rubricRevision: string;
+  choice: AssessmentChoice | null;
+  confidence: number | null;
+  probabilities: Record<AssessmentChoice, number> | null;
+  needsDecision: boolean;
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  createdAt: string;
+}
+
+export type PendencyReason = "unknown_information" | "reassessment";
+
+// Pendência numa Pergunta: de informação desconhecida, até uma resposta resolvê-la; ou de
+// reavaliação, até o usuário reconfirmar a Confirmação afetada ou corrigir a resposta.
 export interface Pendency {
   id: string;
-  reason: "unknown_information";
-  question: { id: string; wording: string; blockNumber: number; number: number };
+  reason: PendencyReason;
+  question: { id: string; wording: string; stage: Stage; blockNumber: number; number: number };
   stagePoints: { key: string; name: string }[];
   openedAt: string;
   resolvedAt: string | null;
   resolvedByAnswerVersionId: string | null;
+  resolution: "answered" | "reconfirmed" | "corrected" | null;
+  reassessment: {
+    answerVersionId: string;
+    previousAnswerVersionId: string;
+    confirmation: DependentConfirmation;
+    openedBy: "jev" | "user";
+    impactAssessment: ImpactAssessment;
+  } | null;
+}
+
+export type ReassessmentStatus = "not_assessed" | "assessment_failed" | "awaiting_decision" | "pendency_open";
+
+// Uma Confirmação dependia de uma Versão que já não vale: fica em revisão até passar a sustentar a nova.
+export interface Reassessment {
+  confirmation: DependentConfirmation;
+  question: { id: string; wording: string; stage: Stage; blockNumber: number; number: number };
+  previousVersion: { id: string; number: number; answer: string };
+  newVersion: { id: string; number: number; answer: string };
+  status: ReassessmentStatus;
+  impactAssessments: ImpactAssessment[];
+  pendencyId: string | null;
 }
 
 // Resumo do entendimento atual do Processo, montado sem chamar a IA.
@@ -233,7 +289,7 @@ export interface Understanding {
     synthesis: string | null;
     answers: { questionId: string; wording: string; answer: string | null; confirmed: boolean; unknown: boolean }[];
   }[];
-  openPendencies: { reason: Pendency["reason"]; wording: string }[];
+  openPendencies: { reason: PendencyReason; wording: string }[];
 }
 
 export type AssessmentChoice = "yes" | "no" | "insufficient";
@@ -301,6 +357,9 @@ export interface ProcessDetail extends ProcessWithConversation {
   blockRequests: BlockRequest[];
   blocks: Block[];
   pendencies: Pendency[];
+  // Confirmações em revisão porque uma resposta de que dependiam mudou, e as Avaliações de impacto.
+  reassessments: Reassessment[];
+  impactAssessments: ImpactAssessment[];
   // Avaliações do Jev de cada Etapa já aberta, na ordem em que foram pedidas.
   stageAssessments: StageAssessment[];
   stageConfirmations: StageConfirmation[];
@@ -552,6 +611,40 @@ export async function confirmStage(
     { method: "POST", body: JSON.stringify(confirmation) },
   );
   return stageConfirmation;
+}
+
+const versionPath = (processId: string, versionId: string) =>
+  `${processPath(processId)}/answer-versions/${encodeURIComponent(versionId)}`;
+
+// Nova tentativa da Avaliação de impacto, depois de uma falha do Jev.
+export async function retryImpactAssessment(processId: string, versionId: string, confirmation: ConfirmationRef): Promise<ImpactAssessment> {
+  const { impactAssessment } = await request<{ impactAssessment: ImpactAssessment }>(`${versionPath(processId, versionId)}/impact-assessments`, {
+    method: "POST",
+    body: JSON.stringify({ confirmation }),
+  });
+  return impactAssessment;
+}
+
+// A decisão do usuário quando o Jev não teve certeza ou não respondeu, sobre a Avaliação que ele viu.
+export async function decideImpact(
+  processId: string,
+  versionId: string,
+  decision: { confirmation: ConfirmationRef; impactAssessmentId: string; decision: "open_pendency" | "keep_confirmation" },
+): Promise<Pendency | null> {
+  const { pendency } = await request<{ pendency: Pendency | null }>(`${versionPath(processId, versionId)}/impact-decision`, {
+    method: "POST",
+    body: JSON.stringify(decision),
+  });
+  return pendency;
+}
+
+// Reconfirma a Confirmação afetada com a Versão nova; numa síntese de bloco, com o texto corrigido, se houver.
+export async function reconfirmPendency(processId: string, pendencyId: string, synthesis: string | null): Promise<Pendency> {
+  const { pendency } = await request<{ pendency: Pendency }>(
+    `${processPath(processId)}/pendencies/${encodeURIComponent(pendencyId)}/reconfirmation`,
+    { method: "POST", body: JSON.stringify({ synthesis }) },
+  );
+  return pendency;
 }
 
 export async function getUnderstanding(processId: string): Promise<Understanding> {

@@ -1,5 +1,5 @@
 import type { Db } from "../../db/database.ts";
-import { describeAnswer } from "./answers.ts";
+import { confirmedVersionIdsOf, describeAnswer } from "./answers.ts";
 import {
   constraintsAndPreferencesOf,
   inForceOf,
@@ -11,7 +11,8 @@ import type { ConfirmedStageAnswers } from "../ai/assistant.ts";
 import { stages, type Stage } from "./stage.ts";
 
 // Resposta confirmada de uma Pergunta da Etapa: a Versão mais recente que uma Confirmação da síntese
-// de bloco confirmou. Uma Versão posterior, ainda provisória, não entra.
+// de bloco confirmou ou que a síntese do Bloco da Pergunta passou a sustentar depois de uma mudança.
+// Uma Versão posterior, ainda provisória ou em reavaliação, não entra.
 export interface ConfirmedAnswer {
   answerVersionId: string;
   questionId: string;
@@ -23,7 +24,7 @@ export interface ConfirmedAnswer {
 
 // As respostas confirmadas da Etapa, na ordem dos Blocos e das Perguntas.
 export async function confirmedAnswersOf(db: Db, processId: string, stage: Stage): Promise<ConfirmedAnswer[]> {
-  const rows = await db
+  const versions = await db
     .selectFrom("answerVersions")
     .innerJoin("questions", "questions.id", "answerVersions.questionId")
     .innerJoin("blocks", "blocks.id", "questions.blockId")
@@ -37,21 +38,21 @@ export async function confirmedAnswersOf(db: Db, processId: string, stage: Stage
       "questions.position",
       "blocks.number as blockNumber",
     ])
-    .distinctOn("answerVersions.questionId")
     .where("blocks.processId", "=", processId)
     .where("blocks.stage", "=", stage)
-    .where((eb) =>
-      eb.exists(
-        eb
-          .selectFrom("attemptAnswerVersions")
-          .innerJoin("blockSyntheses", "blockSyntheses.proposalId", "attemptAnswerVersions.attemptId")
-          .select("attemptAnswerVersions.answerVersionId")
-          .whereRef("attemptAnswerVersions.answerVersionId", "=", "answerVersions.id"),
-      ),
-    )
     .orderBy("answerVersions.questionId")
     .orderBy("answerVersions.number", "desc")
     .execute();
+  const confirmed = await confirmedVersionIdsOf(
+    db,
+    versions.map((version) => version.id),
+  );
+  // A mais recente confirmada de cada Pergunta (as Versões vêm da mais nova para a mais antiga).
+  const rows = versions.filter(
+    (version, index) =>
+      confirmed.has(version.id) &&
+      !versions.slice(0, index).some((newer) => newer.questionId === version.questionId && confirmed.has(newer.id)),
+  );
   return rows
     .toSorted((a, b) => a.blockNumber - b.blockNumber || a.position - b.position)
     .map((row) => ({

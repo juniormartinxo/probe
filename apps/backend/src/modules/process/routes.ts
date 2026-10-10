@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { Db } from "../../db/database.ts";
 import { isCli, type Cli } from "../ai/assistant.ts";
+import { impactAssessmentsOf, type ConfirmationRef } from "../assessments/impact-assessments.ts";
 import { stageAssessmentsOf, type StageAssessments } from "../assessments/stage-assessments.ts";
 import type { AnswerChange, AnswerValue, Answers } from "./answers.ts";
 import type { Blocks } from "./blocks.ts";
@@ -13,6 +14,7 @@ import {
 } from "./constraints-and-preferences.ts";
 import type { Pendencies } from "./pendencies.ts";
 import type { ProblemStatements, StatementConfirmation } from "./problem-statement.ts";
+import { reassessmentsOf, type ImpactDecision, type Reassessments } from "./reassessments.ts";
 import { createProcess, findProcess, listProcesses } from "./process.ts";
 import type { StagePointCoverage } from "./stage-point-coverage.ts";
 import { stageConfirmationsOf, type StageConfirmations, type StageConfirmationRequest } from "./stage-confirmations.ts";
@@ -97,6 +99,34 @@ function stageConfirmationFrom(body: unknown): StageConfirmationRequest | undefi
   return { stageAssessmentId, justification: justificationFrom(body)?.trim() ?? null };
 }
 
+// A Confirmação afetada: a síntese de um Bloco ou a de uma Etapa.
+function confirmationRefFrom(value: unknown): ConfirmationRef | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const { kind, blockId, stage } = value as Record<string, unknown>;
+  if (kind === "block_synthesis" && typeof blockId === "string" && uuidPattern.test(blockId)) return { kind, blockId };
+  if (kind === "stage" && typeof stage === "string" && isStage(stage)) return { kind, stage };
+  return undefined;
+}
+
+// A decisão do usuário sobre o impacto, quando o Jev não teve certeza ou não respondeu.
+function impactDecisionFrom(answerVersionId: string, body: unknown): ImpactDecision | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { confirmation, impactAssessmentId, decision } = body as Record<string, unknown>;
+  const ref = confirmationRefFrom(confirmation);
+  if (!ref || typeof impactAssessmentId !== "string" || !uuidPattern.test(impactAssessmentId)) return undefined;
+  if (decision !== "open_pendency" && decision !== "keep_confirmation") return undefined;
+  return { answerVersionId, confirmation: ref, impactAssessmentId, decision };
+}
+
+// O texto corrigido da síntese, ao reconfirmá-la; sem corpo ou sem `synthesis`, reconfirma como está.
+function correctedSynthesisFrom(body: unknown): { ok: true; synthesis: string | null } | { ok: false } {
+  if (body === undefined || body === null) return { ok: true, synthesis: null };
+  if (typeof body !== "object") return { ok: false };
+  const { synthesis } = body as Record<string, unknown>;
+  if (synthesis === undefined || synthesis === null) return { ok: true, synthesis: null };
+  return typeof synthesis === "string" && synthesis.trim() !== "" ? { ok: true, synthesis } : { ok: false };
+}
+
 // A CLI que o usuário escolheu para uma nova tentativa; sem corpo ou sem `cli`, nenhuma escolha
 // (a tentativa segue com a CLI da anterior). Uma CLI que não existe é recusada.
 function attemptCliFrom(body: unknown): { ok: true; cli: Cli | undefined } | { ok: false } {
@@ -154,6 +184,13 @@ const errorStatus = {
   already_withdrawn: 409,
   absence_not_allowed: 422,
   no_constraint_or_preference: 409,
+  undecided_reassessments: 409,
+  reassessment_not_found: 404,
+  impact_assessed: 409,
+  reassessment_decided: 409,
+  pendency_not_found: 404,
+  pendency_resolved: 409,
+  synthesis_not_applicable: 422,
 } as const;
 
 // Restrições e Preferências seguem as mesmas rotas, cada uma no seu caminho.
@@ -171,6 +208,7 @@ export const processRoutes =
     stageAssessments,
     stageConfirmations,
     constraintsAndPreferences,
+    reassessments,
   }: {
     db: Db;
     problemStatements: ProblemStatements;
@@ -182,6 +220,7 @@ export const processRoutes =
     stageAssessments: StageAssessments;
     stageConfirmations: StageConfirmations;
     constraintsAndPreferences: ConstraintsAndPreferences;
+    reassessments: Reassessments;
   }): FastifyPluginAsync =>
   async (app) => {
     app.post("/processes", async (request, reply) => {
@@ -202,6 +241,9 @@ export const processRoutes =
         ...(await problemStatements.find(id)),
         ...(await blocks.find(process)),
         pendencies: await pendencies.list(process),
+        // Confirmações cuja Versão sustentada foi superada, ainda em revisão, e as Avaliações de impacto.
+        reassessments: await reassessmentsOf(db, id),
+        impactAssessments: await impactAssessmentsOf(db, id),
         // As Avaliações de cada Etapa já aberta, da primeira à atual.
         stageAssessments: (
           await Promise.all(
@@ -414,6 +456,48 @@ export const processRoutes =
       }
       return reply.code(201).send({ stageConfirmation: result.stageConfirmation });
     });
+
+    app.post<{ Params: { id: string; versionId: string } }>(
+      "/processes/:id/answer-versions/:versionId/impact-assessments",
+      async (request, reply) => {
+        const { id, versionId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(versionId)) return reply.code(404).send({ error: "reassessment_not_found" });
+        const confirmation = confirmationRefFrom((request.body as Record<string, unknown> | undefined)?.confirmation);
+        if (!confirmation) return reply.code(400).send({ error: "confirmation_required" });
+        const result = await reassessments.retry(id, versionId, confirmation);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ impactAssessment: result.impactAssessment });
+      },
+    );
+
+    app.post<{ Params: { id: string; versionId: string } }>(
+      "/processes/:id/answer-versions/:versionId/impact-decision",
+      async (request, reply) => {
+        const { id, versionId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(versionId)) return reply.code(404).send({ error: "reassessment_not_found" });
+        const decision = impactDecisionFrom(versionId, request.body);
+        if (!decision) return reply.code(400).send({ error: "decision_required" });
+        const result = await reassessments.decide(id, decision);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ pendency: result.pendency });
+      },
+    );
+
+    app.post<{ Params: { id: string; pendencyId: string } }>(
+      "/processes/:id/pendencies/:pendencyId/reconfirmation",
+      async (request, reply) => {
+        const { id, pendencyId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(pendencyId)) return reply.code(404).send({ error: "pendency_not_found" });
+        const corrected = correctedSynthesisFrom(request.body);
+        if (!corrected.ok) return reply.code(400).send({ error: "invalid_synthesis" });
+        const result = await reassessments.reconfirm(id, pendencyId, corrected.synthesis);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return { pendency: result.pendency };
+      },
+    );
 
     for (const kind of itemKinds) {
       const path = itemPaths[kind];

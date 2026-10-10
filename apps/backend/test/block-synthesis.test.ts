@@ -85,6 +85,7 @@ describe("Block synthesis", () => {
       proposalId: proposal.id,
       confirmedAt: expect.any(String),
       coveredStagePoints: [{ key: "real_problem", name: "Problema real versus sintoma" }],
+      corrections: [],
     });
     const process = await api.getProcess(id);
     // A IA sugeriu também "consequence"; sem Confirmação, ele segue aberto.

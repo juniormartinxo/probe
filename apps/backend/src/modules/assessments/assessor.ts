@@ -34,6 +34,22 @@ export interface CoverageInput extends ItemStatements {
   answers: AssessedAnswer[];
 }
 
+// A Confirmação sobre a qual se avalia o impacto, como o Jev a recebe: a síntese de um Bloco, com os
+// Pontos que ela cobriu, ou a de uma Etapa, com os Pontos e as respostas confirmadas da Etapa.
+export type ImpactedConfirmation =
+  | { kind: "block_synthesis"; stage: Stage; blockNumber: number; synthesis: string; coveredStagePoints: StagePoint[] }
+  | { kind: "stage"; stage: Stage; stagePoints: StagePoint[]; answers: AssessedAnswer[] };
+
+// O que o Jev recebe para avaliar se a Versão nova de uma resposta afeta uma Confirmação que
+// dependia da Versão anterior.
+export interface ImpactInput {
+  problemStatement: string;
+  confirmation: ImpactedConfirmation;
+  question: { ref: string; wording: string };
+  previousAnswer: string;
+  newAnswer: string;
+}
+
 export type AssessorFailureReason =
   // A chave do Jev não está no ambiente do backend.
   | "jev_not_configured"
@@ -54,4 +70,6 @@ export interface Assessor {
   readonly model: string;
   // Um julgamento para cada Ponto recebido, pela chave do Ponto.
   assessCoverage(input: CoverageInput): Promise<AssessorOutcome<Record<string, Verdict>>>;
+  // Um julgamento: `yes`, a mudança afeta a Confirmação; `no`, não afeta.
+  assessImpact(input: ImpactInput): Promise<AssessorOutcome<Verdict>>;
 }

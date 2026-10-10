@@ -5,7 +5,8 @@ import {
   type AssessorOutcome,
   type Verdict,
 } from "./assessor.ts";
-import { coverageRequest } from "./coverage-rubric.ts";
+import { coverageRequest, type ChoiceQuestion } from "./coverage-rubric.ts";
+import { IMPACT_KEY, impactRequest } from "./impact-rubric.ts";
 
 // Endpoint da API do Jev. Fixo: só os testes apontam o Assessor para outro endereço.
 export const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
@@ -57,48 +58,61 @@ function httpFailure(status: number): AssessorOutcome<never> {
 // Assessor real: um POST à API do Jev por Avaliação, sem SDK e sem novas tentativas automáticas; uma
 // nova tentativa depende do usuário.
 export function createJevAssessor({ url, apiKey, model, timeoutMs }: JevSettings): Assessor {
+  // Um julgamento válido para cada pergunta enviada, pela chave, ou a falha.
+  async function ask(
+    state: Record<string, unknown>,
+    questions: Record<string, ChoiceQuestion>,
+  ): Promise<AssessorOutcome<Record<string, Verdict>>> {
+    if (!apiKey) {
+      return failed("jev_not_configured", "TYPESAFE_API_KEY não definida no backend; defina-a no .env.local e reinicie (make up).");
+    }
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ state, model, questions }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      const timedOut = error instanceof Error && error.name === "TimeoutError";
+      return failed(
+        "jev_unavailable",
+        timedOut ? `O Jev não respondeu em ${Math.round(timeoutMs / 1000)} s.` : `Não foi possível falar com o Jev em ${url}.`,
+      );
+    }
+    if (!response.ok) return httpFailure(response.status);
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      return failed("invalid_output", "A resposta do Jev não veio em JSON.");
+    }
+    if (!isRecord(body) || typeof body.model !== "string" || !isRecord(body.answers)) {
+      return failed("invalid_output", "A resposta do Jev veio sem o modelo ou sem as respostas.");
+    }
+    const answers = body.answers;
+    const result: Record<string, Verdict> = {};
+    const invalid: string[] = [];
+    for (const key of Object.keys(questions)) {
+      const verdict = verdictFrom(answers[key]);
+      if (verdict) result[key] = verdict;
+      else invalid.push(key);
+    }
+    if (invalid.length > 0) return failed("invalid_output", `O Jev não devolveu um julgamento válido para: ${invalid.join(", ")}.`);
+    return { status: "completed", model: body.model, result };
+  }
+
   return {
     model,
-    async assessCoverage(input) {
-      if (!apiKey) {
-        return failed("jev_not_configured", "TYPESAFE_API_KEY não definida no backend; defina-a no .env.local e reinicie (make up).");
-      }
+    assessCoverage(input) {
       const { state, questions } = coverageRequest(input);
-      let response: Response;
-      try {
-        response = await fetch(url, {
-          method: "POST",
-          headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({ state, model, questions }),
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-      } catch (error) {
-        const timedOut = error instanceof Error && error.name === "TimeoutError";
-        return failed(
-          "jev_unavailable",
-          timedOut ? `O Jev não respondeu em ${Math.round(timeoutMs / 1000)} s.` : `Não foi possível falar com o Jev em ${url}.`,
-        );
-      }
-      if (!response.ok) return httpFailure(response.status);
-      let body: unknown;
-      try {
-        body = await response.json();
-      } catch {
-        return failed("invalid_output", "A resposta do Jev não veio em JSON.");
-      }
-      if (!isRecord(body) || typeof body.model !== "string" || !isRecord(body.answers)) {
-        return failed("invalid_output", "A resposta do Jev veio sem o modelo ou sem as respostas.");
-      }
-      const answers = body.answers;
-      const result: Record<string, Verdict> = {};
-      const invalid: string[] = [];
-      for (const key of Object.keys(questions)) {
-        const verdict = verdictFrom(answers[key]);
-        if (verdict) result[key] = verdict;
-        else invalid.push(key);
-      }
-      if (invalid.length > 0) return failed("invalid_output", `O Jev não devolveu um julgamento válido para: ${invalid.join(", ")}.`);
-      return { status: "completed", model: body.model, result };
+      return ask(state, questions);
+    },
+    async assessImpact(input) {
+      const { state, questions } = impactRequest(input);
+      const outcome = await ask(state, questions);
+      return outcome.status === "completed" ? { ...outcome, result: outcome.result[IMPACT_KEY]! } : outcome;
     },
   };
 }

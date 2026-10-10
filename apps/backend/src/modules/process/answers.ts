@@ -1,7 +1,7 @@
 import { sql } from "kysely";
 import type { Db } from "../../db/database.ts";
 import type { AnswerType } from "../ai/assistant.ts";
-import { resolveUnknownInformation } from "./pendencies.ts";
+import { resolveReassessmentsByCorrection, resolveUnknownInformation } from "./pendencies.ts";
 
 // Cada estado registrado de uma resposta. Traz os índices das alternativas escolhidas ou o texto
 // livre, conforme a Pergunta.
@@ -11,8 +11,8 @@ export interface AnswerVersion {
   selectedChoices: number[] | null;
   text: string | null;
   createdAt: Date;
-  // Confirmada em conjunto com as outras respostas do Bloco, pela Confirmação da síntese de bloco.
-  // Até lá, a resposta é provisória.
+  // Confirmada em conjunto com as outras respostas do Bloco, pela Confirmação da síntese de bloco, ou
+  // sustentada por ela depois de uma mudança (sem impacto, mantida ou reconfirmada). Até lá, provisória.
   confirmed: boolean;
 }
 
@@ -44,19 +44,10 @@ export async function answersOf(db: Db, questionIds: string[]): Promise<Map<stri
     .where("questionId", "in", questionIds)
     .orderBy("number", "desc")
     .execute();
-  const confirmed = versions.length
-    ? await db
-        .selectFrom("attemptAnswerVersions")
-        .innerJoin("blockSyntheses", "blockSyntheses.proposalId", "attemptAnswerVersions.attemptId")
-        .select("attemptAnswerVersions.answerVersionId")
-        .where(
-          "attemptAnswerVersions.answerVersionId",
-          "in",
-          versions.map((version) => version.id),
-        )
-        .execute()
-    : [];
-  const confirmedIds = new Set(confirmed.map((row) => row.answerVersionId));
+  const confirmedIds = await confirmedVersionIdsOf(
+    db,
+    versions.map((version) => version.id),
+  );
   for (const { questionId, ...row } of versions) {
     const version = { ...row, confirmed: confirmedIds.has(row.id) };
     const entry = found.get(questionId)!;
@@ -70,6 +61,29 @@ export async function answersOf(db: Db, questionIds: string[]): Promise<Map<stri
     .execute();
   for (const { questionId, ...draft } of drafts) found.get(questionId)!.draft = draft;
   return found;
+}
+
+// As Versões, dentre as dadas, confirmadas por uma síntese de bloco: as que uma proposta confirmada
+// sintetizou e as que a síntese do Bloco da Pergunta passou a sustentar depois de uma mudança.
+export async function confirmedVersionIdsOf(db: Db, versionIds: string[]): Promise<Set<string>> {
+  if (versionIds.length === 0) return new Set();
+  const synthesized = await db
+    .selectFrom("attemptAnswerVersions")
+    .innerJoin("blockSyntheses", "blockSyntheses.proposalId", "attemptAnswerVersions.attemptId")
+    .select("attemptAnswerVersions.answerVersionId")
+    .where("attemptAnswerVersions.answerVersionId", "in", versionIds)
+    .execute();
+  // Só a síntese do Bloco da própria Pergunta confirma a Versão; a de um Bloco seguinte, que a recebeu
+  // como contexto, apenas se apoia nela.
+  const carried = await db
+    .selectFrom("confirmationAnswerVersions")
+    .innerJoin("answerVersions", "answerVersions.id", "confirmationAnswerVersions.answerVersionId")
+    .innerJoin("questions", "questions.id", "answerVersions.questionId")
+    .select("confirmationAnswerVersions.answerVersionId")
+    .where("confirmationAnswerVersions.answerVersionId", "in", versionIds)
+    .whereRef("confirmationAnswerVersions.blockId", "=", "questions.blockId")
+    .execute();
+  return new Set([...synthesized, ...carried].map((row) => row.answerVersionId));
 }
 
 // A Versão descrita em texto, como o usuário a vê: as alternativas escolhidas ou o texto livre.
@@ -159,10 +173,18 @@ async function lockQuestion(
   return { ok: true, question };
 }
 
-export function answers({ db }: { db: Db }): Answers {
+// `afterChange`: chamado depois de gravada a Versão, fora da transação, para avaliar o impacto dela
+// sobre as Confirmações que dependiam da anterior. Não lança: uma falha ali não desfaz a Versão.
+export function answers({
+  db,
+  afterChange,
+}: {
+  db: Db;
+  afterChange: (processId: string, questionId: string) => Promise<void>;
+}): Answers {
   return {
     async record(processId, questionId, { value, basedOnVersionId }) {
-      return db.transaction().execute(async (trx) => {
+      const recorded = await db.transaction().execute(async (trx) => {
         const locked = await lockQuestion(trx, processId, questionId);
         if (!locked.ok) return locked;
         const complete = valueFor(locked.question, value, { complete: true });
@@ -183,8 +205,14 @@ export function answers({ db }: { db: Db }): Answers {
           .then((row) => ({ ...row, confirmed: false }));
         await trx.deleteFrom("answerDrafts").where("questionId", "=", questionId).execute();
         await resolveUnknownInformation(trx, questionId, answerVersion.id);
+        await resolveReassessmentsByCorrection(trx, questionId, answerVersion.id);
         return { ok: true, answerVersion } as const;
       });
+      if (!recorded.ok || recorded.answerVersion.number === 1) return recorded;
+      await afterChange(processId, questionId);
+      // Sem impacto, segundo o Jev, a síntese do Bloco passa a sustentar a Versão nova.
+      const { answerVersion } = recorded;
+      return { ok: true, answerVersion: { ...answerVersion, confirmed: (await confirmedVersionIdsOf(db, [answerVersion.id])).has(answerVersion.id) } };
     },
 
     async saveDraft(processId, questionId, { value, basedOnVersionId }) {

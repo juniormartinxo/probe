@@ -5,6 +5,7 @@ import type { Pendency, PendencyReason } from "./pendencies.ts";
 import type { ProblemStatement } from "./problem-statement.ts";
 import type { StagePointState } from "./stage-point-coverage.ts";
 import type { Stage } from "./stage.ts";
+import { synthesisInForce } from "./syntheses.ts";
 
 // Resumo do entendimento atual do Processo, consultável a qualquer momento: o que foi confirmado, o
 // que ainda é provisório e o que está pendente. É montado do que está gravado, sem chamar a IA.
@@ -46,7 +47,7 @@ export function understandingOf(process: {
     ...statementsOf(inForceOf(process)),
     blocks: process.blocks.map((block) => ({
       number: block.number,
-      synthesis: block.synthesis?.synthesis ?? null,
+      synthesis: block.synthesis ? synthesisInForce(block.synthesis) : null,
       answers: block.questions.map((question) => ({
         questionId: question.id,
         wording: question.wording,

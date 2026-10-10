@@ -1,6 +1,7 @@
 import type { Db } from "../../db/database.ts";
 import { stageAssessmentsOf } from "../assessments/stage-assessments.ts";
 import { pendenciesBlockingStage } from "./pendencies.ts";
+import { undecidedReassessmentsBlocking } from "./reassessments.ts";
 import type { ProcessPoints } from "./stage-point-coverage.ts";
 import { readyStage, type StageNotReady } from "./stage-readiness.ts";
 import { nextStage, type Stage } from "./stage.ts";
@@ -26,6 +27,7 @@ export interface StageConfirmationRequest {
 export type StageConfirmationError =
   | StageNotReady
   | "blocking_pendencies"
+  | "undecided_reassessments"
   | "unknown_assessment"
   | "assessment_outdated"
   | "assessment_required"
@@ -69,6 +71,10 @@ export function stageConfirmations({ db }: { db: Db }): StageConfirmations {
         const process: ProcessPoints = found.ready.process;
         const pendencyIds = await pendenciesBlockingStage(trx, processId, stage);
         if (pendencyIds.length > 0) return { ok: false, error: "blocking_pendencies", pendencyIds } as const;
+        // Uma Confirmação em que se apoia esta, com o impacto de uma mudança ainda sem decisão.
+        if ((await undecidedReassessmentsBlocking(trx, processId, stage)).length > 0) {
+          return { ok: false, error: "undecided_reassessments" } as const;
+        }
 
         // Nenhuma Avaliação confirma nada: ela só precisa ser a que o usuário viu, e valer ainda.
         if (stageAssessmentId === null) {

@@ -8,8 +8,10 @@ import {
   type AnswerValue,
   type AnswerVersion,
   type Block,
+  type ImpactAssessment,
   type Question,
 } from "@/api";
+import { ImpactLine, confirmationName } from "@/components/reassessments";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,10 +77,16 @@ function describe(question: Question, stored: Stored): string {
 export function Questionnaire({
   processId,
   block,
+  underReassessment,
+  impactAssessments,
   onChange,
 }: {
   processId: string;
   block: Block;
+  // As Perguntas cuja resposta mudou e cujas Confirmações estão em revisão.
+  underReassessment: Set<string>;
+  // As Avaliações de impacto do Processo; cada resposta mostra as da Versão que vale.
+  impactAssessments: ImpactAssessment[];
   onChange: () => void;
 }) {
   const [index, setIndex] = useState(0);
@@ -193,6 +201,8 @@ export function Questionnaire({
         processId={processId}
         question={question}
         synthesized={block.synthesis !== null}
+        reassessing={underReassessment.has(question.id)}
+        impactAssessments={impactAssessments.filter((assessment) => assessment.answerVersionId === question.answer?.current.id)}
         edit={edits[question.id] ?? storedEdit(question)}
         onEdit={(value) => edit(question, value)}
         onSettled={(settled) => setEdits((current) => ({ ...current, [question.id]: settled }))}
@@ -220,6 +230,8 @@ function QuestionView({
   processId,
   question,
   synthesized,
+  reassessing,
+  impactAssessments,
   edit,
   onEdit,
   onSettled,
@@ -230,6 +242,9 @@ function QuestionView({
   question: Question;
   // A síntese do Bloco já foi confirmada.
   synthesized: boolean;
+  // A resposta mudou e uma Confirmação que dependia da anterior está em revisão.
+  reassessing: boolean;
+  impactAssessments: ImpactAssessment[];
   edit: Edit;
   onEdit: (value: AnswerValue) => void;
   onSettled: (edit: Edit) => void;
@@ -324,7 +339,9 @@ function QuestionView({
 
       <AnswerInput question={question} value={edit.value} onChange={onEdit} disabled={saving} />
 
-      {question.answer && <SavedAnswer question={question} synthesized={synthesized} />}
+      {question.answer && (
+        <SavedAnswer question={question} synthesized={synthesized} reassessing={reassessing} impactAssessments={impactAssessments} />
+      )}
 
       {question.unknown && (
         <div className="flex flex-col gap-1 rounded-md border border-dashed p-3 text-sm">
@@ -374,7 +391,14 @@ function QuestionView({
             disabled={saving || !changed || !isComplete(question, edit.value)}
             onClick={() => save(edit.basedOnVersionId)}
           >
-            {saving ? "Salvando…" : question.answer ? "Salvar nova Versão" : "Salvar resposta"}
+            {saving
+              ? // Uma Versão nova sobre resposta que uma síntese confirmou espera a Avaliação de impacto do Jev.
+                synthesized && question.answer
+                ? "Salvando e avaliando o impacto…"
+                : "Salvando…"
+              : question.answer
+                ? "Salvar nova Versão"
+                : "Salvar resposta"}
           </Button>
         </div>
       )}
@@ -459,23 +483,49 @@ function AnswerInput({
   );
 }
 
-// Uma Versão nova depois da síntese confirmada não volta a ser confirmada por ela: a síntese do Bloco
-// não se confirma de novo.
-function savedAnswerStatus(confirmed: boolean, synthesized: boolean): string {
+// Uma Versão nova depois da síntese confirmada passa pela reavaliação: a síntese a confirma quando o Jev
+// não vê impacto ou o usuário a mantém ou reconfirma. Uma resposta dada depois da síntese a uma
+// Pergunta que estava sem resposta não tem o que reavaliar e segue sem confirmação.
+function savedAnswerStatus(confirmed: boolean, synthesized: boolean, reassessing: boolean): string {
   if (confirmed) return "confirmada pela síntese do Bloco";
-  if (synthesized) return "alterada depois da síntese confirmada do Bloco; ainda não confirmada";
+  if (reassessing) return "alterada depois da síntese confirmada do Bloco; em revisão";
+  if (synthesized) return "dada depois da síntese confirmada do Bloco; ainda não confirmada";
   return "provisória até a síntese do Bloco ser confirmada";
 }
 
-function SavedAnswer({ question, synthesized }: { question: Question; synthesized: boolean }) {
+function SavedAnswer({
+  question,
+  synthesized,
+  reassessing,
+  impactAssessments,
+}: {
+  question: Question;
+  synthesized: boolean;
+  reassessing: boolean;
+  // As Avaliações de impacto desta Versão, sobre cada Confirmação que dependia da anterior.
+  impactAssessments: ImpactAssessment[];
+}) {
   const { current, previous } = question.answer!;
   return (
     <div className="bg-muted/50 flex flex-col gap-1 rounded-md p-3 text-sm">
       <p className="text-muted-foreground text-xs">
         Resposta salva · Versão {current.number} · {formatDate(current.createdAt)} ·{" "}
-        {savedAnswerStatus(current.confirmed, synthesized)}
+        {savedAnswerStatus(current.confirmed, synthesized, reassessing)}
       </p>
       <p className="whitespace-pre-wrap">{describe(question, current)}</p>
+      {impactAssessments.length > 0 && (
+        <details className="text-muted-foreground text-xs">
+          <summary className="cursor-pointer">Avaliações de impacto desta Versão ({impactAssessments.length})</summary>
+          <ul className="mt-2 flex flex-col gap-1">
+            {impactAssessments.map((assessment) => (
+              <li key={assessment.id} className="flex flex-col gap-0.5">
+                <span className="font-medium">{confirmationName(assessment.confirmation)}</span>
+                <ImpactLine assessment={assessment} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {previous.length > 0 && (
         <details className="text-muted-foreground text-xs">
           <summary className="cursor-pointer">Versões anteriores ({previous.length})</summary>

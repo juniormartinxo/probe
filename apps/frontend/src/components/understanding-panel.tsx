@@ -102,7 +102,9 @@ function UnderstandingView({ understanding }: { understanding: Understanding }) 
           <p className="text-muted-foreground text-xs">Pendências abertas</p>
           <ul className="flex flex-col gap-0.5">
             {understanding.openPendencies.map((pendency) => (
-              <li key={pendency.wording}>Informação desconhecida: {pendency.wording}</li>
+              <li key={`${pendency.reason}-${pendency.wording}`}>
+                {pendency.reason === "reassessment" ? "Reavaliação" : "Informação desconhecida"}: {pendency.wording}
+              </li>
             ))}
           </ul>
         </div>
