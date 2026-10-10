@@ -287,6 +287,9 @@ export type ConflictPairStatus =
   | "pendency_resolved"
   | "superseded";
 
+// O par ainda espera o Jev ou a decisão do usuário.
+export const undecidedConflictStatuses: ConflictPairStatus[] = ["not_assessed", "assessment_failed", "awaiting_decision"];
+
 export interface ConflictPair {
   id: string;
   position: number;

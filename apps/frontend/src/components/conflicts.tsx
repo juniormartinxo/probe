@@ -15,11 +15,12 @@ import {
   type ItemKind,
   type Pendency,
   type ProcessDetail,
+  undecidedConflictStatuses,
 } from "@/api";
 import { AttemptList } from "@/components/attempt-list";
 import { itemDetails } from "@/components/constraints-and-preferences";
 import { NewAttempt } from "@/components/new-attempt";
-import { failureText } from "@/components/stage-confirmation";
+import { FailedJudgment, JudgmentLine } from "@/components/reassessments";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,10 +45,7 @@ const errorText: Record<string, string> = {
   resolution_question_generated: "A IA já formulou a pergunta.",
 };
 
-const percent = (value: number) => `${Math.round(value * 100)}%`;
-
-const undecided = (pair: ConflictPair) =>
-  pair.status === "awaiting_decision" || pair.status === "assessment_failed" || pair.status === "not_assessed";
+const undecided = (pair: ConflictPair) => undecidedConflictStatuses.includes(pair.status);
 
 // A ação do usuário, com o erro que ela devolver traduzido; recarrega o Processo no fim.
 function useAction(onChange: () => void) {
@@ -107,28 +105,11 @@ function AnswerLine({ answer }: { answer: ConflictingAnswer }) {
   );
 }
 
-export function VerdictLine({ verdict }: { verdict: ConflictVerdict }) {
-  const { yes, no, insufficient } = verdict.probabilities;
-  return (
-    <p className="text-xs">
-      <span className="text-muted-foreground">Jev: </span>
-      <span className="font-medium">{conflictText[verdict.choice]}</span> · confiança {percent(verdict.confidence)}
-      <span className="text-muted-foreground">
-        {" "}
-        · sim {percent(yes)} · não {percent(no)} · insuficiente {percent(insufficient)}
-      </span>
-    </p>
-  );
-}
+const VerdictLine = ({ verdict }: { verdict: ConflictVerdict }) => <JudgmentLine {...verdict} texts={conflictText} />;
 
-function FailureLine({ assessment }: { assessment: ConflictAssessment }) {
-  return (
-    <div className="flex flex-col gap-0.5 text-xs">
-      <span>{assessment.failureReason ? failureText[assessment.failureReason] : "A Avaliação de conflito falhou."}</span>
-      {assessment.message && <span className="text-muted-foreground whitespace-pre-wrap">{assessment.message}</span>}
-    </div>
-  );
-}
+const FailureLine = ({ assessment }: { assessment: ConflictAssessment }) => (
+  <FailedJudgment failureReason={assessment.failureReason} message={assessment.message} fallback="A Avaliação de conflito falhou." />
+);
 
 // Uma verificação à espera: o Jev não avaliou, falhou ou não teve certeza em algum par.
 function UndecidedCheck({ processId, check, onChange }: { processId: string; check: ConflictCheck; onChange: () => void }) {

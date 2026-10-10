@@ -1,6 +1,6 @@
 import type { Db } from "../../db/database.ts";
 import { listAiRequests, type Attempt, type AttemptStatus } from "../ai/ai-requests.ts";
-import type { ConflictQuestion } from "../ai/assistant.ts";
+import type { GeneratedResolutionQuestion } from "../ai/assistant.ts";
 import { describeAnswer } from "./answers.ts";
 import type { Stage } from "./stage.ts";
 
@@ -97,7 +97,7 @@ export async function conflictPairsOf(db: Db, processId: string, pairIds?: strin
   }));
 }
 
-export const RESOLUTION_QUESTION_OPERATION = "formulate_conflict_question";
+export const RESOLUTION_QUESTION_OPERATION = "formulate_resolution_question";
 
 // A pergunta de resolução que a IA formula para uma Pendência de conflito: sugestão para orientar o
 // usuário, que resolve a Pendência como preferir.
@@ -109,7 +109,7 @@ export interface ResolutionQuestion {
 }
 
 export async function resolutionQuestionOf(db: Db, processId: string, pendencyId: string): Promise<ResolutionQuestion | null> {
-  const request = (await listAiRequests<ConflictQuestion>(db, processId, RESOLUTION_QUESTION_OPERATION, { pendencyId })).at(-1);
+  const request = (await listAiRequests<GeneratedResolutionQuestion>(db, processId, RESOLUTION_QUESTION_OPERATION, { pendencyId })).at(-1);
   if (!request) return null;
   return { id: request.id, status: request.status, question: request.result?.value.question ?? null, attempts: request.attempts };
 }

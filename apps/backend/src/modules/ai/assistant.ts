@@ -171,12 +171,12 @@ export interface ConflictingAnswer {
 
 // O que a IA recebe para formular a pergunta com que o usuário resolve uma Pendência de conflito: o
 // problema, as Restrições e Preferências em vigor e as duas respostas incompatíveis.
-export interface ConflictQuestionInput extends ItemStatements {
+export interface ResolutionQuestionInput extends ItemStatements {
   problemStatement: string;
   answers: [ConflictingAnswer, ConflictingAnswer];
 }
 
-export interface ConflictQuestion {
+export interface GeneratedResolutionQuestion {
   // A pergunta ao usuário: se há alternativa provisória, se algo deve ser revisto ou se algo foi mal entendido.
   question: string;
 }
@@ -188,7 +188,7 @@ export interface Assistant {
   ): Promise<AssistantOutcome<StatementProposal>>;
   generateBlock(input: BlockInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedBlock>>;
   synthesizeBlock(input: SynthesisInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedSynthesis>>;
-  formulateConflictQuestion(input: ConflictQuestionInput, context: AttemptContext): Promise<AssistantOutcome<ConflictQuestion>>;
+  formulateResolutionQuestion(input: ResolutionQuestionInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedResolutionQuestion>>;
   // Pedido mínimo à CLI, só para saber se a cadeia até ela funciona; o resultado é a resposta crua.
   testConnection(context: AttemptContext): Promise<AssistantOutcome<string>>;
 }

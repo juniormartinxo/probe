@@ -10,6 +10,7 @@ import {
   type Stage,
   type StageAssessment,
   type StageConfirmation,
+  undecidedConflictStatuses,
 } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,7 +70,7 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
     ),
     ...process.conflictChecks.filter((check) =>
       check.pairs.some(
-        (pair) => ["not_assessed", "assessment_failed", "awaiting_decision"].includes(pair.status) && inStages(pair.answer, pair.other),
+        (pair) => undecidedConflictStatuses.includes(pair.status) && inStages(pair.answer, pair.other),
       ),
     ),
   ];

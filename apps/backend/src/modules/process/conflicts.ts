@@ -1,7 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { Db } from "../../db/database.ts";
 import { listAiRequests, type AiRequestRunner } from "../ai/ai-requests.ts";
-import type { Assistant, AssistantOutcome, AttemptContext, Cli, ConflictQuestion, ConflictQuestionInput } from "../ai/assistant.ts";
+import type { Assistant, Cli, GeneratedResolutionQuestion, ResolutionQuestionInput } from "../ai/assistant.ts";
 import type { Assessor, AssessorOutcome, ConflictInput, Verdict } from "../assessments/assessor.ts";
 import {
   conflictAssessmentsOf,
@@ -368,10 +368,6 @@ export function conflicts(deps: {
     }
   }
 
-  async function formulate(input: ConflictQuestionInput, context: AttemptContext): Promise<AssistantOutcome<ConflictQuestion>> {
-    return assistant.formulateConflictQuestion(input, context);
-  }
-
   async function requestResolutionQuestion(
     processId: string,
     pendencyId: string,
@@ -382,7 +378,7 @@ export function conflicts(deps: {
       if (!locked.ok) return locked;
       const pendency = await openConflictPendency(trx, processId, pendencyId);
       if (!pendency.ok) return pendency;
-      const latest = (await listAiRequests<ConflictQuestion>(trx, processId, RESOLUTION_QUESTION_OPERATION, { pendencyId })).at(-1);
+      const latest = (await listAiRequests<GeneratedResolutionQuestion>(trx, processId, RESOLUTION_QUESTION_OPERATION, { pendencyId })).at(-1);
       if (latest?.status === "running") return { ok: false, error: "attempt_in_progress" } as const;
       if (latest?.status === "completed") return { ok: false, error: "resolution_question_generated" } as const;
       // Antes de gravar a solicitação: uma recusa aqui não deixa solicitação sem tentativa.
@@ -398,7 +394,7 @@ export function conflicts(deps: {
             .executeTakeFirstOrThrow()
         ).id;
       const [pair] = await conflictPairsOf(trx, processId, [pendency.pairId]);
-      const input: ConflictQuestionInput = {
+      const input: ResolutionQuestionInput = {
         problemStatement: await problemStatementOf(trx, processId),
         ...statementsOf(inForceOf(await constraintsAndPreferencesOf(trx, processId))),
         answers: [conflictingAnswerOf(pair!.answer), conflictingAnswerOf(pair!.other)],
@@ -412,7 +408,7 @@ export function conflicts(deps: {
       return { ok: true, resolutionQuestion: (await resolutionQuestionOf(db, processId, pendencyId))! };
     } finally {
       // Aberta, a tentativa sempre segue, mesmo que a leitura falhe: nunca fica "running" à toa.
-      runner.run(opened.attempt, (context) => formulate(opened.input, context));
+      runner.run(opened.attempt, (context) => assistant.formulateResolutionQuestion(opened.input, context));
     }
   }
 

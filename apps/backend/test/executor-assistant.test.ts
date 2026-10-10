@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AttemptContext, BlockInput, ConflictQuestionInput, SynthesisInput } from "../src/modules/ai/assistant.ts";
+import type { AttemptContext, BlockInput, ResolutionQuestionInput, SynthesisInput } from "../src/modules/ai/assistant.ts";
 import { createExecutorAssistant } from "../src/modules/ai/executor-assistant.ts";
 import { stagePointsOf } from "../src/modules/process/stage-points.ts";
 import { waitFor } from "./support/test-app.ts";
@@ -479,7 +479,7 @@ describe("Block synthesis through the executor", () => {
   });
 });
 
-const conflictQuestionInput: ConflictQuestionInput = {
+const resolutionQuestionInput: ResolutionQuestionInput = {
   problemStatement: "O deploy leva 40 minutos e bloqueia o time durante a manhã.",
   constraints: [{ statement: "Sem downtime", scope: null, unit: null }],
   preferences: [],
@@ -491,7 +491,7 @@ const conflictQuestionInput: ConflictQuestionInput = {
 
 describe("Conflict resolution question through the executor", () => {
   const formulate = (url: string) =>
-    createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).formulateConflictQuestion(conflictQuestionInput, attemptContext());
+    createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).formulateResolutionQuestion(resolutionQuestionInput, attemptContext());
 
   it("sends the two answers in conflict, the statement and the Constraints, as data, in the prompt", async () => {
     const { url, requests } = await startExecutor(answering(JSON.stringify({ question: "Há alternativa provisória?" })));

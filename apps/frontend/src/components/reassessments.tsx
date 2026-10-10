@@ -6,6 +6,7 @@ import {
   retryImpactAssessment,
   synthesisInForce,
   type AssessmentChoice,
+  type AssessorFailureReason,
   type DependentConfirmation,
   type ImpactAssessment,
   type ProcessDetail,
@@ -178,26 +179,60 @@ function ReassessmentItem({
   );
 }
 
-// A Avaliação de impacto como veio, ou a falha.
-export function ImpactLine({ assessment }: { assessment: ImpactAssessment }) {
-  if (assessment.status === "failed") {
-    return (
-      <div className="flex flex-col gap-0.5 text-xs">
-        <span>{assessment.failureReason ? failureText[assessment.failureReason] : "A Avaliação de impacto falhou."}</span>
-        {assessment.message && <span className="text-muted-foreground whitespace-pre-wrap">{assessment.message}</span>}
-      </div>
-    );
-  }
-  const { yes, no, insufficient } = assessment.probabilities!;
+// Um julgamento do Jev como veio: a escolha, nos termos da Avaliação, a confiança e as probabilidades.
+export function JudgmentLine({
+  choice,
+  confidence,
+  probabilities: { yes, no, insufficient },
+  texts,
+}: {
+  choice: AssessmentChoice;
+  confidence: number;
+  probabilities: Record<AssessmentChoice, number>;
+  texts: Record<AssessmentChoice, string>;
+}) {
   return (
     <p className="text-xs">
       <span className="text-muted-foreground">Jev: </span>
-      <span className="font-medium">{impactText[assessment.choice!]}</span> · confiança {percent(assessment.confidence!)}
+      <span className="font-medium">{texts[choice]}</span> · confiança {percent(confidence)}
       <span className="text-muted-foreground">
         {" "}
         · sim {percent(yes)} · não {percent(no)} · insuficiente {percent(insufficient)}
       </span>
     </p>
+  );
+}
+
+// Uma Avaliação do Jev que falhou: o motivo e a mensagem.
+export function FailedJudgment({
+  failureReason,
+  message,
+  fallback,
+}: {
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  fallback: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 text-xs">
+      <span>{failureReason ? failureText[failureReason] : fallback}</span>
+      {message && <span className="text-muted-foreground whitespace-pre-wrap">{message}</span>}
+    </div>
+  );
+}
+
+// A Avaliação de impacto como veio, ou a falha.
+export function ImpactLine({ assessment }: { assessment: ImpactAssessment }) {
+  if (assessment.status === "failed") {
+    return <FailedJudgment failureReason={assessment.failureReason} message={assessment.message} fallback="A Avaliação de impacto falhou." />;
+  }
+  return (
+    <JudgmentLine
+      choice={assessment.choice!}
+      confidence={assessment.confidence!}
+      probabilities={assessment.probabilities!}
+      texts={impactText}
+    />
   );
 }
 

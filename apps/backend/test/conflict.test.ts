@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { GeneratedBlock, GeneratedSynthesis } from "../src/modules/ai/assistant.ts";
-import { FakeAssistant, completed, defaultConflictQuestion } from "./support/fake-assistant.ts";
+import { FakeAssistant, completed, defaultResolutionQuestion } from "./support/fake-assistant.ts";
 import { FakeAssessor, JEV_MODEL, conflictOutcome, verdict } from "./support/fake-assessor.ts";
 import { processApi, statement } from "./support/process-api.ts";
 import { createTestApp, resetDatabase, waitFor, type TestApp } from "./support/test-app.ts";
@@ -189,7 +189,7 @@ describe("Conflict `yes`", () => {
     await confirmStageRBlock({ before: (processId) => register(processId, "constraints", "Sem downtime") });
     const id = (await api.inject({ method: "GET", url: "/api/processes" })).json().processes[0].id;
 
-    expect(assistant.conflictQuestion.attempts.map((attempt) => attempt.input)).toEqual([
+    expect(assistant.resolutionQuestion.attempts.map((attempt) => attempt.input)).toEqual([
       {
         problemStatement: statement,
         constraints: [{ statement: "Sem downtime", scope: null, unit: null }],
@@ -205,7 +205,7 @@ describe("Conflict `yes`", () => {
       [pendency] = (await api.getProcess(id)).pendencies;
       return pendency.conflict.resolutionQuestion.status !== "running";
     });
-    expect(pendency!.conflict.resolutionQuestion).toMatchObject({ status: "completed", question: defaultConflictQuestion.question });
+    expect(pendency!.conflict.resolutionQuestion).toMatchObject({ status: "completed", question: defaultResolutionQuestion.question });
   });
 });
 
@@ -443,7 +443,7 @@ describe("An uncertain conflict result", () => {
     expect(response.json().pendencies).toMatchObject([
       { reason: "conflict", conflict: { pairId: pair.id, openedBy: "user", conflictAssessment: { id: check.assessments[0].id } } },
     ]);
-    expect(assistant.conflictQuestion.attempts).toHaveLength(1);
+    expect(assistant.resolutionQuestion.attempts).toHaveLength(1);
     expect((await confirmStageR(id)).json()).toEqual({ error: "blocking_pendencies", pendencyIds: [response.json().pendencies[0].id] });
   });
 
@@ -536,7 +536,7 @@ describe("The resolution question", () => {
   }
 
   it("that failed can be asked again, with the CLI the user chooses; the Pendency stays open meanwhile", async () => {
-    assistant.conflictQuestion.willRespond({ status: "failed", reason: "cli_rate_limited", message: "Limite de uso.", usage: null });
+    assistant.resolutionQuestion.willRespond({ status: "failed", reason: "cli_rate_limited", message: "Limite de uso.", usage: null });
     assessor.willAssessConflicts(conflictOutcome(), deadlineVersusIntegration());
     const { id } = await confirmStageRBlock();
     const failed = await settledQuestion(id);
@@ -552,7 +552,7 @@ describe("The resolution question", () => {
 
     expect(response.statusCode).toBe(202);
     const asked = await settledQuestion(id);
-    expect(asked.conflict.resolutionQuestion).toMatchObject({ status: "completed", question: defaultConflictQuestion.question });
+    expect(asked.conflict.resolutionQuestion).toMatchObject({ status: "completed", question: defaultResolutionQuestion.question });
     expect(asked.conflict.resolutionQuestion.attempts.map((attempt) => attempt.cli)).toEqual(["claude", "codex"]);
     const again = await askAgain(id, failed.id);
     expect(again.statusCode).toBe(409);
@@ -599,6 +599,6 @@ describe("Reopening the Process with a conflict open", () => {
     const after = await api.getProcess(id);
 
     expect(after).toEqual(before);
-    expect(after.pendencies[0].conflict.resolutionQuestion.question).toBe(defaultConflictQuestion.question);
+    expect(after.pendencies[0].conflict.resolutionQuestion.question).toBe(defaultResolutionQuestion.question);
   });
 });

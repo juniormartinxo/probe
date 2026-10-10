@@ -124,18 +124,18 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   // A pergunta de resolução que a IA formula para uma Pendência de conflito.
   await sql`alter table ai_requests drop constraint ai_requests_operation_check`.execute(db);
   await sql`alter table ai_requests add constraint ai_requests_operation_check
-    check (operation in ('refine_problem_statement', 'generate_block', 'synthesize_block', 'formulate_conflict_question'))`.execute(db);
+    check (operation in ('refine_problem_statement', 'generate_block', 'synthesize_block', 'formulate_resolution_question'))`.execute(db);
   await db.schema
     .alterTable("ai_requests")
     .addColumn("pendency_id", "uuid", (col) => col.references("pendencies.id").onDelete("cascade"))
     .execute();
-  await addCheck("ai_requests", "ai_requests_pendency", sql`(pendency_id is not null) = (operation = 'formulate_conflict_question')`).execute(db);
+  await addCheck("ai_requests", "ai_requests_pendency", sql`(pendency_id is not null) = (operation = 'formulate_resolution_question')`).execute(db);
   // Uma solicitação por Pendência; novas chances são tentativas dela.
   await sql`create unique index ai_requests_one_per_pendency on ai_requests (pendency_id) where pendency_id is not null`.execute(db);
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
-  await sql`delete from ai_requests where operation = 'formulate_conflict_question'`.execute(db);
+  await sql`delete from ai_requests where operation = 'formulate_resolution_question'`.execute(db);
   await sql`drop index ai_requests_one_per_pendency`.execute(db);
   await sql`alter table ai_requests drop constraint ai_requests_pendency`.execute(db);
   await db.schema.alterTable("ai_requests").dropColumn("pendency_id").execute();

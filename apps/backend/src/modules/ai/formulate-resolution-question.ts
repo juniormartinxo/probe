@@ -1,4 +1,4 @@
-import type { ConflictQuestion, ConflictQuestionInput, ConflictingAnswer } from "./assistant.ts";
+import type { GeneratedResolutionQuestion, ResolutionQuestionInput, ConflictingAnswer } from "./assistant.ts";
 import { isFilledText, parseJsonObject } from "./json-output.ts";
 import { constraintsAndPreferencesText, stageNames } from "./prompt-parts.ts";
 
@@ -7,7 +7,7 @@ const answerText = ({ ref, stage, wording, answer }: ConflictingAnswer): string 
 
 // Prompt versionado com o código. Tudo o que veio do usuário vai delimitado e só como dado; a CLI
 // roda sem ferramentas, então ela não tem como agir sobre o que o texto pedir.
-export function conflictQuestionPrompt(input: ConflictQuestionInput): string {
+export function resolutionQuestionPrompt(input: ResolutionQuestionInput): string {
   const [first, second] = input.answers;
   return `Você conduz uma pessoa pelo framework PROBE, que a ajuda a tomar uma decisão.
 
@@ -34,7 +34,7 @@ RESPOSTAS>>>`;
 }
 
 // Uma pergunta vazia ou fora do formato é recusada: uma resposta parcial nunca vira pergunta.
-export function parseConflictQuestion(output: string): ConflictQuestion | undefined {
+export function parseResolutionQuestion(output: string): GeneratedResolutionQuestion | undefined {
   const parsed = parseJsonObject(output);
   if (!parsed || !isFilledText(parsed.question)) return undefined;
   return { question: parsed.question.trim() };

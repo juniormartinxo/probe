@@ -7,7 +7,7 @@ import {
   type FailureReason,
   type Usage,
 } from "./assistant.ts";
-import { conflictQuestionPrompt, parseConflictQuestion } from "./formulate-conflict-question.ts";
+import { resolutionQuestionPrompt, parseResolutionQuestion } from "./formulate-resolution-question.ts";
 import { blockPrompt, parseGeneratedBlock } from "./generate-block.ts";
 import { parseStatementProposal, refinementPrompt } from "./refine-problem-statement.ts";
 import { parseGeneratedSynthesis, synthesisPrompt } from "./synthesize-block.ts";
@@ -218,8 +218,8 @@ export function createExecutorAssistant({ url, token, deadlineMs }: ExecutorSett
     synthesizeBlock(input, context) {
       return generate(synthesisPrompt(input), (output) => parseGeneratedSynthesis(output, input), context);
     },
-    formulateConflictQuestion(input, context) {
-      return generate(conflictQuestionPrompt(input), parseConflictQuestion, context);
+    formulateResolutionQuestion(input, context) {
+      return generate(resolutionQuestionPrompt(input), parseResolutionQuestion, context);
     },
     testConnection(context) {
       // Qualquer resposta não vazia mostra que a CLI respondeu com o modelo pedido.

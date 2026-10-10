@@ -162,8 +162,13 @@ _Avoid_: Revalidação, invalidação
 
 **Conflito**:
 Duas respostas confirmadas que não podem valer ao mesmo tempo, como um prazo de duas semanas e uma dependência obrigatória de uma integração que só fica disponível em um mês. Uma Preferência não atendida não é conflito. Quando respostas passam a confirmadas (pela síntese do Bloco ou depois de uma mudança), o Jev avalia cada par que elas formam entre si e com as respostas já confirmadas; um `yes` confiante abre a Pendência de conflito, e um julgamento incerto ou uma falha do Jev deixam a decisão com o usuário, que abre a Pendência ou descarta o conflito. Enquanto não há decisão, a Confirmação da Etapa das respostas e das seguintes espera.
-_Code_: `ConflictCheck` (os pares, `ConflictPair`; a Avaliação: `ConflictAssessment`)
+_Code_: `ConflictPair` (a verificação que reúne os pares das respostas recém-confirmadas: `ConflictCheck`; a Avaliação: `ConflictAssessment`)
 _Avoid_: Contradição, inconsistência
+
+**Pergunta de resolução**:
+Pergunta que a IA formula para o usuário resolver uma Pendência de conflito: se há alternativa provisória, se algo deve ser revisto ou se algo foi mal entendido. Orienta; a Pendência se resolve pelo que o usuário fizer, não pela resposta a ela. Não é uma Pergunta de Bloco.
+_Code_: `ResolutionQuestion`
+_Avoid_: Pergunta de conflito
 
 **Pendência**:
 Impedimento visível que bloqueia as Confirmações que dependem dele, por um de três motivos: reavaliação (depende de Versão superada), conflito (respostas incompatíveis) ou informação desconhecida. A de reavaliação nasce de uma Avaliação de impacto e se resolve reconfirmando a Confirmação afetada (numa síntese de bloco, com o texto corrigido, se preciso) ou corrigindo a resposta com uma Versão nova. A de conflito nasce de uma Avaliação de conflito, liga as duas respostas, traz a pergunta de resolução que a IA formula e se resolve com uma Versão nova de uma das respostas, uma revisão de Restrição (retirada e, se houver, substituída) ou um esclarecimento do usuário.

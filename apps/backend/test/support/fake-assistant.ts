@@ -3,8 +3,8 @@ import type {
   AssistantOutcome,
   AttemptContext,
   BlockInput,
-  ConflictQuestion,
-  ConflictQuestionInput,
+  GeneratedResolutionQuestion,
+  ResolutionQuestionInput,
   GeneratedBlock,
   GeneratedSynthesis,
   StatementProposal,
@@ -53,7 +53,7 @@ export const defaultBlock: GeneratedBlock = {
   ],
 };
 
-export const defaultConflictQuestion: ConflictQuestion = {
+export const defaultResolutionQuestion: GeneratedResolutionQuestion = {
   question: "Existe uma alternativa provisória até a integração ficar pronta, o prazo deve ser revisto ou a dependência foi mal entendida?",
 };
 
@@ -119,7 +119,7 @@ export class FakeAssistant implements Assistant {
   readonly refinement = new Script<{ originalDescription: string }, StatementProposal>(() => completed());
   readonly block = new Script<BlockInput, GeneratedBlock>(() => completed(defaultBlock));
   readonly synthesis = new Script<SynthesisInput, GeneratedSynthesis>(() => completed(defaultSynthesis));
-  readonly conflictQuestion = new Script<ConflictQuestionInput, ConflictQuestion>(() => completed(defaultConflictQuestion));
+  readonly resolutionQuestion = new Script<ResolutionQuestionInput, GeneratedResolutionQuestion>(() => completed(defaultResolutionQuestion));
   readonly connection = new Script<null, string>(() => completed("ok"));
 
   refineProblemStatement(input: { originalDescription: string }, context: AttemptContext) {
@@ -134,8 +134,8 @@ export class FakeAssistant implements Assistant {
     return this.synthesis.run(input, context);
   }
 
-  formulateConflictQuestion(input: ConflictQuestionInput, context: AttemptContext) {
-    return this.conflictQuestion.run(input, context);
+  formulateResolutionQuestion(input: ResolutionQuestionInput, context: AttemptContext) {
+    return this.resolutionQuestion.run(input, context);
   }
 
   testConnection(context: AttemptContext) {

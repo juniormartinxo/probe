@@ -4,6 +4,8 @@ Quando respostas passam a confirmadas, pela Confirmação da síntese de bloco o
 
 Um par só decide sozinho com o limite da Avaliação de impacto (ADR 0003): `yes` com confiança de pelo menos 0,7 abre a Pendência de conflito; `no` com essa confiança não abre nada. Abaixo disso, ou com `insufficient`, o usuário vê o julgamento e abre a Pendência ou descarta o conflito. Se o Jev falhar, o usuário tenta de novo ou segue sem a Avaliação, e o descarte fica registrado com a Avaliação que ele viu.
 
+Como na reavaliação, um par sem decisão (sem Avaliação, com a Avaliação falha ou incerta) segura a Confirmação da Etapa das duas respostas e das seguintes, sem ser Pendência: confirmar a Etapa daria as respostas por compatíveis sem que ninguém tenha julgado. O Jev indisponível não trava nada, porque o usuário pode seguir sem a Avaliação; a coleta, as sínteses e os Blocos novos continuam livres.
+
 ## Considered Options
 
 - Uma pergunta por resposta nova ("conflita com alguma das confirmadas?"): menos perguntas, mas a primitiva Choice não diz com qual, e a Pendência precisa ficar ligada às respostas envolvidas.
