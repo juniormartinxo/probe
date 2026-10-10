@@ -128,8 +128,8 @@ export interface Options {
   // Descarta uma Opção, sugerida ou aceita; ela fica no histórico.
   discard(processId: string, optionId: string): Promise<{ ok: true; option: Option } | { ok: false; error: OptionDiscardError }>;
   // Forma os pares de Opções aceitas e Restrições em vigor ainda não avaliados e pede ao Jev a
-  // Avaliação deles: depois de uma Opção aceita e de uma Revisão de Restrição. Não lança: uma falha
-  // fica no log.
+  // Avaliação deles: depois de uma Opção aceita, de uma Revisão de Restrição ou a pedido do usuário,
+  // quando uma verificação se perdeu. Não lança: uma falha fica no log.
   assessMissing(processId: string): Promise<void>;
   // Nova tentativa, quando a Avaliação de violação falhou (ou se perdeu).
   retry(processId: string, checkId: string): Promise<{ ok: true; optionCheck: OptionCheck } | { ok: false; error: OptionRetryError }>;
@@ -209,9 +209,14 @@ async function lockStageO(trx: Db, processId: string) {
 }
 
 // A Opção do Processo, para mudá-la; chamar com o Processo travado.
-async function optionIn(trx: Db, process: { id: string; stagePointsVersion: number }, optionId: string) {
-  const option = (await optionsOf(trx, process)).find((item) => item.id === optionId);
-  return option ? ({ ok: true, option } as const) : ({ ok: false, error: "option_not_found" } as const);
+async function optionIn(trx: Db, processId: string, optionId: string) {
+  const row = await trx
+    .selectFrom("options")
+    .select(["acceptedAt", "discardedAt"])
+    .where("id", "=", optionId)
+    .where("processId", "=", processId)
+    .executeTakeFirst();
+  return row ? ({ ok: true, status: optionStatus(row) } as const) : ({ ok: false, error: "option_not_found" } as const);
 }
 
 // Impedimento de uma Opção aceita: as Restrições em vigor que ela viola.
@@ -294,11 +299,15 @@ async function prepareProposal(trx: Db, process: { id: string; stagePointsVersio
   };
 }
 
-// Grava as Opções que a tentativa concluída sugeriu, na ordem em que a IA as propôs.
+// Grava as Opções que a tentativa concluída sugeriu, na ordem em que a IA as propôs, enquanto a Etapa O
+// é a atual.
 const saveSuggestions =
   (processId: string): OnCompleted<GeneratedOptions> =>
   async (trx, attemptId, { options }) => {
-    if (options.length === 0) return;
+    // Trava o Processo, como a Confirmação da Etapa: uma proposta que termina depois de O confirmada
+    // não deixa sugestões numa Etapa em que ninguém mais pode aceitá-las.
+    const process = await trx.selectFrom("processes").select("currentStage").where("id", "=", processId).forUpdate().executeTakeFirstOrThrow();
+    if (options.length === 0 || process.currentStage !== OPTIONS_STAGE) return;
     await trx
       .insertInto("options")
       .values(
@@ -528,9 +537,9 @@ export function options(deps: {
       const accepted = await db.transaction().execute(async (trx) => {
         const locked = await lockStageO(trx, processId);
         if (!locked.ok) return locked;
-        const found = await optionIn(trx, locked.process, optionId);
+        const found = await optionIn(trx, processId, optionId);
         if (!found.ok) return found;
-        if (found.option.status !== "suggested") return { ok: false, error: "option_not_suggested" } as const;
+        if (found.status !== "suggested") return { ok: false, error: "option_not_suggested" } as const;
         await trx
           .updateTable("options")
           .set({
@@ -549,11 +558,11 @@ export function options(deps: {
       return db.transaction().execute(async (trx) => {
         const locked = await lockStageO(trx, processId);
         if (!locked.ok) return locked;
-        const found = await optionIn(trx, locked.process, optionId);
+        const found = await optionIn(trx, processId, optionId);
         if (!found.ok) return found;
-        if (found.option.status === "discarded") return { ok: false, error: "option_discarded" } as const;
+        if (found.status === "discarded") return { ok: false, error: "option_discarded" } as const;
         await trx.updateTable("options").set({ discardedAt: sql<Date>`clock_timestamp()` }).where("id", "=", optionId).execute();
-        return optionIn(trx, locked.process, optionId);
+        return { ok: true, option: (await optionsOf(trx, locked.process)).find((option) => option.id === optionId)! } as const;
       });
     },
 

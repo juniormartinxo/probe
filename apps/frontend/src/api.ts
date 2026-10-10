@@ -1002,6 +1002,12 @@ export async function discardOption(processId: string, optionId: string): Promis
 
 const optionCheckPath = (processId: string, checkId: string) => `${processPath(processId)}/option-checks/${encodeURIComponent(checkId)}`;
 
+// Forma e avalia os pares de Opções aceitas e Restrições em vigor que ficaram sem verificação.
+export async function assessMissingOptionPairs(processId: string): Promise<OptionCheck[]> {
+  const { optionChecks } = await request<{ optionChecks: OptionCheck[] }>(`${processPath(processId)}/option-checks`, { method: "POST" });
+  return optionChecks;
+}
+
 // Nova tentativa da Avaliação de violação, depois de uma falha do Jev.
 export async function retryOptionAssessment(processId: string, checkId: string): Promise<OptionCheck> {
   const { optionCheck } = await request<{ optionCheck: OptionCheck }>(`${optionCheckPath(processId, checkId)}/option-assessments`, {

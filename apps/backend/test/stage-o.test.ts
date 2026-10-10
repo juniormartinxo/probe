@@ -379,6 +379,19 @@ describe("The Jev, on each accepted Option against each Constraint in force", ()
     expect(await optionOf(id, optionId)).toMatchObject({ viability: "viable" });
   });
 
+  it("has the missing pairs formed and assessed on request, when their check was lost", async () => {
+    const { id, optionId } = await processWithOption();
+    // Uma verificação perdida (o banco falhou ao formá-la): o par não existe, e a Opção fica sem decisão.
+    await testApp.db.deleteFrom("optionChecks").execute();
+    expect(await optionOf(id, optionId)).toMatchObject({ viability: "undecided" });
+
+    const response = await api.inject({ method: "POST", url: `/api/processes/${id}/option-checks` });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().optionChecks).toHaveLength(1);
+    expect(await optionOf(id, optionId)).toMatchObject({ viability: "viable" });
+  });
+
   it("assesses the accepted Options against the Constraint that replaces a revised one, and forgets the withdrawn one", async () => {
     const { id, constraintId } = await processInStageO();
     assessor.willAssessOptions(optionOutcome(() => verdict("yes", 0.95)));

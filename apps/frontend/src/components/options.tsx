@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import {
   acceptOption,
   addOption,
+  assessMissingOptionPairs,
   ApiError,
   decideOptions,
   discardOption,
@@ -81,6 +82,11 @@ export function Options({ process, onChange }: { process: ProcessDetail; onChang
   const suggested = process.options.filter((option) => option.status === "suggested");
   const discarded = process.options.filter((option) => option.status === "discarded");
   const checks = process.optionChecks.filter((check) => check.status !== "decided");
+  // Uma Opção sem decisão que nenhuma verificação pendente cobre: os pares dela se perderam.
+  const pendingOptionIds = new Set(
+    checks.flatMap((check) => check.pairs.filter((pair) => undecidedOptionStatuses.includes(pair.status)).map((pair) => pair.option.id)),
+  );
+  const unchecked = accepted.some((option) => option.viability === "undecided" && !pendingOptionIds.has(option.id));
   const noneViable =
     accepted.length > 0 && accepted.every((option) => option.viability === "inviable");
   return (
@@ -102,8 +108,10 @@ export function Options({ process, onChange }: { process: ProcessDetail; onChang
         </ul>
       )}
       {checks.map((check) => (
-        <UndecidedCheck key={check.id} processId={process.id} check={check} editable={editable} onChange={onChange} />
+        // Uma Revisão de Restrição depois da Etapa O também forma pares: decidi-los vale enquanto o Processo está aberto.
+        <UndecidedCheck key={check.id} processId={process.id} check={check} editable={process.status === "open"} onChange={onChange} />
       ))}
+      {process.status === "open" && unchecked && <MissingPairs processId={process.id} onChange={onChange} />}
       {editable && noneViable && <NoViableOption process={process} accepted={accepted} onChange={onChange} />}
       {suggested.length > 0 && (
         <div className="flex flex-col gap-2">
@@ -372,6 +380,25 @@ function UndecidedCheck({
         </ul>
       )}
       {error && <p className="text-destructive text-xs">{error}</p>}
+    </div>
+  );
+}
+
+// Pares que ficaram sem verificação (ela não pôde ser gravada): o usuário pede que sejam formados e avaliados.
+function MissingPairs({ processId, onChange }: { processId: string; onChange: () => void }) {
+  const { saving, error, act } = useAction(onChange);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3">
+      <p className="text-muted-foreground text-xs">Alguma Opção aceita ainda não foi avaliada contra todas as Restrições em vigor.</p>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={saving}
+        onClick={() => act(() => assessMissingOptionPairs(processId), "Não foi possível pedir a Avaliação ao Jev.")}
+      >
+        {saving ? "Avaliando…" : "Avaliar as Opções"}
+      </Button>
+      {error && <p className="text-destructive w-full text-xs">{error}</p>}
     </div>
   );
 }

@@ -774,6 +774,17 @@ export const processRoutes =
       return { option: result.option };
     });
 
+    // Pares de Opções aceitas e Restrições em vigor que ficaram sem verificação (ela se perdeu): forma-os
+    // e pede a Avaliação ao Jev.
+    app.post<{ Params: { id: string } }>("/processes/:id/option-checks", async (request, reply) => {
+      const { id } = request.params;
+      const process = uuidPattern.test(id) ? await findProcess(db, id) : undefined;
+      if (!process) return reply.code(404).send({ error: "process_not_found" });
+      if (process.status !== "open") return reply.code(409).send({ error: "process_not_open" });
+      await options.assessMissing(id);
+      return reply.code(201).send({ optionChecks: await optionChecksOf(db, id) });
+    });
+
     app.post<{ Params: { id: string; checkId: string } }>(
       "/processes/:id/option-checks/:checkId/option-assessments",
       async (request, reply) => {
