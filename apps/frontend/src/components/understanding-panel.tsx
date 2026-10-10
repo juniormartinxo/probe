@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { getUnderstanding, type Understanding } from "@/api";
 import { itemDetails } from "@/components/constraints-and-preferences";
-import { stageName, stagePointStatusText } from "@/stages";
+import { pendencyReasonText, stageName, stagePointStatusText } from "@/stages";
 
 // Resumo do entendimento atual do Processo, consultável a qualquer momento. É lido ao abrir o painel,
 // a partir do que está gravado; não chama a IA.
@@ -103,7 +103,7 @@ function UnderstandingView({ understanding }: { understanding: Understanding }) 
           <ul className="flex flex-col gap-0.5">
             {understanding.openPendencies.map((pendency) => (
               <li key={`${pendency.reason}-${pendency.wording}`}>
-                {pendency.reason === "reassessment" ? "Reavaliação" : "Informação desconhecida"}: {pendency.wording}
+                {pendencyReasonText[pendency.reason]}: {pendency.wording}
               </li>
             ))}
           </ul>

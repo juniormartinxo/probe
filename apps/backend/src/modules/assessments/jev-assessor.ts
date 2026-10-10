@@ -5,8 +5,9 @@ import {
   type AssessorOutcome,
   type Verdict,
 } from "./assessor.ts";
+import { conflictRequest } from "./conflict-rubric.ts";
 import { coverageRequest, type ChoiceQuestion } from "./coverage-rubric.ts";
-import { IMPACT_KEY, impactRequest } from "./impact-rubric.ts";
+import { constraintImpactRequest, IMPACT_KEY, impactRequest } from "./impact-rubric.ts";
 
 // Endpoint da API do Jev. Fixo: só os testes apontam o Assessor para outro endereço.
 export const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
@@ -54,6 +55,10 @@ function httpFailure(status: number): AssessorOutcome<never> {
   if (status >= 500) return failed("jev_unavailable", `O Jev está indisponível ou sobrecarregado (HTTP ${status}).`);
   return failed("jev_error", `O Jev recusou a Avaliação (HTTP ${status}).`);
 }
+
+// O julgamento da pergunta única do impacto.
+const single = (outcome: AssessorOutcome<Record<string, Verdict>>): AssessorOutcome<Verdict> =>
+  outcome.status === "completed" ? { ...outcome, result: outcome.result[IMPACT_KEY]! } : outcome;
 
 // Assessor real: um POST à API do Jev por Avaliação, sem SDK e sem novas tentativas automáticas; uma
 // nova tentativa depende do usuário.
@@ -111,8 +116,15 @@ export function createJevAssessor({ url, apiKey, model, timeoutMs }: JevSettings
     },
     async assessImpact(input) {
       const { state, questions } = impactRequest(input);
-      const outcome = await ask(state, questions);
-      return outcome.status === "completed" ? { ...outcome, result: outcome.result[IMPACT_KEY]! } : outcome;
+      return single(await ask(state, questions));
+    },
+    async assessConstraintImpact(input) {
+      const { state, questions } = constraintImpactRequest(input);
+      return single(await ask(state, questions));
+    },
+    assessConflicts(input) {
+      const { state, questions } = conflictRequest(input);
+      return ask(state, questions);
     },
   };
 }

@@ -1,0 +1,283 @@
+import { useState, type FormEvent } from "react";
+import {
+  ApiError,
+  clarifyConflict,
+  decideConflict,
+  requestResolutionQuestion,
+  retryConflictAssessment,
+  reviseConstraintForConflict,
+  type AssessmentChoice,
+  type ConflictAssessment,
+  type ConflictCheck,
+  type ConflictingAnswer,
+  type ConflictPair,
+  type ConflictVerdict,
+  type Pendency,
+  type ProcessDetail,
+  undecidedConflictStatuses,
+} from "@/api";
+import { AttemptList } from "@/components/attempt-list";
+import { ConstraintRevisionForm } from "@/components/constraints-and-preferences";
+import { NewAttempt } from "@/components/new-attempt";
+import { FailedJudgment, JudgmentLine } from "@/components/reassessments";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { attemptProblem } from "@/refinement";
+
+const conflictText: Record<AssessmentChoice, string> = {
+  yes: "são incompatíveis",
+  no: "são compatíveis",
+  insufficient: "informação insuficiente",
+};
+
+const errorText: Record<string, string> = {
+  conflict_decided: "Este par já foi decidido; a resposta pode ter mudado.",
+  unknown_assessment: "Há uma Avaliação mais recente do que a que você viu. Confira-a antes de decidir.",
+  conflict_assessed: "O Jev já avaliou estes pares.",
+  pendency_resolved: "Esta Pendência já foi resolvida.",
+  resolution_question_generated: "A IA já formulou a pergunta.",
+};
+
+const undecided = (pair: ConflictPair) => undecidedConflictStatuses.includes(pair.status);
+
+// A ação do usuário, com o erro que ela devolver traduzido; recarrega o Processo no fim.
+function useAction(onChange: () => void) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+  async function act(action: () => Promise<unknown>, failure: string): Promise<boolean> {
+    setSaving(true);
+    setError(undefined);
+    try {
+      await action();
+      return true;
+    } catch (caught) {
+      setError((caught instanceof ApiError && caught.code && errorText[caught.code]) || failure);
+      return false;
+    } finally {
+      setSaving(false);
+      onChange();
+    }
+  }
+  return { saving, error, act };
+}
+
+// Respostas confirmadas que podem não valer ao mesmo tempo: o Jev avalia cada par; quem decide é o
+// usuário. Uma Pendência de conflito bloqueia só a Confirmação das Etapas em que as respostas estão
+// (e das seguintes); o resto da coleta segue.
+export function Conflicts({ process, onChange }: { process: ProcessDetail; onChange: () => void }) {
+  const checks = process.conflictChecks.filter((check) => check.status !== "decided");
+  const pendencies = process.pendencies.filter((pendency) => pendency.reason === "conflict" && pendency.resolvedAt === null);
+  if (checks.length === 0 && pendencies.length === 0) return null;
+  return (
+    <div className="border-destructive/40 flex flex-col gap-3 rounded-lg border p-4 text-sm">
+      <div>
+        <p className="text-xs font-medium">Respostas em conflito</p>
+        <p className="text-muted-foreground text-xs">
+          O Jev avalia se respostas confirmadas podem valer ao mesmo tempo; quem decide é você. Enquanto houver conflito, a
+          Confirmação da Etapa espera; você pode seguir respondendo as outras Perguntas.
+        </p>
+      </div>
+      {checks.map((check) => (
+        <UndecidedCheck key={check.id} processId={process.id} check={check} onChange={onChange} />
+      ))}
+      {pendencies.map((pendency) => (
+        <ConflictPendency key={pendency.id} process={process} pendency={pendency} onChange={onChange} />
+      ))}
+    </div>
+  );
+}
+
+function AnswerLine({ answer }: { answer: ConflictingAnswer }) {
+  return (
+    <li>
+      <span className="text-muted-foreground">
+        Pergunta {answer.question.number} do Bloco {answer.question.blockNumber} (Etapa {answer.question.stage}) · {answer.question.wording}
+      </span>
+      <br />“{answer.answer}”{answer.superseded && <span className="text-muted-foreground"> · já substituída por uma Versão nova</span>}
+    </li>
+  );
+}
+
+const VerdictLine = ({ verdict }: { verdict: ConflictVerdict }) => <JudgmentLine {...verdict} texts={conflictText} />;
+
+const FailureLine = ({ assessment }: { assessment: ConflictAssessment }) => (
+  <FailedJudgment failureReason={assessment.failureReason} message={assessment.message} fallback="A Avaliação de conflito falhou." />
+);
+
+// Uma verificação à espera: o Jev não avaliou, falhou ou não teve certeza em algum par.
+function UndecidedCheck({ processId, check, onChange }: { processId: string; check: ConflictCheck; onChange: () => void }) {
+  const { saving, error, act } = useAction(onChange);
+  const latest = check.assessments.at(-1) ?? null;
+  const pending = check.pairs.filter(undecided);
+  const decide = (pairIds: string[], decision: "open_pendency" | "dismiss") =>
+    act(
+      () => decideConflict(processId, check.id, { conflictAssessmentId: latest!.id, pairIds, decision }),
+      "Não foi possível registrar a sua decisão; tente de novo.",
+    );
+  const retry = () => act(() => retryConflictAssessment(processId, check.id), "Não foi possível pedir a Avaliação de conflito.");
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border p-3">
+      {check.status === "not_assessed" && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-muted-foreground text-xs">O Jev ainda não avaliou se as respostas recém-confirmadas conflitam com as outras.</p>
+          <Button variant="outline" size="sm" disabled={saving} onClick={retry}>
+            {saving ? "Avaliando…" : "Avaliar conflito"}
+          </Button>
+        </div>
+      )}
+      {check.status === "assessment_failed" && latest && (
+        <div className="flex flex-col gap-2">
+          <FailureLine assessment={latest} />
+          <p className="text-muted-foreground text-xs">
+            {pending.length === 1 ? "Um par de respostas ficou" : `${pending.length} pares de respostas ficaram`} sem Avaliação. Tente
+            de novo ou decida sem o Jev, par a par ou todos de uma vez como sem conflito; a decisão fica registrada.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" disabled={saving} onClick={retry}>
+              Tentar de novo
+            </Button>
+            <Button size="sm" disabled={saving} onClick={() => decide(pending.map((pair) => pair.id), "dismiss")}>
+              {pending.length === 1 ? "Não é conflito" : `Nenhum dos ${pending.length} é conflito`}
+            </Button>
+          </div>
+        </div>
+      )}
+      {(check.status === "assessment_failed" || check.status === "awaiting_decision") && (
+        <ul className="flex flex-col gap-3">
+          {pending.map((pair) => (
+            <li key={pair.id} className="flex flex-col gap-2">
+              <ul className="flex flex-col gap-1 text-xs">
+                <AnswerLine answer={pair.answer} />
+                <AnswerLine answer={pair.other} />
+              </ul>
+              {pair.verdict && <VerdictLine verdict={pair.verdict} />}
+              <p className="text-muted-foreground text-xs">
+                {pair.verdict ? "O Jev não tem certeza." : "Sem Avaliação do Jev."} Decida se estas respostas estão em conflito.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" disabled={saving} onClick={() => decide([pair.id], "open_pendency")}>
+                  Abrir Pendência de conflito
+                </Button>
+                <Button size="sm" disabled={saving} onClick={() => decide([pair.id], "dismiss")}>
+                  Não é conflito
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && <p className="text-destructive text-xs">{error}</p>}
+    </div>
+  );
+}
+
+// A Pendência de conflito aberta: as duas respostas, o julgamento, a pergunta da IA e as três formas de
+// resolver (corrigir uma resposta, rever uma Restrição ou esclarecer).
+function ConflictPendency({ process, pendency, onChange }: { process: ProcessDetail; pendency: Pendency; onChange: () => void }) {
+  const conflict = pendency.conflict!;
+  const verdict = conflict.conflictAssessment.verdicts.find((item) => item.pairId === conflict.pairId);
+  const constraints = process.constraints.filter((item) => item.withdrawnAt === null);
+  // Restrições só existem a partir da Etapa R; a revisão vale em qualquer Etapa desde então.
+  const canRevise = constraints.length > 0;
+  return (
+    <div className="flex flex-col gap-2 rounded-md border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="destructive">Pendência de conflito</Badge>
+        <span className="text-muted-foreground text-xs">
+          {conflict.openedBy === "jev" ? "O Jev avaliou que as respostas são incompatíveis." : "Você abriu esta Pendência."}
+        </span>
+      </div>
+      <ul className="flex flex-col gap-1 text-xs">
+        <AnswerLine answer={conflict.answers[0]} />
+        <AnswerLine answer={conflict.answers[1]} />
+      </ul>
+      {verdict ? <VerdictLine verdict={verdict} /> : <FailureLine assessment={conflict.conflictAssessment} />}
+      <ResolutionQuestionView processId={process.id} pendency={pendency} onChange={onChange} />
+      <p className="text-muted-foreground text-xs">
+        Para resolver, corrija uma das respostas na Pergunta (uma Versão nova substitui esta Pendência), reveja uma Restrição ou
+        registre um esclarecimento.
+      </p>
+      <Clarification processId={process.id} pendencyId={pendency.id} onChange={onChange} />
+      {canRevise && (
+        <ConstraintRevisionForm
+          idPrefix={`revision-${pendency.id}`}
+          constraints={constraints}
+          revise={(constraintId, revision) => reviseConstraintForConflict(process.id, pendency.id, constraintId, revision)}
+          onChange={onChange}
+        />
+      )}
+    </div>
+  );
+}
+
+function ResolutionQuestionView({ processId, pendency, onChange }: { processId: string; pendency: Pendency; onChange: () => void }) {
+  const question = pendency.conflict!.resolutionQuestion;
+  const { saving, error, act } = useAction(onChange);
+  if (question === null) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted-foreground text-xs">A IA ainda não formulou a pergunta de resolução.</p>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={saving}
+          onClick={() => act(() => requestResolutionQuestion(processId, pendency.id), "Não foi possível pedir a pergunta à IA.")}
+        >
+          Pedir pergunta à IA
+        </Button>
+        {error && <p className="text-destructive w-full text-xs">{error}</p>}
+      </div>
+    );
+  }
+  const last = question.attempts.at(-1)!;
+  return (
+    <div className="flex flex-col gap-2">
+      {question.status === "running" && <p className="text-muted-foreground text-xs">A IA está formulando a pergunta de resolução…</p>}
+      {question.question && (
+        <p className="bg-muted rounded-md p-2 text-sm">
+          <span className="text-muted-foreground text-xs">Pergunta da IA: </span>
+          {question.question}
+        </p>
+      )}
+      {question.status !== "running" && question.status !== "completed" && (
+        <>
+          <p className="text-xs">{attemptProblem(last)}</p>
+          <NewAttempt last={last} open={(cli) => requestResolutionQuestion(processId, pendency.id, cli)} onChange={onChange} />
+        </>
+      )}
+      <AttemptList attempts={question.attempts} />
+    </div>
+  );
+}
+
+function Clarification({ processId, pendencyId, onChange }: { processId: string; pendencyId: string; onChange: () => void }) {
+  const [text, setText] = useState("");
+  const { saving, error, act } = useAction(onChange);
+  const id = `clarification-${pendencyId}`;
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (await act(() => clarifyConflict(processId, pendencyId, text), "Não foi possível registrar o esclarecimento; tente de novo.")) {
+      setText("");
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-1.5">
+      <Label htmlFor={id} className="text-xs font-normal">
+        Esclarecimento: há uma alternativa provisória, ou algo foi mal entendido?
+      </Label>
+      <Textarea id={id} value={text} rows={2} disabled={saving} onChange={(event) => setText(event.target.value)} />
+      {error && <p className="text-destructive text-xs">{error}</p>}
+      <div className="flex justify-end">
+        <Button type="submit" size="sm" disabled={saving || text.trim() === ""}>
+          {saving ? "Registrando…" : "Registrar esclarecimento"}
+        </Button>
+      </div>
+    </form>
+  );
+}

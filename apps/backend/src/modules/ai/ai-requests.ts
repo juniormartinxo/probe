@@ -14,7 +14,7 @@ import {
 
 // Operações que o backend pede à IA. Cada uma tem a sua solicitação; uma nova chance depois de
 // uma falha é uma nova tentativa da mesma solicitação.
-export type Operation = "refine_problem_statement" | "generate_block" | "synthesize_block";
+export type Operation = "refine_problem_statement" | "generate_block" | "synthesize_block" | "formulate_resolution_question";
 
 export type AttemptStatus = "running" | "completed" | "failed" | "timed_out" | "canceled" | "interrupted";
 
@@ -104,12 +104,12 @@ export async function findAiRequest<T>(db: Db, processId: string, operation: Ope
 }
 
 // Para operações que um Processo pede mais de uma vez, na ordem em que foram pedidas. Com
-// `blockId`, só as do Bloco.
+// `blockId`, só as do Bloco; com `pendencyId`, só as da Pendência.
 export async function listAiRequests<T>(
   db: Db,
   processId: string,
   operation: Operation,
-  { blockId }: { blockId?: string } = {},
+  { blockId, pendencyId }: { blockId?: string; pendencyId?: string } = {},
 ): Promise<AiRequest<T>[]> {
   let query = db
     .selectFrom("aiRequests")
@@ -117,6 +117,7 @@ export async function listAiRequests<T>(
     .where("processId", "=", processId)
     .where("operation", "=", operation);
   if (blockId) query = query.where("blockId", "=", blockId);
+  if (pendencyId) query = query.where("pendencyId", "=", pendencyId);
   const requests = await query.orderBy("createdAt").orderBy("id").execute();
   return Promise.all(requests.map((request) => withAttempts<T>(db, request)));
 }

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { stageNames } from "../ai/prompt-parts.ts";
-import type { AssessmentChoice, ImpactInput } from "./assessor.ts";
+import type { AssessmentChoice, ConstraintImpactInput, ImpactedConfirmation, ImpactInput } from "./assessor.ts";
 import type { ChoiceQuestion } from "./coverage-rubric.ts";
 
 // Rubrica da Avaliação de impacto, versionada com o código e enviada em português (ADR 0001). Mudar
@@ -17,10 +17,26 @@ const CRITERIA: Record<AssessmentChoice, string> = {
   insufficient: "O texto não traz informação suficiente para distinguir sim de não.",
 };
 
-export const IMPACT_RUBRIC_REVISION = `sha256:${createHash("sha256")
-  .update(JSON.stringify({ instruction: INSTRUCTION, criteria: CRITERIA }))
-  .digest("hex")
-  .slice(0, 16)}`;
+const revisionOf = (rubric: { instruction: string; criteria: Record<AssessmentChoice, string> }) =>
+  `sha256:${createHash("sha256").update(JSON.stringify(rubric)).digest("hex").slice(0, 16)}`;
+
+export const IMPACT_RUBRIC_REVISION = revisionOf({ instruction: INSTRUCTION, criteria: CRITERIA });
+
+// A rubrica do impacto de uma Revisão de Restrição, com revisão própria.
+const CONSTRAINT_INSTRUCTION =
+  "O estado traz a Confirmação de uma Etapa que a pessoa fez num Processo de decisão pelo framework PROBE e a revisão " +
+  "de uma Restrição que valia quando ela confirmou: a Restrição retirada e a que a substituiu, se houver (uma Restrição " +
+  "nova, inegociável, ou uma Preferência, negociável). " +
+  "A revisão afeta o que a Confirmação dá por estabelecido, a ponto de ela precisar ser revista? " +
+  "Julgue apenas pelo texto explícito; não use conhecimento externo.";
+
+const CONSTRAINT_CRITERIA: Record<AssessmentChoice, string> = {
+  yes: "Algo que a Confirmação afirma ou cobre se apoiava na Restrição retirada e deixa de valer, ou muda de forma relevante.",
+  no: "A Confirmação continua verdadeira depois da revisão: nada do que ela afirma ou cobre dependia da Restrição retirada.",
+  insufficient: "O texto não traz informação suficiente para distinguir sim de não.",
+};
+
+export const CONSTRAINT_IMPACT_RUBRIC_REVISION = revisionOf({ instruction: CONSTRAINT_INSTRUCTION, criteria: CONSTRAINT_CRITERIA });
 
 // Abaixo desta confiança, o julgamento do Jev não decide sozinho: o usuário vê a Avaliação e decide se
 // abre a Pendência. Não esconde nada; a Avaliação é exibida como veio. O valor tem apoio empírico, sem
@@ -31,10 +47,18 @@ export const IMPACT_CONFIDENCE_THRESHOLD = 0.7;
 // A pergunta única de cada Avaliação de impacto.
 export const IMPACT_KEY = "impacto";
 
+const etapaOf = (confirmation: ImpactedConfirmation) => `${confirmation.stage} (${stageNames[confirmation.stage]})`;
+
+const stageConfirmationOf = (confirmation: Extract<ImpactedConfirmation, { kind: "stage" }>) => ({
+  tipo: "Confirmação da Etapa",
+  etapa: etapaOf(confirmation),
+  pontos: confirmation.stagePoints.map(({ name, description }) => ({ ponto: name, pede: description })),
+  respostas: confirmation.answers.map(({ ref, wording, answer }) => ({ pergunta: `[${ref}] ${wording}`, resposta: answer })),
+});
+
 // O estado e a pergunta, com a Confirmação e a mudança como dado, separados da instrução.
 export function impactRequest(input: ImpactInput): { state: Record<string, unknown>; questions: Record<string, ChoiceQuestion> } {
   const { confirmation } = input;
-  const etapa = `${confirmation.stage} (${stageNames[confirmation.stage]})`;
   return {
     state: {
       enunciado: input.problemStatement,
@@ -42,16 +66,11 @@ export function impactRequest(input: ImpactInput): { state: Record<string, unkno
         confirmation.kind === "block_synthesis"
           ? {
               tipo: `Síntese do Bloco ${confirmation.blockNumber}`,
-              etapa,
+              etapa: etapaOf(confirmation),
               sintese: confirmation.synthesis,
               pontosCobertos: confirmation.coveredStagePoints.map(({ name, description }) => ({ ponto: name, pede: description })),
             }
-          : {
-              tipo: "Confirmação da Etapa",
-              etapa,
-              pontos: confirmation.stagePoints.map(({ name, description }) => ({ ponto: name, pede: description })),
-              respostas: confirmation.answers.map(({ ref, wording, answer }) => ({ pergunta: `[${ref}] ${wording}`, resposta: answer })),
-            },
+          : stageConfirmationOf(confirmation),
       mudanca: {
         pergunta: `[${input.question.ref}] ${input.question.wording}`,
         respostaAnterior: input.previousAnswer,
@@ -59,5 +78,31 @@ export function impactRequest(input: ImpactInput): { state: Record<string, unkno
       },
     },
     questions: { [IMPACT_KEY]: { type: "choice", instructions: INSTRUCTION, criteria: { ...CRITERIA } } },
+  };
+}
+
+const itemOf = ({ statement, scope, unit }: { statement: string; scope: string | null; unit: string | null }) => ({
+  enunciado: statement,
+  escopo: scope,
+  unidade: unit,
+});
+
+// O estado e a pergunta da Revisão de Restrição, com a Confirmação e a revisão como dado.
+export function constraintImpactRequest(input: ConstraintImpactInput): {
+  state: Record<string, unknown>;
+  questions: Record<string, ChoiceQuestion>;
+} {
+  const { constraint, replacement, note } = input.revision;
+  return {
+    state: {
+      enunciado: input.problemStatement,
+      confirmacao: stageConfirmationOf(input.confirmation),
+      revisao: {
+        restricaoRetirada: itemOf(constraint),
+        substituta: replacement && { tipo: replacement.kind === "constraint" ? "Restrição" : "Preferência", ...itemOf(replacement.item) },
+        nota: note,
+      },
+    },
+    questions: { [IMPACT_KEY]: { type: "choice", instructions: CONSTRAINT_INSTRUCTION, criteria: { ...CONSTRAINT_CRITERIA } } },
   };
 }

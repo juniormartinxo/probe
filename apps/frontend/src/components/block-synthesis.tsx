@@ -309,7 +309,7 @@ function ProposalForm({
       {error && <p className="text-destructive text-sm">{error}</p>}
       <div className="flex justify-end">
         <Button type="submit" size="sm" disabled={saving || text.trim() === ""}>
-          {saving ? "Confirmando…" : corrected ? "Confirmar síntese corrigida" : "Confirmar síntese"}
+          {saving ? "Confirmando e avaliando conflitos…" : corrected ? "Confirmar síntese corrigida" : "Confirmar síntese"}
         </Button>
       </div>
     </form>

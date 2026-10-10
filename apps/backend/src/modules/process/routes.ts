@@ -5,11 +5,16 @@ import { impactAssessmentsOf, type ConfirmationRef } from "../assessments/impact
 import { stageAssessmentsOf, type StageAssessments } from "../assessments/stage-assessments.ts";
 import type { AnswerChange, AnswerValue, Answers } from "./answers.ts";
 import type { Blocks } from "./blocks.ts";
+import { conflictChecksOf, type ConflictConstraintRevision, type ConflictDecision, type Conflicts } from "./conflicts.ts";
+import { constraintReassessmentsOf, type ConstraintReassessments } from "./constraint-reassessments.ts";
 import {
+  constraintRevisionsOf,
   constraintsAndPreferencesOf,
   itemPaths,
+  type ConstraintRevisionRequest,
   type ConstraintsAndPreferences,
   type ItemKind,
+  type ItemReplacement,
   type ItemStatement,
 } from "./constraints-and-preferences.ts";
 import type { Pendencies } from "./pendencies.ts";
@@ -71,10 +76,11 @@ function synthesisConfirmationFrom(body: unknown): SynthesisConfirmation | undef
   return { proposalId, synthesis, coveredStagePoints };
 }
 
-function justificationFrom(body: unknown): string | undefined {
+// O texto do campo dado (uma justificativa, um esclarecimento); ausente ou em branco, nenhum.
+function filledTextFrom(body: unknown, field: "justification" | "clarification"): string | undefined {
   if (typeof body !== "object" || body === null) return undefined;
-  const { justification } = body as Record<string, unknown>;
-  return typeof justification === "string" && justification.trim() !== "" ? justification : undefined;
+  const text = (body as Record<string, unknown>)[field];
+  return typeof text === "string" && text.trim() !== "" ? text : undefined;
 }
 
 const optionalText = (value: unknown): value is string | null | undefined =>
@@ -96,7 +102,7 @@ function stageConfirmationFrom(body: unknown): StageConfirmationRequest | undefi
   if (stageAssessmentId !== null && (typeof stageAssessmentId !== "string" || !uuidPattern.test(stageAssessmentId))) {
     return undefined;
   }
-  return { stageAssessmentId, justification: justificationFrom(body)?.trim() ?? null };
+  return { stageAssessmentId, justification: filledTextFrom(body, "justification")?.trim() ?? null };
 }
 
 // A Confirmação afetada: a síntese de um Bloco ou a de uma Etapa.
@@ -109,13 +115,13 @@ function confirmationRefFrom(value: unknown): ConfirmationRef | undefined {
 }
 
 // A decisão do usuário sobre o impacto, quando o Jev não teve certeza ou não respondeu.
-function impactDecisionFrom(answerVersionId: string, body: unknown): ImpactDecision | undefined {
+function impactDecisionFrom(body: unknown): Omit<ImpactDecision, "answerVersionId"> | undefined {
   if (typeof body !== "object" || body === null) return undefined;
   const { confirmation, impactAssessmentId, decision } = body as Record<string, unknown>;
   const ref = confirmationRefFrom(confirmation);
   if (!ref || typeof impactAssessmentId !== "string" || !uuidPattern.test(impactAssessmentId)) return undefined;
   if (decision !== "open_pendency" && decision !== "keep_confirmation") return undefined;
-  return { answerVersionId, confirmation: ref, impactAssessmentId, decision };
+  return { confirmation: ref, impactAssessmentId, decision };
 }
 
 // O texto corrigido da síntese, ao reconfirmá-la; sem corpo ou sem `synthesis`, reconfirma como está.
@@ -125,6 +131,46 @@ function correctedSynthesisFrom(body: unknown): { ok: true; synthesis: string | 
   const { synthesis } = body as Record<string, unknown>;
   if (synthesis === undefined || synthesis === null) return { ok: true, synthesis: null };
   return typeof synthesis === "string" && synthesis.trim() !== "" ? { ok: true, synthesis } : { ok: false };
+}
+
+// A decisão do usuário sobre pares de conflito em que o Jev não teve certeza ou não respondeu.
+function conflictDecisionFrom(body: unknown): ConflictDecision | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { conflictAssessmentId, pairIds, decision } = body as Record<string, unknown>;
+  if (typeof conflictAssessmentId !== "string" || !uuidPattern.test(conflictAssessmentId)) return undefined;
+  if (!Array.isArray(pairIds) || pairIds.length === 0 || !pairIds.every((id) => typeof id === "string" && uuidPattern.test(id))) {
+    return undefined;
+  }
+  if (decision !== "open_pendency" && decision !== "dismiss") return undefined;
+  return { conflictAssessmentId, pairIds, decision };
+}
+
+// O que substitui a Restrição revista, se houver: uma Restrição nova ou uma Preferência.
+function itemReplacementFrom(value: unknown): { ok: true; replacement: ItemReplacement | null } | { ok: false } {
+  if (value === undefined || value === null) return { ok: true, replacement: null };
+  if (typeof value !== "object") return { ok: false };
+  const { kind } = value as Record<string, unknown>;
+  const item = itemStatementFrom(value);
+  if ((kind !== "constraint" && kind !== "preference") || !item) return { ok: false };
+  return { ok: true, replacement: { kind, item } };
+}
+
+// A Restrição revista, a que a substitui (se houver) e uma nota opcional.
+function revisionRequestFrom(body: unknown): ConstraintRevisionRequest | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { replacement, note } = body as Record<string, unknown>;
+  if (!optionalText(note)) return undefined;
+  const replaced = itemReplacementFrom(replacement);
+  if (!replaced.ok) return undefined;
+  return { replacement: replaced.replacement, note: note ?? null };
+}
+
+// Na resolução de um conflito, a Restrição a rever vem no corpo.
+function constraintRevisionFrom(body: unknown): ConflictConstraintRevision | undefined {
+  const request = revisionRequestFrom(body);
+  const { constraintId } = (body ?? {}) as Record<string, unknown>;
+  if (!request || typeof constraintId !== "string" || !uuidPattern.test(constraintId)) return undefined;
+  return { constraintId, ...request };
 }
 
 // A CLI que o usuário escolheu para uma nova tentativa; sem corpo ou sem `cli`, nenhuma escolha
@@ -191,6 +237,12 @@ const errorStatus = {
   pendency_not_found: 404,
   pendency_resolved: 409,
   synthesis_not_applicable: 422,
+  undecided_conflicts: 409,
+  conflict_check_not_found: 404,
+  conflict_assessed: 409,
+  conflict_pair_not_found: 404,
+  conflict_decided: 409,
+  resolution_question_generated: 409,
 } as const;
 
 // Restrições e Preferências seguem as mesmas rotas, cada uma no seu caminho.
@@ -209,6 +261,8 @@ export const processRoutes =
     stageConfirmations,
     constraintsAndPreferences,
     reassessments,
+    constraintReassessments,
+    conflicts,
   }: {
     db: Db;
     problemStatements: ProblemStatements;
@@ -221,6 +275,8 @@ export const processRoutes =
     stageConfirmations: StageConfirmations;
     constraintsAndPreferences: ConstraintsAndPreferences;
     reassessments: Reassessments;
+    constraintReassessments: ConstraintReassessments;
+    conflicts: Conflicts;
   }): FastifyPluginAsync =>
   async (app) => {
     app.post("/processes", async (request, reply) => {
@@ -243,7 +299,13 @@ export const processRoutes =
         pendencies: await pendencies.list(process),
         // Confirmações cuja Versão sustentada foi superada, ainda em revisão, e as Avaliações de impacto.
         reassessments: await reassessmentsOf(db, id),
+        // Confirmações de Etapa que sustentavam uma Restrição revista, ainda em revisão.
+        constraintReassessments: await constraintReassessmentsOf(db, id),
+        // As Revisões de Restrição, na ordem: o histórico de cada Restrição revista.
+        constraintRevisions: await constraintRevisionsOf(db, id),
         impactAssessments: await impactAssessmentsOf(db, id),
+        // As verificações de conflito entre respostas confirmadas, com os pares e as Avaliações.
+        conflictChecks: await conflictChecksOf(db, id),
         // As Avaliações de cada Etapa já aberta, da primeira à atual.
         stageAssessments: (
           await Promise.all(
@@ -418,7 +480,7 @@ export const processRoutes =
       async (request, reply) => {
         const { id, key } = request.params;
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
-        const justification = justificationFrom(request.body);
+        const justification = filledTextFrom(request.body, "justification");
         if (justification === undefined) return reply.code(400).send({ error: "justification_required" });
         const result = await stagePointCoverage.declareInapplicable(id, key, justification);
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
@@ -477,9 +539,43 @@ export const processRoutes =
         const { id, versionId } = request.params;
         if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
         if (!uuidPattern.test(versionId)) return reply.code(404).send({ error: "reassessment_not_found" });
-        const decision = impactDecisionFrom(versionId, request.body);
+        const decision = impactDecisionFrom(request.body);
         if (!decision) return reply.code(400).send({ error: "decision_required" });
-        const result = await reassessments.decide(id, decision);
+        const result = await reassessments.decide(id, { answerVersionId: versionId, ...decision });
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ pendency: result.pendency });
+      },
+    );
+
+    // O impacto de uma Revisão de Restrição, sobre uma Confirmação de Etapa.
+    app.post<{ Params: { id: string; revisionId: string } }>(
+      "/processes/:id/constraint-revisions/:revisionId/impact-assessments",
+      async (request, reply) => {
+        const { id, revisionId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(revisionId)) return reply.code(404).send({ error: "reassessment_not_found" });
+        const confirmation = confirmationRefFrom((request.body as Record<string, unknown> | undefined)?.confirmation);
+        if (confirmation?.kind !== "stage") return reply.code(400).send({ error: "confirmation_required" });
+        const result = await constraintReassessments.retry(id, revisionId, confirmation.stage);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ impactAssessment: result.impactAssessment });
+      },
+    );
+
+    app.post<{ Params: { id: string; revisionId: string } }>(
+      "/processes/:id/constraint-revisions/:revisionId/impact-decision",
+      async (request, reply) => {
+        const { id, revisionId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(revisionId)) return reply.code(404).send({ error: "reassessment_not_found" });
+        const decision = impactDecisionFrom(request.body);
+        if (decision?.confirmation.kind !== "stage") return reply.code(400).send({ error: "decision_required" });
+        const result = await constraintReassessments.decide(id, {
+          constraintRevisionId: revisionId,
+          stage: decision.confirmation.stage,
+          impactAssessmentId: decision.impactAssessmentId,
+          decision: decision.decision,
+        });
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(201).send({ pendency: result.pendency });
       },
@@ -499,6 +595,71 @@ export const processRoutes =
       },
     );
 
+    app.post<{ Params: { id: string; checkId: string } }>(
+      "/processes/:id/conflict-checks/:checkId/conflict-assessments",
+      async (request, reply) => {
+        const { id, checkId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(checkId)) return reply.code(404).send({ error: "conflict_check_not_found" });
+        const result = await conflicts.retry(id, checkId);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(201).send({ conflictCheck: result.conflictCheck });
+      },
+    );
+
+    app.post<{ Params: { id: string; checkId: string } }>("/processes/:id/conflict-checks/:checkId/decision", async (request, reply) => {
+      const { id, checkId } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      if (!uuidPattern.test(checkId)) return reply.code(404).send({ error: "conflict_check_not_found" });
+      const decision = conflictDecisionFrom(request.body);
+      if (!decision) return reply.code(400).send({ error: "decision_required" });
+      const result = await conflicts.decide(id, checkId, decision);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ pendencies: result.pendencies });
+    });
+
+    app.post<{ Params: { id: string; pendencyId: string } }>(
+      "/processes/:id/pendencies/:pendencyId/clarification",
+      async (request, reply) => {
+        const { id, pendencyId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(pendencyId)) return reply.code(404).send({ error: "pendency_not_found" });
+        const clarification = filledTextFrom(request.body, "clarification");
+        if (clarification === undefined) return reply.code(400).send({ error: "clarification_required" });
+        const result = await conflicts.clarify(id, pendencyId, clarification);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return { pendency: result.pendency };
+      },
+    );
+
+    app.post<{ Params: { id: string; pendencyId: string } }>(
+      "/processes/:id/pendencies/:pendencyId/constraint-revision",
+      async (request, reply) => {
+        const { id, pendencyId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(pendencyId)) return reply.code(404).send({ error: "pendency_not_found" });
+        const revision = constraintRevisionFrom(request.body);
+        if (!revision) return reply.code(400).send({ error: "revision_required" });
+        const result = await conflicts.reviseConstraint(id, pendencyId, revision);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return { pendency: result.pendency };
+      },
+    );
+
+    app.post<{ Params: { id: string; pendencyId: string } }>(
+      "/processes/:id/pendencies/:pendencyId/resolution-question/attempts",
+      async (request, reply) => {
+        const { id, pendencyId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(pendencyId)) return reply.code(404).send({ error: "pendency_not_found" });
+        const chosen = attemptCliFrom(request.body);
+        if (!chosen.ok) return reply.code(400).send({ error: "invalid_cli" });
+        const result = await conflicts.requestResolutionQuestion(id, pendencyId, chosen.cli);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(202).send({ resolutionQuestion: result.resolutionQuestion });
+      },
+    );
+
     for (const kind of itemKinds) {
       const path = itemPaths[kind];
       app.post<{ Params: { id: string } }>(`/processes/:id/${path}`, async (request, reply) => {
@@ -510,6 +671,19 @@ export const processRoutes =
         if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
         return reply.code(201).send({ [kind]: result.item });
       });
+
+      if (kind === "constraint") {
+        app.post<{ Params: { id: string; itemId: string } }>(`/processes/:id/${path}/:itemId/revision`, async (request, reply) => {
+          const { id, itemId } = request.params;
+          if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+          if (!uuidPattern.test(itemId)) return reply.code(404).send({ error: "constraint_not_found" });
+          const revision = revisionRequestFrom(request.body);
+          if (!revision) return reply.code(400).send({ error: "revision_required" });
+          const result = await constraintsAndPreferences.revise(id, itemId, revision);
+          if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+          return reply.code(201).send({ constraintRevision: result.revision });
+        });
+      }
 
       app.post<{ Params: { id: string; itemId: string } }>(`/processes/:id/${path}/:itemId/withdrawal`, async (request, reply) => {
         const { id, itemId } = request.params;

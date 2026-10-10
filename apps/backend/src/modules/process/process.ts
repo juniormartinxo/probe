@@ -38,3 +38,16 @@ export async function findProcess(db: Db, id: string): Promise<ProcessWithConver
 export async function listProcesses(db: Db): Promise<Process[]> {
   return db.selectFrom("processes").selectAll().orderBy("createdAt", "desc").orderBy("id", "desc").execute();
 }
+
+// Trava o Processo aberto para a transação.
+export async function lockOpenProcess(trx: Db, processId: string) {
+  const process = await trx
+    .selectFrom("processes")
+    .select(["id", "status", "currentStage", "stagePointsVersion"])
+    .where("id", "=", processId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!process) return { ok: false, error: "process_not_found" } as const;
+  if (process.status !== "open") return { ok: false, error: "process_not_open" } as const;
+  return { ok: true, process } as const;
+}

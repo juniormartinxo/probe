@@ -33,6 +33,8 @@ export interface AiRequestTable {
   operation: Operation;
   // Bloco que a solicitação sintetiza; só nas de síntese.
   blockId: string | null;
+  // Pendência de conflito cuja pergunta de resolução a solicitação formula; só nessas.
+  pendencyId: Generated<string | null>;
   createdAt: Generated<Date>;
 }
 
@@ -146,18 +148,91 @@ export interface PendencyTable {
   id: Generated<string>;
   processId: string;
   reason: PendencyReason;
-  questionId: string;
+  // Sem Pergunta só a de reavaliação de uma Revisão de Restrição, que fica na Confirmação da Etapa.
+  questionId: string | null;
   openedAt: Generated<Date>;
   resolvedAt: Date | null;
   resolvedByAnswerVersionId: string | null;
   resolution: PendencyResolution | null;
-  // Só nas de reavaliação: a Versão nova, a Avaliação de impacto que a originou, quem a abriu e a
-  // Confirmação afetada (a síntese de um Bloco ou a de uma Etapa).
+  // Só nas de reavaliação: a mudança (a Versão nova ou a Revisão de Restrição), a Avaliação de impacto
+  // que a originou, quem a abriu e a Confirmação afetada (a síntese de um Bloco ou a de uma Etapa).
   answerVersionId: string | null;
+  constraintRevisionId: Generated<string | null>;
   impactAssessmentId: string | null;
   openedBy: "jev" | "user" | null;
   blockId: string | null;
   stage: Stage | null;
+  // Só nas de conflito: o par de respostas e a Avaliação de conflito que a originou; o esclarecimento,
+  // quando resolvida por ele.
+  conflictPairId: Generated<string | null>;
+  conflictAssessmentId: Generated<string | null>;
+  clarification: Generated<string | null>;
+}
+
+export interface ConstraintRevisionTable {
+  id: Generated<string>;
+  processId: string;
+  constraintId: string;
+  replacementConstraintId: string | null;
+  replacementPreferenceId: string | null;
+  note: string | null;
+  conflictPendencyId: string | null;
+  revisedAt: Generated<Date>;
+}
+
+export interface ConfirmationConstraintRevisionTable {
+  id: Generated<string>;
+  processId: string;
+  constraintRevisionId: string;
+  stage: Stage;
+  basis: ConfirmationBasis;
+  impactAssessmentId: string;
+  recordedAt: Generated<Date>;
+}
+
+export interface ConflictCheckTable {
+  id: Generated<string>;
+  processId: string;
+  subjectAnswerVersionIds: string[];
+  createdAt: Generated<Date>;
+}
+
+export interface ConflictPairTable {
+  id: Generated<string>;
+  checkId: string;
+  position: number;
+  answerVersionId: string;
+  otherAnswerVersionId: string;
+}
+
+export interface ConflictAssessmentTable {
+  id: Generated<string>;
+  processId: string;
+  checkId: string;
+  status: "completed" | "failed";
+  requestedModel: string;
+  jevModel: string | null;
+  rubricRevision: string;
+  analyzedConstraintIds: Generated<string[]>;
+  analyzedPreferenceIds: Generated<string[]>;
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  createdAt: Generated<Date>;
+}
+
+export interface ConflictVerdictTable {
+  assessmentId: string;
+  pairId: string;
+  choice: AssessmentChoice;
+  confidence: number;
+  // Gravado como JSON; lido como objeto.
+  probabilities: ColumnType<Record<AssessmentChoice, number>, string, never>;
+}
+
+export interface ConflictDismissalTable {
+  pairId: string;
+  conflictAssessmentId: string;
+  dismissedAt: Generated<Date>;
 }
 
 export interface StageAssessmentTable {
@@ -200,8 +275,10 @@ interface ConfirmationColumns {
 export interface ImpactAssessmentTable extends ConfirmationColumns {
   id: Generated<string>;
   processId: string;
-  answerVersionId: string;
-  previousAnswerVersionId: string;
+  // A mudança: a Versão nova de uma resposta (com a anterior) ou uma Revisão de Restrição.
+  answerVersionId: string | null;
+  previousAnswerVersionId: string | null;
+  constraintRevisionId: Generated<string | null>;
   analyzedAnswerVersionIds: Generated<string[]>;
   status: "completed" | "failed";
   requestedModel: string;
@@ -270,6 +347,13 @@ export interface Database {
   stageConfirmations: StageConfirmationTable;
   impactAssessments: ImpactAssessmentTable;
   confirmationAnswerVersions: ConfirmationAnswerVersionTable;
+  conflictChecks: ConflictCheckTable;
+  conflictPairs: ConflictPairTable;
+  conflictAssessments: ConflictAssessmentTable;
+  conflictVerdicts: ConflictVerdictTable;
+  conflictDismissals: ConflictDismissalTable;
+  constraintRevisions: ConstraintRevisionTable;
+  confirmationConstraintRevisions: ConfirmationConstraintRevisionTable;
   settings: SettingsTable;
 }
 

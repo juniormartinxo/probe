@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AttemptContext, BlockInput, SynthesisInput } from "../src/modules/ai/assistant.ts";
+import type { AttemptContext, BlockInput, ResolutionQuestionInput, SynthesisInput } from "../src/modules/ai/assistant.ts";
 import { createExecutorAssistant } from "../src/modules/ai/executor-assistant.ts";
 import { stagePointsOf } from "../src/modules/process/stage-points.ts";
 import { waitFor } from "./support/test-app.ts";
@@ -476,6 +476,71 @@ describe("Block synthesis through the executor", () => {
     const { url } = await startExecutor(answering(output));
 
     expect(await synthesize(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
+  });
+});
+
+const resolutionQuestionInput: ResolutionQuestionInput = {
+  problemStatement: "O deploy leva 40 minutos e bloqueia o time durante a manhã.",
+  constraints: [{ statement: "Sem downtime", scope: null, unit: null }],
+  preferences: [],
+  answers: [
+    { ref: "2.1", stage: "R", wording: "Até quando o deploy precisa ficar mais rápido?", answer: "Em duas semanas." },
+    { ref: "2.2", stage: "R", wording: "De que integrações a solução depende?", answer: "Da nova API, disponível em um mês." },
+  ],
+  clarifications: [
+    {
+      answers: [
+        { ref: "2.1", stage: "R", wording: "Até quando o deploy precisa ficar mais rápido?", answer: "Em três semanas." },
+        { ref: "2.3", stage: "R", wording: "Quem aprova a mudança?", answer: "A diretoria, em um mês." },
+      ],
+      clarification: "A aprovação só vale para a segunda fase.",
+    },
+  ],
+};
+
+describe("Conflict resolution question through the executor", () => {
+  const formulate = (url: string) =>
+    createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).formulateResolutionQuestion(resolutionQuestionInput, attemptContext());
+
+  it("sends the two answers in conflict, the statement and the Constraints, as data, in the prompt", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify({ question: "Há alternativa provisória?" })));
+
+    await formulate(url);
+
+    const { operation, prompt } = requests[0]!.body as { operation: string; prompt: string };
+    expect(operation).toBe("generate_text");
+    expect(prompt).toContain("[2.1] e [2.2], parecem incompatíveis");
+    expect(prompt).toContain("[2.1] (Etapa R, Restrições) Até quando o deploy precisa ficar mais rápido?\nResposta: Em duas semanas.");
+    expect(prompt).toContain("<<<ENUNCIADO\nO deploy leva 40 minutos");
+    expect(prompt).toContain("Restrições (inegociáveis):\n- Sem downtime");
+  });
+
+  it("sends the user's clarifications of earlier conflicts, with the answers as they were, as data", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify({ question: "Há alternativa provisória?" })));
+
+    await formulate(url);
+
+    const { prompt } = requests[0]!.body as { prompt: string };
+    expect(prompt).toContain(
+      "<<<ESCLARECIMENTOS\n[2.1] (Etapa R, Restrições) Até quando o deploy precisa ficar mais rápido?\nResposta: Em três semanas.\n" +
+        "[2.3] (Etapa R, Restrições) Quem aprova a mudança?\nResposta: A diretoria, em um mês.\n" +
+        "Esclarecimento: A aprovação só vale para a segunda fase.\nESCLARECIMENTOS>>>",
+    );
+  });
+
+  it("brings the question", async () => {
+    const { url } = await startExecutor(answering("```json\n" + JSON.stringify({ question: " Há alternativa provisória? " }) + "\n```"));
+
+    expect(await formulate(url)).toEqual({ status: "completed", usage: null, result: { question: "Há alternativa provisória?" } });
+  });
+
+  it.each([
+    ["prose instead of JSON", "Há alternativa provisória?"],
+    ["an empty question", JSON.stringify({ question: " " })],
+  ])("never takes %s as a completed question", async (_case, output) => {
+    const { url } = await startExecutor(answering(output));
+
+    expect(await formulate(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
   });
 });
 

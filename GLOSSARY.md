@@ -156,21 +156,36 @@ _Code_: `Confirmation`
 _Avoid_: Conclusão, aprovação, validação
 
 **Reavaliação**:
-Revisão de uma Confirmação (síntese de bloco ou Etapa) que dependia de uma Versão já superada. Abre-se com a Versão nova e passa pela Avaliação de impacto do Jev; termina quando a Confirmação passa a sustentar a Versão nova (sem impacto, mantida pelo usuário ou reconfirmada). Enquanto não termina, bloqueia a Confirmação da Etapa da Pergunta e das seguintes; com impacto, vira Pendência de reavaliação.
-_Code_: `Reassessment` (a Avaliação: `ImpactAssessment`)
+Revisão de uma Confirmação (síntese de bloco ou Etapa) que dependia de algo que mudou: uma Versão já superada ou uma Restrição revista. Abre-se com a mudança e passa pela Avaliação de impacto do Jev; termina quando a Confirmação passa a sustentar a mudança (sem impacto, mantida pelo usuário ou reconfirmada). Enquanto não termina, bloqueia a Confirmação da Etapa da Pergunta (na Revisão de Restrição, a da Etapa revista) e das seguintes; com impacto, vira Pendência de reavaliação.
+_Code_: `Reassessment` (de uma Revisão de Restrição: `ConstraintReassessment`; a Avaliação: `ImpactAssessment`)
 _Avoid_: Revalidação, invalidação
 
+**Conflito**:
+Duas respostas confirmadas que não podem valer ao mesmo tempo, como um prazo de duas semanas e uma dependência obrigatória de uma integração que só fica disponível em um mês. Uma Preferência não atendida não é conflito. Quando respostas passam a confirmadas (pela síntese do Bloco ou depois de uma mudança), o Jev avalia cada par que elas formam entre si e com as respostas já confirmadas; um `yes` confiante abre a Pendência de conflito, e um julgamento incerto ou uma falha do Jev deixam a decisão com o usuário, que abre a Pendência ou descarta o conflito. Enquanto não há decisão, a Confirmação da Etapa das respostas e das seguintes espera.
+_Code_: `ConflictPair` (a verificação que reúne os pares das respostas recém-confirmadas: `ConflictCheck`; a Avaliação: `ConflictAssessment`)
+_Avoid_: Contradição, inconsistência
+
+**Pergunta de resolução**:
+Pergunta que a IA formula para o usuário resolver uma Pendência de conflito: se há alternativa provisória, se algo deve ser revisto ou se algo foi mal entendido. Orienta; a Pendência se resolve pelo que o usuário fizer, não pela resposta a ela. Não é uma Pergunta de Bloco.
+_Code_: `ResolutionQuestion`
+_Avoid_: Pergunta de conflito
+
 **Pendência**:
-Impedimento visível que bloqueia as Confirmações que dependem dele, por um de três motivos: reavaliação (depende de Versão superada), conflito (respostas incompatíveis) ou informação desconhecida. A de reavaliação nasce de uma Avaliação de impacto e se resolve reconfirmando a Confirmação afetada (numa síntese de bloco, com o texto corrigido, se preciso) ou corrigindo a resposta com uma Versão nova.
-_Code_: `Pendency` (motivos `unknown_information` e `reassessment`; resolução `answered`, `reconfirmed` ou `corrected`)
+Impedimento visível que bloqueia as Confirmações que dependem dele, por um de três motivos: reavaliação (depende de Versão superada ou de Restrição revista), conflito (respostas incompatíveis) ou informação desconhecida. A de reavaliação nasce de uma Avaliação de impacto e se resolve reconfirmando a Confirmação afetada (numa síntese de bloco, com o texto corrigido, se preciso) ou corrigindo a resposta com uma Versão nova. A de conflito nasce de uma Avaliação de conflito, liga as duas respostas, traz a pergunta de resolução que a IA formula e se resolve com uma Versão nova de uma das respostas, uma Revisão de Restrição ou um esclarecimento do usuário, que passa a ir como contexto às Avaliações de conflito e às perguntas de resolução seguintes. A de reavaliação de uma Revisão de Restrição não fica numa Pergunta, e sim na Confirmação da Etapa afetada.
+_Code_: `Pendency` (motivos `unknown_information`, `reassessment` e `conflict`; resolução `answered`, `reconfirmed`, `corrected`, `clarified` ou `constraint_revised`)
 _Avoid_: Bloqueio, alerta, issue
 
 ## Restrições e opções
 
 **Restrição**:
-Condição inegociável do problema; elimina as Opções que a violam e não pode ser compensada por vantagens em outra dimensão. O usuário a registra na Etapa R como item próprio do Processo, com escopo e unidade quando se aplicam; retirada, deixa de valer e fica no histórico.
+Condição inegociável do problema; elimina as Opções que a violam e não pode ser compensada por vantagens em outra dimensão. O usuário a registra na Etapa R como item próprio do Processo, com escopo e unidade quando se aplicam; retirada, deixa de valer e fica no histórico. Depois da Etapa R, só muda por uma Revisão de Restrição.
 _Code_: `Constraint`
 _Avoid_: Restrição inegociável, requisito, condição
+
+**Revisão de Restrição**:
+Mudança explícita de uma Restrição em vigor: o usuário a retira e, se houver, registra a que a substitui (uma Restrição nova ou uma Preferência), com uma nota; as duas ficam no histórico. Vale em qualquer Etapa a partir de R, como resolução de uma Pendência de conflito ou avulsa, depois da Etapa R. Cada Confirmação de Etapa que sustentava a Restrição passa pela Avaliação de impacto do Jev, numa Reavaliação.
+_Code_: `ConstraintRevision`
+_Avoid_: Edição de Restrição, afrouxamento
 
 **Preferência**:
 Condição desejável, mas negociável, que pesa no Balanceamento sem eliminar Opções. Registrada na Etapa R como item próprio, distinto das Restrições, com a mesma forma.

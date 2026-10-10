@@ -1,15 +1,20 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ApiError,
+  decideConstraintImpact,
   decideImpact,
   reconfirmPendency,
+  retryConstraintImpact,
   retryImpactAssessment,
   synthesisInForce,
   type AssessmentChoice,
+  type AssessorFailureReason,
+  type ConstraintReassessment,
   type DependentConfirmation,
   type ImpactAssessment,
   type ProcessDetail,
   type Reassessment,
+  type ReassessmentStatus,
   type Stage,
 } from "@/api";
 import { failureText } from "@/components/stage-confirmation";
@@ -41,24 +46,32 @@ export function confirmationName(confirmation: DependentConfirmation): string {
     : `Confirmação da Etapa ${confirmation.stage} · ${stageName(confirmation.stage)}`;
 }
 
-// O que precisa ser revisto e por quê: cada Confirmação que dependia de uma resposta que mudou, com a
-// mudança e a Avaliação de impacto do Jev. O que não foi afetado continua valendo, e o usuário segue
-// respondendo as outras Perguntas.
+// O que precisa ser revisto e por quê: cada Confirmação que dependia de uma resposta que mudou, ou de
+// uma Restrição que foi revista, com a mudança e a Avaliação de impacto do Jev. O que não foi afetado
+// continua valendo, e o usuário segue respondendo as outras Perguntas.
 export function Reassessments({ process, onChange }: { process: ProcessDetail; onChange: () => void }) {
-  if (process.reassessments.length === 0) return null;
+  if (process.reassessments.length === 0 && process.constraintReassessments.length === 0) return null;
   return (
     <div className="border-destructive/40 flex flex-col gap-3 rounded-lg border p-4 text-sm">
       <div>
         <p className="text-xs font-medium">O que precisa ser revisto</p>
         <p className="text-muted-foreground text-xs">
-          Uma resposta mudou depois de sustentar uma Confirmação. O Jev avalia se a mudança a afeta; quem decide é você. O
-          resto continua valendo, e você pode seguir respondendo as outras Perguntas.
+          Uma resposta mudou, ou uma Restrição foi revista, depois de sustentar uma Confirmação. O Jev avalia se a mudança a
+          afeta; quem decide é você. O resto continua valendo, e você pode seguir respondendo as outras Perguntas.
         </p>
       </div>
       <ul className="flex flex-col gap-3">
         {process.reassessments.map((reassessment) => (
           <ReassessmentItem
             key={`${reassessment.newVersion.id}-${reassessment.confirmation.kind === "stage" ? reassessment.confirmation.stage : reassessment.confirmation.blockId}`}
+            process={process}
+            reassessment={reassessment}
+            onChange={onChange}
+          />
+        ))}
+        {process.constraintReassessments.map((reassessment) => (
+          <ConstraintReassessmentItem
+            key={`${reassessment.revision.id}-${reassessment.confirmation.stage}`}
             process={process}
             reassessment={reassessment}
             onChange={onChange}
@@ -78,11 +91,95 @@ function ReassessmentItem({
   reassessment: Reassessment;
   onChange: () => void;
 }) {
-  const { confirmation, question, previousVersion, newVersion, status } = reassessment;
-  const latest = reassessment.impactAssessments.at(-1) ?? null;
-  const pendency = process.pendencies.find((item) => item.id === reassessment.pendencyId) ?? null;
+  const { confirmation, question, previousVersion, newVersion } = reassessment;
   const confirmedSynthesis =
     confirmation.kind === "block_synthesis" ? process.blocks.find((block) => block.id === confirmation.blockId)?.synthesis : undefined;
+  return (
+    <ImpactReview
+      process={process}
+      confirmation={confirmation}
+      status={reassessment.status}
+      impactAssessments={reassessment.impactAssessments}
+      pendencyId={reassessment.pendencyId}
+      synthesis={confirmedSynthesis ? synthesisInForce(confirmedSynthesis) : null}
+      correctable
+      retry={() => retryImpactAssessment(process.id, newVersion.id, confirmation)}
+      decide={(impactAssessmentId, decision) => decideImpact(process.id, newVersion.id, { confirmation, impactAssessmentId, decision })}
+      onChange={onChange}
+    >
+      A resposta da Pergunta {question.number} do Bloco {question.blockNumber} (“{question.wording}”) mudou de “
+      {previousVersion.answer}” (Versão {previousVersion.number}) para “{newVersion.answer}” (Versão {newVersion.number}).
+      Esta Confirmação dependia da resposta anterior.
+    </ImpactReview>
+  );
+}
+
+function ConstraintReassessmentItem({
+  process,
+  reassessment,
+  onChange,
+}: {
+  process: ProcessDetail;
+  reassessment: ConstraintReassessment;
+  onChange: () => void;
+}) {
+  const { confirmation, revision } = reassessment;
+  const { replacement } = revision;
+  return (
+    <ImpactReview
+      process={process}
+      confirmation={confirmation}
+      status={reassessment.status}
+      impactAssessments={reassessment.impactAssessments}
+      pendencyId={reassessment.pendencyId}
+      synthesis={null}
+      correctable={false}
+      retry={() => retryConstraintImpact(process.id, revision.id, confirmation.stage)}
+      decide={(impactAssessmentId, decision) =>
+        decideConstraintImpact(process.id, revision.id, { stage: confirmation.stage, impactAssessmentId, decision })
+      }
+      onChange={onChange}
+    >
+      A Restrição “{revision.constraint.statement}” foi revista
+      {replacement
+        ? ` e substituída pela ${replacement.kind === "constraint" ? "Restrição" : "Preferência"} “${replacement.item.statement}”.`
+        : " e retirada, sem substituta."}
+      {revision.note && ` Nota: ${revision.note}`} Esta Confirmação valia com a Restrição anterior.
+    </ImpactReview>
+  );
+}
+
+// Uma Confirmação em revisão: a mudança, a Avaliação de impacto do Jev e o que o usuário faz em cada
+// estado (pedir a Avaliação, decidir sem o Jev ou com ele incerto, reconfirmar).
+function ImpactReview({
+  process,
+  confirmation,
+  status,
+  impactAssessments,
+  pendencyId,
+  synthesis,
+  correctable,
+  retry,
+  decide,
+  onChange,
+  children,
+}: {
+  process: ProcessDetail;
+  confirmation: DependentConfirmation;
+  status: ReassessmentStatus;
+  impactAssessments: ImpactAssessment[];
+  pendencyId: string | null;
+  // O texto da síntese que vale; null quando a Confirmação é a da Etapa.
+  synthesis: string | null;
+  // A mudança é uma resposta, que o usuário pode corrigir com uma Versão nova.
+  correctable: boolean;
+  retry: () => Promise<unknown>;
+  decide: (impactAssessmentId: string, decision: "open_pendency" | "keep_confirmation") => Promise<unknown>;
+  onChange: () => void;
+  children: ReactNode;
+}) {
+  const latest = impactAssessments.at(-1) ?? null;
+  const pendency = process.pendencies.find((item) => item.id === pendencyId) ?? null;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -99,13 +196,9 @@ function ReassessmentItem({
     }
   }
 
-  const decide = (decision: "open_pendency" | "keep_confirmation") =>
-    act(
-      () => decideImpact(process.id, newVersion.id, { confirmation, impactAssessmentId: latest!.id, decision }),
-      "Não foi possível registrar a sua decisão; tente de novo.",
-    );
-  const retry = () =>
-    act(() => retryImpactAssessment(process.id, newVersion.id, confirmation), "Não foi possível pedir a Avaliação de impacto.");
+  const choose = (decision: "open_pendency" | "keep_confirmation") =>
+    act(() => decide(latest!.id, decision), "Não foi possível registrar a sua decisão; tente de novo.");
+  const assess = () => act(retry, "Não foi possível pedir a Avaliação de impacto.");
 
   return (
     <li className="flex flex-col gap-2 rounded-md border p-3">
@@ -113,17 +206,13 @@ function ReassessmentItem({
         <span className="font-medium">{confirmationName(confirmation)}</span>
         {status === "pendency_open" && <Badge variant="destructive">Pendência de reavaliação</Badge>}
       </div>
-      <p className="text-xs">
-        A resposta da Pergunta {question.number} do Bloco {question.blockNumber} (“{question.wording}”) mudou de “
-        {previousVersion.answer}” (Versão {previousVersion.number}) para “{newVersion.answer}” (Versão {newVersion.number}).
-        Esta Confirmação dependia da resposta anterior.
-      </p>
+      <p className="text-xs">{children}</p>
       {latest && <ImpactLine assessment={latest} />}
-      {reassessment.impactAssessments.length > 1 && (
+      {impactAssessments.length > 1 && (
         <details className="text-muted-foreground text-xs">
-          <summary className="cursor-pointer">Avaliações anteriores ({reassessment.impactAssessments.length - 1})</summary>
+          <summary className="cursor-pointer">Avaliações anteriores ({impactAssessments.length - 1})</summary>
           <ul className="mt-2 flex flex-col gap-1">
-            {reassessment.impactAssessments.slice(0, -1).map((assessment) => (
+            {impactAssessments.slice(0, -1).map((assessment) => (
               <li key={assessment.id}>
                 <ImpactLine assessment={assessment} />
               </li>
@@ -135,7 +224,7 @@ function ReassessmentItem({
       {status === "not_assessed" && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-muted-foreground text-xs">O Jev ainda não avaliou o impacto desta mudança.</p>
-          <Button variant="outline" size="sm" disabled={saving} onClick={retry}>
+          <Button variant="outline" size="sm" disabled={saving} onClick={assess}>
             {saving ? "Avaliando…" : "Avaliar impacto"}
           </Button>
         </div>
@@ -149,14 +238,14 @@ function ReassessmentItem({
           </p>
           <div className="flex flex-wrap gap-2">
             {status === "assessment_failed" && (
-              <Button variant="outline" size="sm" disabled={saving} onClick={retry}>
+              <Button variant="outline" size="sm" disabled={saving} onClick={assess}>
                 Tentar de novo
               </Button>
             )}
-            <Button variant="outline" size="sm" disabled={saving} onClick={() => decide("open_pendency")}>
+            <Button variant="outline" size="sm" disabled={saving} onClick={() => choose("open_pendency")}>
               Abrir Pendência
             </Button>
-            <Button size="sm" disabled={saving} onClick={() => decide("keep_confirmation")}>
+            <Button size="sm" disabled={saving} onClick={() => choose("keep_confirmation")}>
               Manter a Confirmação
             </Button>
           </div>
@@ -167,8 +256,9 @@ function ReassessmentItem({
           processId={process.id}
           pendencyId={pendency.id}
           openedBy={pendency.reassessment?.openedBy ?? "jev"}
-          synthesis={confirmedSynthesis ? synthesisInForce(confirmedSynthesis) : null}
+          synthesis={synthesis}
           stage={confirmation.stage}
+          correctable={correctable}
           saving={saving}
           onReconfirm={(text) => act(() => reconfirmPendency(process.id, pendency.id, text), "Não foi possível reconfirmar; tente de novo.")}
         />
@@ -178,21 +268,22 @@ function ReassessmentItem({
   );
 }
 
-// A Avaliação de impacto como veio, ou a falha.
-export function ImpactLine({ assessment }: { assessment: ImpactAssessment }) {
-  if (assessment.status === "failed") {
-    return (
-      <div className="flex flex-col gap-0.5 text-xs">
-        <span>{assessment.failureReason ? failureText[assessment.failureReason] : "A Avaliação de impacto falhou."}</span>
-        {assessment.message && <span className="text-muted-foreground whitespace-pre-wrap">{assessment.message}</span>}
-      </div>
-    );
-  }
-  const { yes, no, insufficient } = assessment.probabilities!;
+// Um julgamento do Jev como veio: a escolha, nos termos da Avaliação, a confiança e as probabilidades.
+export function JudgmentLine({
+  choice,
+  confidence,
+  probabilities: { yes, no, insufficient },
+  texts,
+}: {
+  choice: AssessmentChoice;
+  confidence: number;
+  probabilities: Record<AssessmentChoice, number>;
+  texts: Record<AssessmentChoice, string>;
+}) {
   return (
     <p className="text-xs">
       <span className="text-muted-foreground">Jev: </span>
-      <span className="font-medium">{impactText[assessment.choice!]}</span> · confiança {percent(assessment.confidence!)}
+      <span className="font-medium">{texts[choice]}</span> · confiança {percent(confidence)}
       <span className="text-muted-foreground">
         {" "}
         · sim {percent(yes)} · não {percent(no)} · insuficiente {percent(insufficient)}
@@ -201,14 +292,48 @@ export function ImpactLine({ assessment }: { assessment: ImpactAssessment }) {
   );
 }
 
-// Resolver a Pendência: reconfirmar a Confirmação com a resposta nova (numa síntese de bloco, com o
-// texto corrigido, se precisar) ou corrigir a resposta na Pergunta, com uma Versão nova.
+// Uma Avaliação do Jev que falhou: o motivo e a mensagem.
+export function FailedJudgment({
+  failureReason,
+  message,
+  fallback,
+}: {
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  fallback: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 text-xs">
+      <span>{failureReason ? failureText[failureReason] : fallback}</span>
+      {message && <span className="text-muted-foreground whitespace-pre-wrap">{message}</span>}
+    </div>
+  );
+}
+
+// A Avaliação de impacto como veio, ou a falha.
+export function ImpactLine({ assessment }: { assessment: ImpactAssessment }) {
+  if (assessment.status === "failed") {
+    return <FailedJudgment failureReason={assessment.failureReason} message={assessment.message} fallback="A Avaliação de impacto falhou." />;
+  }
+  return (
+    <JudgmentLine
+      choice={assessment.choice!}
+      confidence={assessment.confidence!}
+      probabilities={assessment.probabilities!}
+      texts={impactText}
+    />
+  );
+}
+
+// Resolver a Pendência: reconfirmar a Confirmação com a mudança (numa síntese de bloco, com o texto
+// corrigido, se precisar) ou, quando a mudança é uma resposta, corrigi-la na Pergunta com uma Versão nova.
 function Reconfirmation({
   processId,
   pendencyId,
   openedBy,
   synthesis,
   stage,
+  correctable,
   saving,
   onReconfirm,
 }: {
@@ -218,6 +343,7 @@ function Reconfirmation({
   // O texto da síntese que vale; null quando a Confirmação é a da Etapa.
   synthesis: string | null;
   stage: Stage;
+  correctable: boolean;
   saving: boolean;
   onReconfirm: (synthesis: string | null) => void;
 }) {
@@ -227,8 +353,10 @@ function Reconfirmation({
     <div className="flex flex-col gap-2">
       <p className="text-muted-foreground text-xs">
         {openedBy === "jev" ? "O Jev avaliou que a mudança afeta esta Confirmação." : "Você abriu esta Pendência."} Ela bloqueia a
-        Confirmação da Etapa {stage} e das seguintes até você resolvê-la: reconfirme com a resposta nova ou corrija a resposta
-        na Pergunta (uma Versão nova substitui esta Pendência).
+        Confirmação da Etapa {stage} e das seguintes até você resolvê-la:{" "}
+        {correctable
+          ? "reconfirme com a resposta nova ou corrija a resposta na Pergunta (uma Versão nova substitui esta Pendência)."
+          : "reconfirme a Etapa com a Restrição revista."}
       </p>
       {synthesis !== null && (
         <div className="flex flex-col gap-1.5">

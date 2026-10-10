@@ -1,5 +1,6 @@
 // Porta da IA. A implementação real chama o executor; nos testes, uma versão falsa a substitui.
 
+import type { ConflictClarification } from "../assessments/assessor.ts";
 import type { ItemStatements } from "../process/constraints-and-preferences.ts";
 import type { StagePoint } from "../process/stage-points.ts";
 import type { Stage } from "../process/stage.ts";
@@ -161,6 +162,28 @@ export interface GeneratedSynthesis {
   ambiguousAnswers: AmbiguousAnswer[];
 }
 
+// Resposta confirmada como a IA a recebe numa Pendência de conflito, com a Etapa da Pergunta.
+export interface ConflictingAnswer {
+  ref: string;
+  stage: Stage;
+  wording: string;
+  answer: string;
+}
+
+// O que a IA recebe para formular a pergunta com que o usuário resolve uma Pendência de conflito: o
+// problema, as Restrições e Preferências em vigor e as duas respostas incompatíveis.
+export interface ResolutionQuestionInput extends ItemStatements {
+  problemStatement: string;
+  answers: [ConflictingAnswer, ConflictingAnswer];
+  // Os esclarecimentos com que o usuário resolveu outras Pendências de conflito, com as respostas como estavam.
+  clarifications: ConflictClarification[];
+}
+
+export interface GeneratedResolutionQuestion {
+  // A pergunta ao usuário: se há alternativa provisória, se algo deve ser revisto ou se algo foi mal entendido.
+  question: string;
+}
+
 export interface Assistant {
   refineProblemStatement(
     input: { originalDescription: string },
@@ -168,6 +191,7 @@ export interface Assistant {
   ): Promise<AssistantOutcome<StatementProposal>>;
   generateBlock(input: BlockInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedBlock>>;
   synthesizeBlock(input: SynthesisInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedSynthesis>>;
+  formulateResolutionQuestion(input: ResolutionQuestionInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedResolutionQuestion>>;
   // Pedido mínimo à CLI, só para saber se a cadeia até ela funciona; o resultado é a resposta crua.
   testConnection(context: AttemptContext): Promise<AssistantOutcome<string>>;
 }

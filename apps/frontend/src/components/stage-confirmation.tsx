@@ -7,8 +7,10 @@ import {
   type AssessmentChoice,
   type AssessorFailureReason,
   type ProcessDetail,
+  type Stage,
   type StageAssessment,
   type StageConfirmation,
+  undecidedConflictStatuses,
 } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +38,7 @@ const confirmErrorText: Record<string, string> = {
   open_stage_points: "Ainda há Pontos abertos nesta Etapa.",
   blocking_pendencies: "Há Pendências abertas que bloqueiam esta Etapa. Resolva-as antes de confirmar.",
   undecided_reassessments: "Há revisões sem decisão sobre o impacto de uma mudança. Decida-as antes de confirmar.",
+  undecided_conflicts: "Há respostas cuja compatibilidade ainda espera o Jev ou a sua decisão. Decida antes de confirmar.",
   unknown_assessment: "Há uma Avaliação mais recente do que a que você viu. Confira-a antes de confirmar.",
   assessment_outdated: "As respostas ou os Pontos mudaram depois da Avaliação. Peça uma Avaliação nova.",
   assessment_required: "Peça a Avaliação do Jev antes de confirmar.",
@@ -52,14 +55,29 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
   const stage = process.currentStage;
   const latest = process.stageAssessments.filter((item) => item.stage === stage).at(-1) ?? null;
   const toAssess = process.stagePoints.some((point) => point.status === "covered");
-  // Bloqueiam a Confirmação: a informação desconhecida nas Perguntas desta Etapa e as revisões (com
-  // Pendência ou ainda sem decisão) desta Etapa ou das anteriores, em que ela se apoia.
+  // Bloqueiam a Confirmação: a informação desconhecida nas Perguntas desta Etapa, as revisões (com
+  // Pendência ou ainda sem decisão) desta Etapa ou das anteriores, em que ela se apoia, e os conflitos
+  // (com Pendência ou ainda sem decisão) entre respostas desta Etapa ou das anteriores.
   const upTo = stages.slice(0, stages.findIndex((item) => item.stage === stage) + 1).map((item) => item.stage);
   const unknown = process.pendencies.filter(
-    (pendency) => pendency.resolvedAt === null && pendency.reason === "unknown_information" && pendency.question.stage === stage,
+    (pendency) => pendency.resolvedAt === null && pendency.reason === "unknown_information" && pendency.question?.stage === stage,
   );
-  const reviews = process.reassessments.filter((reassessment) => upTo.includes(reassessment.question.stage));
-  const blocking = [...unknown, ...reviews];
+  const reviews = [
+    ...process.reassessments.filter((reassessment) => upTo.includes(reassessment.question.stage)),
+    ...process.constraintReassessments.filter((reassessment) => upTo.includes(reassessment.confirmation.stage)),
+  ];
+  const inStages = (...answers: { question: { stage: Stage } }[]) => answers.some((answer) => upTo.includes(answer.question.stage));
+  const conflicts = [
+    ...process.pendencies.filter(
+      (pendency) => pendency.resolvedAt === null && pendency.conflict !== null && inStages(...pendency.conflict.answers),
+    ),
+    ...process.conflictChecks.filter((check) =>
+      check.pairs.some(
+        (pair) => undecidedConflictStatuses.includes(pair.status) && inStages(pair.answer, pair.other),
+      ),
+    ),
+  ];
+  const blocking = [...unknown, ...reviews, ...conflicts];
 
   const [assessing, setAssessing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -125,6 +143,13 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
         <p className="text-destructive text-sm">
           {reviews.length === 1 ? "Uma Confirmação em revisão" : `${reviews.length} Confirmações em revisão`} bloqueia a Confirmação
           desta Etapa. Veja acima o que precisa ser revisto.
+        </p>
+      )}
+
+      {conflicts.length > 0 && (
+        <p className="text-destructive text-sm">
+          Há respostas em conflito, ou à espera de decisão sobre conflito, nesta Etapa ou nas anteriores. Veja acima as respostas em
+          conflito.
         </p>
       )}
 

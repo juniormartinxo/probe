@@ -126,6 +126,7 @@ describe("A new Version of an answer", () => {
         id: expect.any(String),
         answerVersionId: version.id,
         previousAnswerVersionId: previous.id,
+        constraintRevisionId: null,
         analyzedAnswerVersionIds: [],
         confirmation: { kind: "block_synthesis", blockId: block.id, blockNumber: 1, stage: "P" },
         status: "completed",
@@ -237,10 +238,12 @@ describe("Impact `yes`", () => {
       reassessment: {
         answerVersionId: version.id,
         previousAnswerVersionId: previous.id,
+        constraintRevisionId: null,
         confirmation: { kind: "block_synthesis", blockId: block.id, blockNumber: 1, stage: "P" },
         openedBy: "jev",
         impactAssessment,
       },
+      conflict: null,
     };
     expect(process.pendencies).toEqual([pendency]);
     // O chat mostra o que precisa ser revisto e por quê: a Confirmação, a mudança e o julgamento.

@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { CoverageInput, ImpactInput } from "../src/modules/assessments/assessor.ts";
+import type { ConflictInput, ConstraintImpactInput, CoverageInput, ImpactInput } from "../src/modules/assessments/assessor.ts";
 import { createJevAssessor } from "../src/modules/assessments/jev-assessor.ts";
 import { stagePointsOf } from "../src/modules/process/stage-points.ts";
 
@@ -250,5 +250,128 @@ describe("impact Assessment through the Jev API", () => {
     const { url } = await startJev(() => ({ model: "jev-1.13.0", answers: {}, usage: {} }));
 
     expect(await assessImpact(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
+  });
+});
+
+describe("impact Assessment of a Constraint revision through the Jev API", () => {
+  const constraintImpactInput: ConstraintImpactInput = {
+    problemStatement: impactInput.problemStatement,
+    confirmation: { kind: "stage", stage: "R", stagePoints: [realProblem!], answers: input.answers },
+    revision: {
+      constraint: { statement: "Entregar em duas semanas", scope: null, unit: null },
+      replacement: { kind: "preference", item: { statement: "Entregar em duas semanas", scope: "Primeira versão", unit: null } },
+      note: "Foi um desejo da diretoria.",
+    },
+  };
+
+  it("sends the Stage Confirmation and the revision, as data, with its own rubric", async () => {
+    const { url, requests } = await startJev(() => ({ model: "jev-1.13.0", answers: { impacto: validAnswers.real_problem }, usage: {} }));
+    const assessor = createJevAssessor({ url, apiKey: API_KEY, model: "jev-latest", timeoutMs: 5_000 });
+
+    const outcome = await assessor.assessConstraintImpact(constraintImpactInput);
+
+    const body = requests[0]!.body as { state: Record<string, unknown>; questions: Record<string, { instructions: string; criteria: object }> };
+    expect(body.state).toEqual({
+      enunciado: impactInput.problemStatement,
+      confirmacao: {
+        tipo: "Confirmação da Etapa",
+        etapa: "R (Restrições)",
+        pontos: [{ ponto: realProblem!.name, pede: realProblem!.description }],
+        respostas: [
+          { pergunta: "[1.1] A demora é o problema em si?", resposta: "A demora é sintoma de outra coisa" },
+          { pergunta: "[1.2] O que a demora já causou?", resposta: "Atraso nas entregas" },
+        ],
+      },
+      revisao: {
+        restricaoRetirada: { enunciado: "Entregar em duas semanas", escopo: null, unidade: null },
+        substituta: { tipo: "Preferência", enunciado: "Entregar em duas semanas", escopo: "Primeira versão", unidade: null },
+        nota: "Foi um desejo da diretoria.",
+      },
+    });
+    expect(Object.keys(body.questions)).toEqual(["impacto"]);
+    expect(body.questions.impacto!.instructions).toContain("a revisão de uma Restrição que valia quando ela confirmou");
+    expect(Object.keys(body.questions.impacto!.criteria)).toEqual(["yes", "no", "insufficient"]);
+    expect(outcome).toMatchObject({ status: "completed", result: { choice: "yes", confidence: 0.81 } });
+  });
+});
+
+const conflictInput: ConflictInput = {
+  problemStatement: "O deploy leva 40 minutos e bloqueia o time durante a manhã.",
+  constraints: [{ statement: "Sem downtime", scope: "Produção", unit: null }],
+  preferences: [{ statement: "Manter o GitHub Actions", scope: null, unit: null }],
+  clarifications: [
+    {
+      answers: [
+        { ref: "2.1", stage: "R", wording: "Até quando?", answer: "Em três semanas." },
+        { ref: "2.3", stage: "R", wording: "Quem aprova?", answer: "A diretoria, em um mês." },
+      ],
+      clarification: "A aprovação só vale para a segunda fase.",
+    },
+  ],
+  pairs: [
+    {
+      key: "par_0",
+      answer: { ref: "2.1", stage: "R", wording: "Até quando?", answer: "Em duas semanas." },
+      other: { ref: "2.2", stage: "R", wording: "De que integrações depende?", answer: "Da nova API, disponível em um mês." },
+    },
+    {
+      key: "par_1",
+      answer: { ref: "2.1", stage: "R", wording: "Até quando?", answer: "Em duas semanas." },
+      other: { ref: "1.1", stage: "P", wording: "A demora é o problema em si?", answer: "A demora é sintoma de outra coisa" },
+    },
+  ],
+};
+
+describe("conflict Assessment through the Jev API", () => {
+  const assessConflicts = (url: string) =>
+    createJevAssessor({ url, apiKey: API_KEY, model: "jev-latest", timeoutMs: 5_000 }).assessConflicts(conflictInput);
+
+  it("sends the answers once, with the Constraints and Preferences as context, and one Choice question per pair", async () => {
+    const answers = { par_0: validAnswers.real_problem, par_1: validAnswers.consequence };
+    const { url, requests } = await startJev(() => ({ model: "jev-1.13.0", answers, usage: {} }));
+
+    const outcome = await assessConflicts(url);
+
+    const body = requests[0]!.body as { state: unknown; questions: Record<string, { instructions: string; criteria: object }> };
+    expect(body.state).toEqual({
+      enunciado: conflictInput.problemStatement,
+      restricoes: [{ restricao: "Sem downtime", escopo: "Produção", unidade: null }],
+      preferencias: [{ preferencia: "Manter o GitHub Actions", escopo: null, unidade: null }],
+      respostas: [
+        { pergunta: "[2.1] Até quando?", etapa: "R (Restrições)", resposta: "Em duas semanas." },
+        { pergunta: "[2.2] De que integrações depende?", etapa: "R (Restrições)", resposta: "Da nova API, disponível em um mês." },
+        { pergunta: "[1.1] A demora é o problema em si?", etapa: "P (Problema)", resposta: "A demora é sintoma de outra coisa" },
+      ],
+      // Os esclarecimentos do usuário, com as respostas como estavam então.
+      esclarecimentos: [
+        {
+          respostasDeEntao: [
+            { pergunta: "[2.1] Até quando?", etapa: "R (Restrições)", resposta: "Em três semanas." },
+            { pergunta: "[2.3] Quem aprova?", etapa: "R (Restrições)", resposta: "A diretoria, em um mês." },
+          ],
+          esclarecimento: "A aprovação só vale para a segunda fase.",
+        },
+      ],
+    });
+    expect(Object.keys(body.questions)).toEqual(["par_0", "par_1"]);
+    expect(body.questions.par_0!.instructions).toContain("As respostas [2.1] e [2.2] são incompatíveis entre si");
+    // Preferência não é obrigação.
+    expect(body.questions.par_0!.instructions).toContain("deixar de atender uma Preferência não é conflito");
+    expect(body.questions.par_0!.instructions).toContain("Um esclarecimento explica por que respostas anteriores não conflitavam; considere-o, mas julgue as respostas atuais.");
+    expect(Object.keys(body.questions.par_1!.criteria)).toEqual(["yes", "no", "insufficient"]);
+    expect(outcome).toEqual({
+      status: "completed",
+      model: "jev-1.13.0",
+      result: {
+        par_0: { choice: "yes", probabilities: { yes: 0.88, no: 0.1, insufficient: 0.02 }, confidence: 0.81 },
+        par_1: { choice: "insufficient", probabilities: { yes: 0.3, no: 0.3, insufficient: 0.4 }, confidence: 0.12 },
+      },
+    });
+  });
+
+  it("refuses an answer that leaves a pair without judgment as invalid output", async () => {
+    const { url } = await startJev(() => ({ model: "jev-1.13.0", answers: { par_0: validAnswers.real_problem }, usage: {} }));
+
+    expect(await assessConflicts(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
   });
 });

@@ -58,6 +58,10 @@ export function understandingOf(process: {
     })),
     openPendencies: process.pendencies
       .filter((pendency) => pendency.resolvedAt === null)
-      .map((pendency) => ({ reason: pendency.reason, wording: pendency.question.wording })),
+      .map((pendency) => ({
+        reason: pendency.reason,
+        // Sem Pergunta, a de uma Revisão de Restrição: a Confirmação da Etapa a reconfirmar.
+        wording: pendency.question?.wording ?? `Confirmação da Etapa ${pendency.reassessment!.confirmation.stage}, depois de uma Revisão de Restrição`,
+      })),
   };
 }
