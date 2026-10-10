@@ -202,15 +202,25 @@ Opção aceita que viola uma Restrição em vigor, segundo o Jev (com confiança
 _Code_: `viability` (`viable`, `inviable`, `undecided`); cada par: `OptionConstraintPair`, avaliado numa `OptionCheck` (a Avaliação: `OptionAssessment`)
 _Avoid_: Opção eliminada, opção descartada
 
+**Matriz qualitativa**:
+Comparação das Opções aceitas na Etapa B, uma linha por Opção: atendimento às Restrições (dos pares Opção × Restrição, nunca da IA nem do usuário), ganhos, perdas, esforço, escala, manutenção e reversibilidade, em texto, sem nota nem peso. Cada linha é do usuário: escrita por ele ou aceita, como veio ou editada, da que uma Recomendação sugeriu; reescrevê-la guarda a anterior no histórico. Uma Opção inviável aparece como tal.
+_Code_: `ComparisonMatrix` (cada linha: `OptionComparison`)
+_Avoid_: Pontuação, ranking, tabela de pesos
+
 **Recomendação**:
-Sugestão da IA a favor de uma Opção; nunca se torna Escolha sem ato do usuário.
+Sugestão da IA a favor de uma Opção viável, com a justificativa e a linha da Matriz qualitativa que ela sugere para cada Opção viável; nunca se torna Escolha sem ato do usuário. Pedida pelo usuário na Etapa B, quantas vezes quiser; as anteriores ficam no histórico.
 _Code_: `Recommendation`
 _Avoid_: Sugestão de escolha, decisão da IA
 
 **Escolha**:
-Opção selecionada pelo usuário na Etapa B; continua revisável enquanto o Processo estiver aberto.
-_Code_: `ChosenOption`
+Opção viável selecionada pelo usuário, da Etapa B em diante, com o motivo de descarte de cada outra Opção viável (as inviáveis já estão descartadas pela Restrição que violam). Continua revisável enquanto o Processo estiver aberto: trocar de Escolha registra uma nova e a anterior fica no histórico. É o que cobre o Ponto "Escolha com os motivos dos descartes", que nenhum Bloco cobre; se a Opção escolhida deixa de ser viável (por uma Revisão de Restrição), a Confirmação da Etapa B espera uma nova Escolha.
+_Code_: `ChosenOption` (cada descarte: `ChoiceDiscard`)
 _Avoid_: Seleção, decisão
+
+**Descarte**:
+Opção viável que a Escolha deixou de lado, com o motivo. Não muda o estado da Opção; não confundir com a Opção descartada na Etapa O.
+_Code_: `ChoiceDiscard`
+_Avoid_: Rejeição, eliminação
 
 **Decisão**:
 Escolha e plano de execução congelados pela Finalização.

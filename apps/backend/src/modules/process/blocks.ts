@@ -13,6 +13,7 @@ import type {
 } from "../ai/assistant.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 import { answersOf, type AnswerDraft, type Answer } from "./answers.ts";
+import { withChoiceCoverage } from "./chosen-options.ts";
 import { openPoints, stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
 import { statementsInForceOf } from "./constraints-and-preferences.ts";
 import { knownOptionOf, optionsOf } from "./options.ts";
@@ -57,7 +58,7 @@ export interface Block extends BlockSynthesisState {
 }
 
 export interface StageWork {
-  // Pontos da Etapa atual, cada um aberto, coberto ou inaplicável.
+  // Pontos da Etapa atual, cada um aberto, coberto, inaplicável ou, o da Escolha, coberto por ela.
   stagePoints: StagePointState[];
   // Os Pontos da Etapa atual ainda abertos.
   openStagePoints: StagePoint[];
@@ -370,7 +371,7 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
             .execute()
         : [];
       const syntheses = await synthesesOf(db, process, blockRows);
-      const stagePoints = await stagePointStates(db, process, process.currentStage);
+      const stagePoints = await withChoiceCoverage(db, process, await stagePointStates(db, process, process.currentStage));
       const reformulated = (id: string | null): Question["reformulates"] => {
         const original = id === null ? undefined : questionRows.find((question) => question.id === id);
         if (!original) return null;

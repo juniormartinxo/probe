@@ -47,6 +47,9 @@ const confirmErrorText: Record<string, string> = {
   pending_option_suggestions: "Há sugestões de Opção da IA sem resposta sua, ou uma proposta em andamento. Aceite ou descarte cada uma antes de confirmar.",
   undecided_options: "Há Opções cuja viabilidade ainda espera o Jev ou a sua decisão. Decida antes de confirmar.",
   no_viable_option: "Nenhuma Opção aceita atende às Restrições. Veja acima os impedimentos.",
+  choice_required: "Registre a sua Escolha, com o motivo de cada descarte, antes de confirmar.",
+  chosen_option_not_viable: "A Opção escolhida deixou de ser viável. Registre uma nova Escolha.",
+  discard_reasons_required: "Há uma Opção viável sem motivo de descarte na Escolha. Registre a Escolha de novo.",
 };
 
 // Na Etapa O, o que as Opções seguram na Confirmação, na ordem em que o backend verifica; null quando nada.
@@ -58,6 +61,19 @@ function optionsProblem(process: ProcessDetail): string | null {
   const accepted = process.options.filter((option) => option.status === "accepted");
   if (accepted.some((option) => option.viability === "undecided")) return "undecided_options";
   return accepted.some((option) => option.viability === "viable") ? null : "no_viable_option";
+}
+
+// Na Etapa B, o que a Escolha segura na Confirmação, na ordem em que o backend verifica; null quando nada.
+function choiceProblem(process: ProcessDetail): string | null {
+  if (process.currentStage !== "B") return null;
+  const matrix = process.comparisonMatrix;
+  if (matrix.some((row) => row.viability === "undecided")) return "undecided_options";
+  const chosen = process.chosenOptions.at(-1);
+  if (!chosen) return "choice_required";
+  if (matrix.find((row) => row.option.id === chosen.option.id)?.viability !== "viable") return "chosen_option_not_viable";
+  const discarded = new Set(chosen.discards.map((discard) => discard.option.id));
+  const unjustified = matrix.some((row) => row.viability === "viable" && row.option.id !== chosen.option.id && !discarded.has(row.option.id));
+  return unjustified ? "discard_reasons_required" : null;
 }
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;
@@ -91,7 +107,7 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
       ),
     ),
   ];
-  const options = optionsProblem(process);
+  const options = optionsProblem(process) ?? choiceProblem(process);
   const blocking = [...unknown, ...reviews, ...conflicts, ...(options ? [options] : [])];
 
   const [assessing, setAssessing] = useState(false);
@@ -178,7 +194,7 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
 
       {!toAssess ? (
         <div className="flex flex-col gap-2">
-          <p className="text-muted-foreground text-sm">Todos os Pontos foram declarados inaplicáveis: não há cobertura para o Jev avaliar.</p>
+          <p className="text-muted-foreground text-sm">Nenhum Ponto foi coberto por Bloco: não há cobertura para o Jev avaliar.</p>
           <div>
             <Button size="sm" disabled={busy || blocking.length > 0} onClick={() => confirm()}>
               {confirmLabel}

@@ -371,6 +371,35 @@ export interface OptionDecisionTable {
   decidedAt: Generated<Date>;
 }
 
+// Linha da matriz qualitativa de uma Opção, escrita pelo usuário; a mais recente vale.
+export interface OptionComparisonTable {
+  id: Generated<string>;
+  optionId: string;
+  gains: string;
+  losses: string;
+  effort: string;
+  scalability: string;
+  maintenance: string;
+  reversibility: string;
+  // A Recomendação cuja linha sugerida o usuário aceitou, como veio ou editada.
+  recommendationId: string | null;
+  recordedAt: Generated<Date>;
+}
+
+// Escolha do usuário; a mais recente vale.
+export interface ChosenOptionTable {
+  id: Generated<string>;
+  processId: string;
+  optionId: string;
+  chosenAt: Generated<Date>;
+}
+
+export interface ChoiceDiscardTable {
+  chosenOptionId: string;
+  optionId: string;
+  reason: string;
+}
+
 // Linha única de configurações não sensíveis.
 export interface SettingsTable {
   id: Generated<boolean>;
@@ -420,6 +449,9 @@ export interface Database {
   optionAssessments: OptionAssessmentTable;
   optionVerdicts: OptionVerdictTable;
   optionDecisions: OptionDecisionTable;
+  optionComparisons: OptionComparisonTable;
+  chosenOptions: ChosenOptionTable;
+  choiceDiscards: ChoiceDiscardTable;
   settings: SettingsTable;
 }
 

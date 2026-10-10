@@ -6,6 +6,7 @@ import {
   type Conversation,
 } from "../conversation/conversation.ts";
 import { CURRENT_STAGE_POINTS_VERSION } from "./stage-points.ts";
+import { stages, type Stage } from "./stage.ts";
 
 export type ProcessStatus = "open" | "finalized";
 
@@ -50,4 +51,12 @@ export async function lockOpenProcess(trx: Db, processId: string) {
   if (!process) return { ok: false, error: "process_not_found" } as const;
   if (process.status !== "open") return { ok: false, error: "process_not_open" } as const;
   return { ok: true, process } as const;
+}
+
+// Trava o Processo aberto que já chegou à Etapa dada (ela ou uma seguinte) para a transação.
+export async function lockOpenProcessFrom(trx: Db, processId: string, stage: Stage) {
+  const locked = await lockOpenProcess(trx, processId);
+  if (!locked.ok) return locked;
+  if (stages.indexOf(locked.process.currentStage) < stages.indexOf(stage)) return { ok: false, error: "stage_not_current" } as const;
+  return locked;
 }

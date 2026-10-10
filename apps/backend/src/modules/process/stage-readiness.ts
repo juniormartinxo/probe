@@ -6,7 +6,7 @@ import {
   itemsApplyTo,
   type ConstraintsAndPreferencesState,
 } from "./constraints-and-preferences.ts";
-import { stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
+import { openPoints, stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
 import type { ConfirmedStageAnswers } from "../ai/assistant.ts";
 import { stages, type Stage } from "./stage.ts";
 
@@ -111,7 +111,8 @@ export async function readyStage(
   const confirmed = await db.selectFrom("problemStatements").select("statement").where("processId", "=", processId).executeTakeFirst();
   if (!confirmed) return { ok: false, error: "problem_statement_not_confirmed" };
   const stagePoints = await stagePointStates(db, process, stage);
-  if (stagePoints.some((point) => point.status === "open")) return { ok: false, error: "open_stage_points" };
+  // O Ponto da Escolha não conta aqui: a Confirmação da Etapa B exige a Escolha à parte.
+  if (openPoints(stagePoints).length > 0) return { ok: false, error: "open_stage_points" };
   const items = itemsApplyTo(stage) ? inForceOf(await constraintsAndPreferencesOf(db, processId)) : { constraints: [], preferences: [] };
   return {
     ok: true,

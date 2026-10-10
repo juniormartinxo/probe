@@ -12,6 +12,8 @@ export interface StagePoint {
   absence?: string;
   // O Ponto só pode ser dado por coberto com alguma Restrição ou Preferência registrada em vigor.
   needsConstraintsOrPreferences?: true;
+  // Só a Escolha cobre o Ponto: nenhum Bloco pergunta sobre ele e ele não se declara inaplicável.
+  coveredByChoice?: true;
 }
 
 // A lista é mantida pela aplicação, não pela IA (ADR 0002). Ajustes vêm do uso e entram como uma
@@ -85,6 +87,7 @@ const lists: Record<number, Record<Stage, StagePoint[]>> = {
         key: "chosen_option_and_discards",
         name: "Escolha com os motivos dos descartes",
         description: "Qual Opção é escolhida e por que as outras foram descartadas.",
+        coveredByChoice: true,
       },
     ],
     E: [

@@ -1,5 +1,6 @@
 import type { Db } from "../../db/database.ts";
 import { stageAssessmentsOf } from "../assessments/stage-assessments.ts";
+import { choiceBlockingStage, type ChoiceNotReady } from "./chosen-options.ts";
 import { undecidedConflictsBlocking } from "./conflicts.ts";
 import { undecidedConstraintReassessmentsBlocking } from "./constraint-reassessments.ts";
 import { optionsBlockingStage, type OptionImpediment } from "./options.ts";
@@ -35,6 +36,7 @@ export type StageConfirmationError =
   | "pending_option_suggestions"
   | "undecided_options"
   | "no_viable_option"
+  | ChoiceNotReady
   | "unknown_assessment"
   | "assessment_outdated"
   | "assessment_required"
@@ -95,6 +97,9 @@ export function stageConfirmations({ db }: { db: Db }): StageConfirmations {
         // Na Etapa O, as Opções: nenhuma sugestão sem resposta, nenhum par sem decisão e alguma viável.
         const options = await optionsBlockingStage(trx, process, stage);
         if (options) return { ok: false, ...options } as const;
+        // Na Etapa B, a Escolha: viável, com o motivo de cada descarte, e nenhuma Opção sem decisão.
+        const choice = await choiceBlockingStage(trx, process, stage);
+        if (choice) return { ok: false, error: choice } as const;
 
         // Nenhuma Avaliação confirma nada: ela só precisa ser a que o usuário viu, e valer ainda.
         if (stageAssessmentId === null) {

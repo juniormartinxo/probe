@@ -11,6 +11,7 @@ import {
 } from "@/api";
 import { AttemptList } from "@/components/attempt-list";
 import { NewAttempt } from "@/components/new-attempt";
+import { Balancing } from "@/components/balancing";
 import { BlockSynthesis } from "@/components/block-synthesis";
 import { Conflicts } from "@/components/conflicts";
 import { ConstraintsAndPreferences } from "@/components/constraints-and-preferences";
@@ -26,7 +27,7 @@ import { attemptProblem } from "@/refinement";
 import { stageName, stagePointStatusText } from "@/stages";
 
 // Etapa atual: os Pontos (abertos, cobertos, inaplicáveis ou com a ausência registrada), as
-// Restrições e Preferências, as Opções, o que precisa ser revisto, as respostas em conflito, as Pendências e os Blocos de Perguntas da IA, cada um com a sua síntese. Só aparece depois da Confirmação do enunciado.
+// Restrições e Preferências, as Opções, o Balanceamento, o que precisa ser revisto, as respostas em conflito, as Pendências e os Blocos de Perguntas da IA, cada um com a sua síntese. Só aparece depois da Confirmação do enunciado.
 // `onChange` recarrega o Processo depois de cada ação.
 export function StageSection({ process, onChange }: { process: ProcessDetail; onChange: () => void }) {
   const blockRequest = process.blockRequests.at(-1) ?? null;
@@ -45,6 +46,7 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
       <StagePoints processId={process.id} points={process.stagePoints} onChange={onChange} />
       <ConstraintsAndPreferences process={process} onChange={onChange} />
       <Options process={process} onChange={onChange} />
+      <Balancing process={process} onChange={onChange} />
       <Reassessments process={process} onChange={onChange} />
       <Conflicts process={process} onChange={onChange} />
       <OpenPendencies process={process} />
@@ -141,7 +143,7 @@ function StagePointItem({ processId, point, onChange }: { processId: string; poi
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={point.status === "open" ? "outline" : "secondary"}>{stagePointStatusText[point.status]}</Badge>
         <span title={point.description}>{point.name}</span>
-        {point.status === "open" && !declaring && !confirmingAbsence && (
+        {point.status === "open" && !point.coveredByChoice && !declaring && !confirmingAbsence && (
           <div className="ml-auto flex gap-1">
             {point.absence && (
               <Button
@@ -182,6 +184,9 @@ function StagePointItem({ processId, point, onChange }: { processId: string; poi
         </div>
       )}
       {point.status === "absent" && <p className="text-muted-foreground text-xs">{point.absence}</p>}
+      {point.coveredByChoice && point.status === "open" && (
+        <p className="text-muted-foreground text-xs">Só a Escolha cobre este Ponto: registre-a, com o motivo de cada descarte, no Balanceamento.</p>
+      )}
       {!declaring && error && <p className="text-destructive text-xs">{error}</p>}
       {point.status === "inapplicable" && (
         <p className="text-muted-foreground text-xs whitespace-pre-wrap">Justificativa: {point.justification}</p>

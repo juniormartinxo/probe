@@ -7,8 +7,10 @@ import type {
   ResolutionQuestionInput,
   GeneratedBlock,
   GeneratedOptions,
+  GeneratedRecommendation,
   GeneratedSynthesis,
   OptionProposalInput,
+  RecommendationInput,
   StatementProposal,
   SynthesisInput,
   Usage,
@@ -79,6 +81,24 @@ export const defaultOptions: GeneratedOptions = {
   ],
 };
 
+// Recomendação padrão: uma linha para cada Opção viável que a IA recebe, recomendando a primeira.
+export function defaultRecommendation(input: RecommendationInput): GeneratedRecommendation {
+  const viable = input.options.filter((option) => option.viability === "viable");
+  return {
+    comparisons: viable.map((option) => ({
+      option: option.ref,
+      gains: "Resolve parte da demora.",
+      losses: "Exige alguma mudança no time.",
+      effort: "Médio.",
+      scalability: "Acompanha o crescimento por um tempo.",
+      maintenance: "Pouca.",
+      reversibility: "Reversível.",
+    })),
+    recommendedOption: viable[0]?.ref ?? "O1",
+    rationale: "Atende as Restrições com o menor esforço.",
+  };
+}
+
 export function completed<T = StatementProposal>(
   result: T = defaultProposal as T,
   usage: Usage | null = null,
@@ -95,14 +115,15 @@ export interface ReceivedAttempt<I, T> {
 
 const HOLD = Symbol("hold");
 
-// Roteiro de uma operação: desfechos na ordem; sem roteiro, conclui com o resultado padrão.
+// Roteiro de uma operação: desfechos na ordem; sem roteiro, conclui com o resultado padrão (que pode
+// depender do que a operação recebeu).
 // Uma tentativa retida fica pendente até o teste respondê-la, e termina como cancelada se a geração
 // for abortada antes disso.
 export class Script<I, T> {
   readonly attempts: ReceivedAttempt<I, T>[] = [];
   private readonly steps: (AssistantOutcome<T> | typeof HOLD)[] = [];
 
-  constructor(private readonly fallback: () => AssistantOutcome<T>) {}
+  constructor(private readonly fallback: (input: I) => AssistantOutcome<T>) {}
 
   willRespond(...outcomes: AssistantOutcome<T>[]): this {
     this.steps.push(...outcomes);
@@ -115,7 +136,7 @@ export class Script<I, T> {
   }
 
   run(input: I, context: AttemptContext): Promise<AssistantOutcome<T>> {
-    const step = this.steps.shift() ?? this.fallback();
+    const step = this.steps.shift() ?? this.fallback(input);
     return new Promise((resolve) => {
       this.attempts.push({ input, context, respond: resolve });
       if (step !== HOLD) return resolve(step);
@@ -131,6 +152,7 @@ export class FakeAssistant implements Assistant {
   readonly synthesis = new Script<SynthesisInput, GeneratedSynthesis>(() => completed(defaultSynthesis));
   readonly resolutionQuestion = new Script<ResolutionQuestionInput, GeneratedResolutionQuestion>(() => completed(defaultResolutionQuestion));
   readonly options = new Script<OptionProposalInput, GeneratedOptions>(() => completed(defaultOptions));
+  readonly recommendation = new Script<RecommendationInput, GeneratedRecommendation>((input) => completed(defaultRecommendation(input)));
   readonly connection = new Script<null, string>(() => completed("ok"));
 
   refineProblemStatement(input: { originalDescription: string }, context: AttemptContext) {
@@ -151,6 +173,10 @@ export class FakeAssistant implements Assistant {
 
   proposeOptions(input: OptionProposalInput, context: AttemptContext) {
     return this.options.run(input, context);
+  }
+
+  recommendOption(input: RecommendationInput, context: AttemptContext) {
+    return this.recommendation.run(input, context);
   }
 
   testConnection(context: AttemptContext) {

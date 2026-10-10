@@ -6,6 +6,8 @@ import type { Assessor } from "./modules/assessments/assessor.ts";
 import { stageAssessments } from "./modules/assessments/stage-assessments.ts";
 import { answers } from "./modules/process/answers.ts";
 import { blocks } from "./modules/process/blocks.ts";
+import { chosenOptions } from "./modules/process/chosen-options.ts";
+import { comparisonMatrix } from "./modules/process/comparison-matrix.ts";
 import { conflicts as conflictsModule } from "./modules/process/conflicts.ts";
 import { constraintReassessments as constraintReassessmentsModule } from "./modules/process/constraint-reassessments.ts";
 import { constraintsAndPreferences } from "./modules/process/constraints-and-preferences.ts";
@@ -13,6 +15,7 @@ import { options as optionsModule } from "./modules/process/options.ts";
 import { pendencies } from "./modules/process/pendencies.ts";
 import { problemStatements } from "./modules/process/problem-statement.ts";
 import { reassessments as reassessmentsModule } from "./modules/process/reassessments.ts";
+import { recommendations } from "./modules/process/recommendations.ts";
 import { processRoutes } from "./modules/process/routes.ts";
 import { stageConfirmations } from "./modules/process/stage-confirmations.ts";
 import { stagePointCoverage } from "./modules/process/stage-point-coverage.ts";
@@ -82,6 +85,9 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
           constraintReassessments,
           conflicts,
           options: optionsOfProcess,
+          comparisonMatrix: comparisonMatrix({ db }),
+          recommendations: recommendations({ db, assistant, runner, settings }),
+          chosenOptions: chosenOptions({ db }),
         }),
       );
       await api.register(settingsRoutes({ settings }));

@@ -1,5 +1,6 @@
 import { describeAnswer } from "./answers.ts";
 import type { StageWork } from "./blocks.ts";
+import type { ChosenOption } from "./chosen-options.ts";
 import { inForceOf, statementsOf, type ConstraintsAndPreferencesState, type ItemStatements } from "./constraints-and-preferences.ts";
 import type { Option } from "./options.ts";
 import type { Pendency, PendencyReason } from "./pendencies.ts";
@@ -26,6 +27,8 @@ export interface Understanding extends ItemStatements {
   openPendencies: { reason: PendencyReason; wording: string }[];
   // As Opções aceitas, com a viabilidade e as Restrições que violam.
   options: Pick<Option, "statement" | "viability" | "violations">[];
+  // A Escolha em vigor, com o motivo de cada descarte; null enquanto não há.
+  chosenOption: { statement: string; discards: { statement: string; reason: string }[] } | null;
 }
 
 export function understandingOf(process: {
@@ -36,7 +39,9 @@ export function understandingOf(process: {
   blocks: StageWork["blocks"];
   pendencies: Pendency[];
   options: Option[];
+  chosenOptions: ChosenOption[];
 } & ConstraintsAndPreferencesState): Understanding {
+  const chosen = process.chosenOptions.at(-1);
   return {
     originalDescription: process.originalDescription,
     problemStatement: process.problemStatement?.statement ?? null,
@@ -70,5 +75,8 @@ export function understandingOf(process: {
     options: process.options
       .filter((option) => option.status === "accepted")
       .map(({ statement, viability, violations }) => ({ statement, viability, violations })),
+    chosenOption: chosen
+      ? { statement: chosen.option.statement, discards: chosen.discards.map(({ option, reason }) => ({ statement: option.statement, reason })) }
+      : null,
   };
 }

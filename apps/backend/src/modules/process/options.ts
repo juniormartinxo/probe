@@ -190,6 +190,10 @@ export async function optionsOf(db: Db, process: { id: string; stagePointsVersio
   }));
 }
 
+// Como a IA e o Jev se referem à Opção: pela ordem em que foi registrada no Processo ("O1"), entre
+// todas as Opções de `optionsOf`.
+export const optionRefOf = (options: { id: string }[], optionId: string): string => `O${options.findIndex((option) => option.id === optionId) + 1}`;
+
 // A Opção como a IA a recebe: o estado e as Restrições que ela viola.
 export const knownOptionOf = ({ statement, description, status, violations }: Option): KnownOption => ({
   statement,

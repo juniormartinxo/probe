@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AttemptContext, BlockInput, OptionProposalInput, ResolutionQuestionInput, SynthesisInput } from "../src/modules/ai/assistant.ts";
+import type { AttemptContext, BlockInput, OptionProposalInput, RecommendationInput, ResolutionQuestionInput, SynthesisInput } from "../src/modules/ai/assistant.ts";
 import { createExecutorAssistant } from "../src/modules/ai/executor-assistant.ts";
 import { stagePointsOf } from "../src/modules/process/stage-points.ts";
 import { waitFor } from "./support/test-app.ts";
@@ -631,6 +631,88 @@ describe("Block generation in Stage O, through the executor", () => {
     const { prompt } = requests[0]!.body as { prompt: string };
     expect(prompt).toContain("<<<OPCOES\n- (aceita) Contratar uma plataforma de CI cara\nViola: Custo de até 500\nOPCOES>>>");
     expect(prompt).toMatch(/reversível/);
+  });
+});
+
+const cells = {
+  gains: "Deploy em 15 minutos.",
+  losses: "Custo maior.",
+  effort: "Baixo.",
+  scalability: "Escala com a máquina.",
+  maintenance: "Nenhuma.",
+  reversibility: "Total.",
+};
+
+const recommendationInput: RecommendationInput = {
+  originalDescription: description,
+  problemStatement: "O deploy leva 40 minutos e bloqueia o time durante a manhã.",
+  confirmedStages: [{ stage: "O", answers: [{ ref: "3.1", wording: "Dá para eliminar o problema?", answer: "Não." }] }],
+  constraints: [{ statement: "Custo de até 500", scope: null, unit: "reais por mês" }],
+  preferences: [{ statement: "Manter o GitHub Actions", scope: null, unit: null }],
+  stagePoints: stagePointsOf(1, "B").filter((point) => !point.coveredByChoice),
+  askedQuestions: [],
+  options: [
+    { ref: "O1", statement: "Trocar o runner", description: null, viability: "viable", violatedConstraints: [], comparison: cells },
+    { ref: "O2", statement: "Cachear dependências", description: "No GitHub Actions.", viability: "viable", violatedConstraints: [], comparison: null },
+    { ref: "O4", statement: "Plataforma de CI cara", description: null, viability: "inviable", violatedConstraints: ["Custo de até 500"], comparison: null },
+  ],
+};
+
+describe("Recommendation through the executor", () => {
+  const recommend = (url: string) =>
+    createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).recommendOption(recommendationInput, attemptContext());
+
+  const rows = [
+    { option: "O2", ...cells, gains: " Deploy em 25 minutos. " },
+    { option: "[O1]", ...cells },
+  ];
+
+  it("sends the Options with their viability and the rows the user wrote, as data, and asks for no score", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify({ comparisons: rows, recommendedOption: "O1", rationale: "Mais simples." })));
+
+    await recommend(url);
+
+    const { prompt } = requests[0]!.body as { prompt: string };
+    expect(prompt).toContain("Etapa B (Balanceamento)");
+    expect(prompt).toContain("- maintenance: Manutenção.");
+    expect(prompt).not.toContain("chosen_option_and_discards");
+    expect(prompt).toContain("Não dê notas, pesos nem pontuação numérica");
+    expect(prompt).toContain("[O1] (viável) Trocar o runner\nGanhos: Deploy em 15 minutos.\nPerdas: Custo maior.");
+    expect(prompt).toContain("[O2] (viável) Cachear dependências\nNo GitHub Actions.\nMatriz: a pessoa ainda não escreveu esta linha.");
+    expect(prompt).toContain("[O4] (inviável) Plataforma de CI cara\nViola: Custo de até 500");
+  });
+
+  it("brings a row for each viable Option, the recommended one and why", async () => {
+    const { url } = await startExecutor(answering(JSON.stringify({ comparisons: rows, recommendedOption: " [O1] ", rationale: " Mais simples. " })));
+
+    expect(await recommend(url)).toEqual({
+      status: "completed",
+      usage: null,
+      result: {
+        comparisons: [
+          { option: "O2", ...cells, gains: "Deploy em 25 minutos." },
+          { option: "O1", ...cells },
+        ],
+        recommendedOption: "O1",
+        rationale: "Mais simples.",
+      },
+    });
+  });
+
+  it.each([
+    ["prose instead of JSON", "Recomendo o runner."],
+    ["an inviable Option recommended", JSON.stringify({ comparisons: rows, recommendedOption: "O4", rationale: "Mais rápida." })],
+    ["a viable Option left out of the matrix", JSON.stringify({ comparisons: [rows[1]], recommendedOption: "O1", rationale: "Mais simples." })],
+    [
+      "an inviable Option in the matrix",
+      JSON.stringify({ comparisons: [...rows, { option: "O4", ...cells }], recommendedOption: "O1", rationale: "Mais simples." }),
+    ],
+    ["a numeric cell", JSON.stringify({ comparisons: [rows[0], { ...rows[1], effort: 3 }], recommendedOption: "O1", rationale: "Mais simples." })],
+    ["no rationale", JSON.stringify({ comparisons: rows, recommendedOption: "O1", rationale: " " })],
+  ])("never takes %s as a completed Recommendation", async (_case, output) => {
+    const { url } = await startExecutor(answering(output));
+
+    expect(await recommend(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
   });
 });
 

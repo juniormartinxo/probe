@@ -1,10 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { Db } from "../../db/database.ts";
-import { isCli, type Cli } from "../ai/assistant.ts";
+import { comparisonCellsOf, comparisonDimensions, isCli, type Cli } from "../ai/assistant.ts";
 import { impactAssessmentsOf, type ConfirmationRef } from "../assessments/impact-assessments.ts";
 import { stageAssessmentsOf, type StageAssessments } from "../assessments/stage-assessments.ts";
 import type { AnswerChange, AnswerValue, Answers } from "./answers.ts";
 import type { Blocks } from "./blocks.ts";
+import { chosenOptionsOf, type ChoiceRequest, type ChosenOptions } from "./chosen-options.ts";
+import { comparisonMatrixOf, type ComparisonMatrix, type ComparisonRecord } from "./comparison-matrix.ts";
 import { conflictChecksOf, type ConflictConstraintRevision, type ConflictDecision, type Conflicts } from "./conflicts.ts";
 import { constraintReassessmentsOf, type ConstraintReassessments } from "./constraint-reassessments.ts";
 import {
@@ -22,6 +24,7 @@ import { optionProposalsOf, optionsOf, type OptionDecision, type Options, type O
 import type { Pendencies } from "./pendencies.ts";
 import type { ProblemStatements, StatementConfirmation } from "./problem-statement.ts";
 import { reassessmentsOf, type ImpactDecision, type Reassessments } from "./reassessments.ts";
+import { recommendationsOf, type Recommendations } from "./recommendations.ts";
 import { createProcess, findProcess, listProcesses } from "./process.ts";
 import type { StagePointCoverage } from "./stage-point-coverage.ts";
 import { stageConfirmationsOf, type StageConfirmations, type StageConfirmationRequest } from "./stage-confirmations.ts";
@@ -121,6 +124,35 @@ function editedOptionFrom(body: unknown): { ok: true; edited: OptionStatement | 
   if ((body as Record<string, unknown>).statement === undefined) return { ok: true, edited: null };
   const edited = optionStatementFrom(body);
   return edited ? { ok: true, edited } : { ok: false };
+}
+
+const isUuid = (value: unknown): value is string => typeof value === "string" && uuidPattern.test(value);
+
+// A linha da matriz: texto em cada dimensão e, se partiu de uma, a Recomendação que a sugeriu. Nada
+// além disso: a matriz não tem nota nem peso.
+function comparisonFrom(body: unknown): ComparisonRecord | undefined {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
+  const fields = body as Record<string, unknown>;
+  const allowed: string[] = [...comparisonDimensions, "recommendationId"];
+  if (Object.keys(fields).some((key) => !allowed.includes(key))) return undefined;
+  if (!comparisonDimensions.every((dimension) => typeof fields[dimension] === "string" && fields[dimension].trim() !== "")) return undefined;
+  const { recommendationId = null } = fields;
+  if (recommendationId !== null && !isUuid(recommendationId)) return undefined;
+  return { cells: comparisonCellsOf((dimension) => fields[dimension] as string), recommendationId };
+}
+
+// A Opção escolhida e o motivo de cada descarte. Se são as Opções certas, o módulo decide.
+function choiceFrom(body: unknown): ChoiceRequest | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { optionId, discards } = body as Record<string, unknown>;
+  if (!isUuid(optionId) || !Array.isArray(discards)) return undefined;
+  const parsed = discards.map((discard: unknown) => {
+    if (typeof discard !== "object" || discard === null) return undefined;
+    const { optionId: discarded, reason } = discard as Record<string, unknown>;
+    return isUuid(discarded) && typeof reason === "string" && reason.trim() !== "" ? { optionId: discarded, reason } : undefined;
+  });
+  if (parsed.some((discard) => discard === undefined)) return undefined;
+  return { optionId, discards: parsed as ChoiceRequest["discards"] };
 }
 
 // A Avaliação que o usuário viu (a concluída ou a que falhou) e, se houver, a justificativa.
@@ -297,6 +329,18 @@ const errorStatus = {
   pending_option_suggestions: 409,
   undecided_options: 409,
   no_viable_option: 409,
+  stage_point_covered_by_choice: 409,
+  option_not_accepted: 409,
+  option_inviable: 409,
+  unknown_recommendation: 422,
+  recommendation_already_requested: 409,
+  recommendation_not_found: 404,
+  recommendation_made: 409,
+  option_not_choosable: 409,
+  invalid_discards: 422,
+  discard_reasons_required: 422,
+  choice_required: 409,
+  chosen_option_not_viable: 409,
 } as const;
 
 // Restrições e Preferências seguem as mesmas rotas, cada uma no seu caminho.
@@ -318,6 +362,9 @@ export const processRoutes =
     constraintReassessments,
     conflicts,
     options,
+    comparisonMatrix,
+    recommendations,
+    chosenOptions,
   }: {
     db: Db;
     problemStatements: ProblemStatements;
@@ -333,6 +380,9 @@ export const processRoutes =
     constraintReassessments: ConstraintReassessments;
     conflicts: Conflicts;
     options: Options;
+    comparisonMatrix: ComparisonMatrix;
+    recommendations: Recommendations;
+    chosenOptions: ChosenOptions;
   }): FastifyPluginAsync =>
   async (app) => {
     app.post("/processes", async (request, reply) => {
@@ -375,6 +425,10 @@ export const processRoutes =
         optionProposals: await optionProposalsOf(db, id),
         // As verificações de viabilidade, com os pares Opção × Restrição e as Avaliações do Jev.
         optionChecks: await optionChecksOf(db, id),
+        // Na Etapa B: a matriz qualitativa, as Recomendações da IA e as Escolhas (a última vale).
+        comparisonMatrix: await comparisonMatrixOf(db, process),
+        recommendations: await recommendationsOf(db, process),
+        chosenOptions: await chosenOptionsOf(db, id),
       };
     }
 
@@ -806,6 +860,49 @@ export const processRoutes =
       const result = await options.decide(id, checkId, decision);
       if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
       return reply.code(201).send({ optionCheck: result.optionCheck });
+    });
+
+    app.post<{ Params: { id: string; optionId: string } }>("/processes/:id/options/:optionId/comparisons", async (request, reply) => {
+      const { id, optionId } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      if (!uuidPattern.test(optionId)) return reply.code(404).send({ error: "option_not_found" });
+      const record = comparisonFrom(request.body);
+      if (!record) return reply.code(400).send({ error: "comparison_required" });
+      const result = await comparisonMatrix.record(id, optionId, record);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ comparison: result.comparison });
+    });
+
+    app.post<{ Params: { id: string } }>("/processes/:id/recommendations", async (request, reply) => {
+      const { id } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      const result = await recommendations.request(id);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(202).send({ recommendation: result.recommendation });
+    });
+
+    app.post<{ Params: { id: string; recommendationId: string } }>(
+      "/processes/:id/recommendations/:recommendationId/attempts",
+      async (request, reply) => {
+        const { id, recommendationId } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        if (!uuidPattern.test(recommendationId)) return reply.code(404).send({ error: "recommendation_not_found" });
+        const chosen = attemptCliFrom(request.body);
+        if (!chosen.ok) return reply.code(400).send({ error: "invalid_cli" });
+        const result = await recommendations.newAttempt(id, recommendationId, chosen.cli);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        return reply.code(202).send({ recommendation: result.recommendation });
+      },
+    );
+
+    app.post<{ Params: { id: string } }>("/processes/:id/chosen-options", async (request, reply) => {
+      const { id } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      const choice = choiceFrom(request.body);
+      if (!choice) return reply.code(400).send({ error: "choice_required" });
+      const result = await chosenOptions.choose(id, choice);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ chosenOption: result.chosenOption });
     });
 
     for (const kind of itemKinds) {
