@@ -281,7 +281,10 @@ export function constraintReassessments({
       const found = await findConstraintReassessment(db, processId, constraintRevisionId, stage);
       if (!found) return { ok: false, error: "reassessment_not_found" };
       if (found.status !== "not_assessed" && found.status !== "assessment_failed") return { ok: false, error: "impact_assessed" };
-      return assess(processId, found);
+      const assessed = await assess(processId, found);
+      // Sem impacto, a Confirmação passa a sustentar a revisão, e a seguinte da cadeia se abre.
+      if (assessed.ok) await assessOpen(processId);
+      return assessed;
     },
 
     async decide(processId, { constraintRevisionId, stage, impactAssessmentId, decision }) {

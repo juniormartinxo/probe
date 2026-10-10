@@ -43,7 +43,7 @@ export async function listProcesses(db: Db): Promise<Process[]> {
 export async function lockOpenProcess(trx: Db, processId: string) {
   const process = await trx
     .selectFrom("processes")
-    .select(["id", "status", "stagePointsVersion"])
+    .select(["id", "status", "currentStage", "stagePointsVersion"])
     .where("id", "=", processId)
     .forUpdate()
     .executeTakeFirst();

@@ -173,7 +173,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addForeignKeyConstraint("confirmation_constraint_revisions_stage_confirmation", ["process_id", "stage"], "stage_confirmations", [
       "process_id",
       "stage",
-    ])
+    ], (constraint) => constraint.onDelete("cascade"))
     .addUniqueConstraint("confirmation_constraint_revisions_once", ["constraint_revision_id", "stage"])
     .execute();
   await forbidUpdate("confirmation_constraint_revisions").execute(db);

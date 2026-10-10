@@ -1,4 +1,5 @@
 import type { Db } from "../../db/database.ts";
+import type { ConflictClarification } from "../assessments/assessor.ts";
 import { listAiRequests, type Attempt, type AttemptStatus } from "../ai/ai-requests.ts";
 import type { GeneratedResolutionQuestion } from "../ai/assistant.ts";
 import { describeAnswer } from "./answers.ts";
@@ -99,7 +100,7 @@ export async function conflictPairsOf(db: Db, processId: string, pairIds?: strin
 
 // Os esclarecimentos com que o usuário resolveu Pendências de conflito, na ordem em que foram dados,
 // cada um com as duas respostas como estavam, como o Jev e a IA os recebem.
-export async function clarificationsOf(db: Db, processId: string) {
+export async function clarificationsOf(db: Db, processId: string): Promise<ConflictClarification[]> {
   const rows = await db
     .selectFrom("pendencies")
     .select(["conflictPairId", "clarification"])
@@ -116,10 +117,7 @@ export async function clarificationsOf(db: Db, processId: string) {
   return rows.map((row) => {
     const pair = pairs.find((item) => item.id === row.conflictPairId)!;
     return {
-      answers: [conflictingAnswerOf(pair.answer), conflictingAnswerOf(pair.other)] as [
-        ReturnType<typeof conflictingAnswerOf>,
-        ReturnType<typeof conflictingAnswerOf>,
-      ],
+      answers: [conflictingAnswerOf(pair.answer), conflictingAnswerOf(pair.other)],
       clarification: row.clarification!,
     };
   });

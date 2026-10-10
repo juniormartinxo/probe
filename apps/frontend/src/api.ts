@@ -471,6 +471,8 @@ export interface ProcessDetail extends ProcessWithConversation {
   reassessments: Reassessment[];
   // Confirmações de Etapa em revisão porque uma Restrição que sustentavam foi revista.
   constraintReassessments: ConstraintReassessment[];
+  // As Revisões de Restrição, na ordem: o histórico de cada Restrição revista.
+  constraintRevisions: ConstraintRevision[];
   impactAssessments: ImpactAssessment[];
   // Verificações de conflito entre respostas confirmadas, com os pares e as Avaliações do Jev.
   conflictChecks: ConflictCheck[];

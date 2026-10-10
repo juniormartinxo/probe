@@ -4,6 +4,7 @@ import {
   registerItem,
   reviseConstraint,
   withdrawItem,
+  type ConstraintRevision,
   type ConstraintRevisionRequest,
   type ItemKind,
   type ItemStatement,
@@ -53,7 +54,15 @@ export function ConstraintsAndPreferences({ process, onChange }: { process: Proc
             <p className="text-xs font-medium">{title}</p>
             <p className="text-muted-foreground text-xs">{hint}</p>
           </div>
-          <ItemList processId={process.id} kind={kind} items={itemsOf(kind)} empty={empty} editable={editable} onChange={onChange} />
+          <ItemList
+            processId={process.id}
+            kind={kind}
+            items={itemsOf(kind)}
+            revisions={process.constraintRevisions}
+            empty={empty}
+            editable={editable}
+            onChange={onChange}
+          />
           {editable && <NewItem processId={process.id} kind={kind} onChange={onChange} />}
           {revisable && kind === "constraint" && (
             <ConstraintRevisionForm
@@ -73,6 +82,7 @@ function ItemList({
   processId,
   kind,
   items,
+  revisions,
   empty,
   editable,
   onChange,
@@ -80,6 +90,7 @@ function ItemList({
   processId: string;
   kind: ItemKind;
   items: StatedItem[];
+  revisions: ConstraintRevision[];
   empty: string;
   editable: boolean;
   onChange: () => void;
@@ -114,6 +125,7 @@ function ItemList({
             {itemDetails(item) && <span className="text-muted-foreground block text-xs">{itemDetails(item)}</span>}
           </div>
           {item.withdrawnAt && <span className="text-muted-foreground text-xs">retirado</span>}
+          <RevisionNote item={item} revisions={revisions} />
           {editable && !item.withdrawnAt && (
             <Button
               variant="ghost"
@@ -129,6 +141,26 @@ function ItemList({
       ))}
       {error && <li className="text-destructive text-xs">{error}</li>}
     </ul>
+  );
+}
+
+// O histórico da Revisão de Restrição ao lado do item: a Restrição revista e o que a substituiu, ou a
+// substituta e de onde veio, com a nota do usuário.
+function RevisionNote({ item, revisions }: { item: StatedItem; revisions: ConstraintRevision[] }) {
+  const revised = revisions.find((revision) => revision.constraint.id === item.id);
+  const replacing = revisions.find((revision) => revision.replacement?.item.id === item.id);
+  if (!revised && !replacing) return null;
+  const kindName = (kind: ItemKind) => (kind === "constraint" ? "Restrição" : "Preferência");
+  return (
+    <p className="text-muted-foreground w-full text-xs">
+      {revised &&
+        (revised.replacement
+          ? `Revista: substituída pela ${kindName(revised.replacement.kind)} “${revised.replacement.item.statement}”.`
+          : "Revista: retirada, sem substituta.")}
+      {replacing && `Substitui a Restrição “${replacing.constraint.statement}”.`}
+      {revised?.note && ` Nota: ${revised.note}`}
+      {replacing?.note && !revised && ` Nota: ${replacing.note}`}
+    </p>
   );
 }
 
@@ -193,6 +225,8 @@ function NewItem({ processId, kind, onChange }: { processId: string; kind: ItemK
 
 const revisionErrorText: Record<string, string> = {
   already_withdrawn: "Esta Restrição já foi retirada.",
+  constraint_not_found: "Esta Restrição não existe mais neste Processo.",
+  stage_not_current: "Na Etapa R, registre e retire Restrições direto; a revisão avulsa vale depois dela.",
   no_constraint_or_preference: "Sem substituta, o Ponto que distingue Restrições de Preferências ficaria sem nenhuma.",
   pendency_resolved: "Esta Pendência já foi resolvida.",
 };
@@ -219,7 +253,6 @@ export function ConstraintRevisionForm({
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
-  const prefix = idPrefix;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -248,11 +281,11 @@ export function ConstraintRevisionForm({
           As Confirmações de Etapa que já valiam com a Restrição passam pela Avaliação de impacto do Jev, e você revê as afetadas.
         </p>
         <div className="flex flex-col gap-1">
-          <Label htmlFor={`${prefix}-constraint`} className="text-xs font-normal">
+          <Label htmlFor={`${idPrefix}-constraint`} className="text-xs font-normal">
             Restrição a retirar (fica no histórico)
           </Label>
           <select
-            id={`${prefix}-constraint`}
+            id={`${idPrefix}-constraint`}
             value={constraintId}
             disabled={saving}
             onChange={(event) => setChosen(event.target.value)}
@@ -267,11 +300,11 @@ export function ConstraintRevisionForm({
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <Label htmlFor={`${prefix}-kind`} className="text-xs font-normal">
+          <Label htmlFor={`${idPrefix}-kind`} className="text-xs font-normal">
             Substituir por
           </Label>
           <select
-            id={`${prefix}-kind`}
+            id={`${idPrefix}-kind`}
             value={kind}
             disabled={saving}
             onChange={(event) => setKind(event.target.value as ItemKind | "none")}
@@ -292,10 +325,10 @@ export function ConstraintRevisionForm({
           )}
         </div>
         <div className="flex flex-col gap-1">
-          <Label htmlFor={`${prefix}-note`} className="text-xs font-normal">
+          <Label htmlFor={`${idPrefix}-note`} className="text-xs font-normal">
             Nota (opcional)
           </Label>
-          <Textarea id={`${prefix}-note`} value={note} rows={2} disabled={saving} onChange={(event) => setNote(event.target.value)} />
+          <Textarea id={`${idPrefix}-note`} value={note} rows={2} disabled={saving} onChange={(event) => setNote(event.target.value)} />
         </div>
         {error && <p className="text-destructive text-xs">{error}</p>}
         <div className="flex justify-end">

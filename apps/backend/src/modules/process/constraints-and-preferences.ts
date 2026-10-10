@@ -51,13 +51,13 @@ export interface ConstraintsAndPreferences {
   // Registra uma Restrição ou Preferência enquanto a Etapa R é a atual.
   register(processId: string, kind: ItemKind, item: ItemStatement): Promise<{ ok: true; item: StatedItem } | { ok: false; error: ItemClosed }>;
   withdraw(processId: string, kind: ItemKind, itemId: string): Promise<{ ok: true; item: StatedItem } | { ok: false; error: WithdrawalError }>;
-  // Revisão de Restrição avulsa, sem Pendência de conflito, em qualquer Etapa a partir de R; as
-  // Confirmações de Etapa que sustentavam a Restrição passam pela Avaliação de impacto.
+  // Revisão de Restrição avulsa, sem Pendência de conflito, depois da Etapa R (nela, o registro e a
+  // retirada bastam); as Confirmações de Etapa que sustentavam a Restrição passam pela Avaliação de impacto.
   revise(
     processId: string,
     constraintId: string,
     revision: ConstraintRevisionRequest,
-  ): Promise<{ ok: true; revision: ConstraintRevision } | { ok: false; error: "process_not_found" | "process_not_open" | ConstraintRevisionError }>;
+  ): Promise<{ ok: true; revision: ConstraintRevision } | { ok: false; error: ItemClosed | ConstraintRevisionError }>;
 }
 
 // Tabela, e caminho na API, de cada tipo de item.
@@ -290,6 +290,7 @@ export function constraintsAndPreferences({
       const revised = await db.transaction().execute(async (trx) => {
         const locked = await lockOpenProcess(trx, processId);
         if (!locked.ok) return locked;
+        if (stages.indexOf(locked.process.currentStage) <= stages.indexOf("R")) return { ok: false, error: "stage_not_current" } as const;
         return reviseConstraintIn(trx, locked.process, constraintId, { ...revision, conflictPendencyId: null });
       });
       if (revised.ok) await afterConstraintRevision(processId);

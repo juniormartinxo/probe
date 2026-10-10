@@ -1032,4 +1032,97 @@ describe("A standalone Constraint revision", () => {
     expect(process.constraints).toHaveLength(1);
     expect(process.preferences).toEqual([]);
   });
+
+  it("is refused while Stage R is the current one, where registering and withdrawing stay as they were", async () => {
+    let constraintId = "";
+    const { id } = await confirmStageRBlock({
+      before: async (processId) => {
+        constraintId = (await register(processId, "constraints", "Entregar em duas semanas")).json().constraint.id;
+      },
+    });
+
+    const response = await reviseStandalone(id, constraintId, { replacement: null, note: null });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: "stage_not_current" });
+    const process = await api.getProcess(id);
+    expect(process.constraints).toEqual([expect.objectContaining({ id: constraintId, withdrawnAt: null })]);
+    expect(process.constraintRevisions).toEqual([]);
+  });
+
+  it("without a replacement, has the Stage Confirmation stop holding the Constraint once reconfirmed, and stays in the history", async () => {
+    const { id, constraintId } = await stageOWithDeadline();
+    assessor.willAssessConstraintImpact(impactOutcome("yes"));
+
+    const revision = (await reviseStandalone(id, constraintId, { replacement: null, note: "Não há mais prazo." })).json().constraintRevision;
+
+    expect(assessor.constraintImpactInputs.map((input) => input.revision)).toEqual([
+      { constraint: { statement: "Entregar em duas semanas", scope: null, unit: null }, replacement: null, note: "Não há mais prazo." },
+    ]);
+    const [reassessment] = (await api.getProcess(id)).constraintReassessments;
+    expect((await api.reconfirm(id, reassessment.pendencyId)).statusCode).toBe(200);
+    const process = await api.getProcess(id);
+    expect(process.constraintReassessments).toEqual([]);
+    // A revisão continua consultável depois que a reavaliação se resolve.
+    expect(process.constraintRevisions).toEqual([revision]);
+  });
+
+  describe("in a chain (the replacement revised again)", () => {
+    // A → B e, antes de a Etapa R sustentar B, B → C.
+    async function chain(firstOutcomes: Parameters<FakeAssessor["willAssessConstraintImpact"]>) {
+      const { id, constraintId } = await stageOWithDeadline();
+      assessor.willAssessConstraintImpact(...firstOutcomes);
+      const first = (
+        await reviseStandalone(id, constraintId, { replacement: { kind: "constraint", statement: "Entregar em cinco semanas" }, note: null })
+      ).json().constraintRevision;
+      const second = (
+        await reviseStandalone(id, first.replacement.item.id, { replacement: { kind: "constraint", statement: "Entregar em oito semanas" }, note: null })
+      ).json().constraintRevision;
+      // A Etapa R ainda sustenta A: a segunda revisão espera a primeira.
+      expect(assessor.constraintImpactInputs).toHaveLength(1);
+      const [reassessment] = (await api.getProcess(id)).constraintReassessments;
+      return { id, first, second, reassessment };
+    }
+
+    const assessedSecond = () =>
+      expect(assessor.constraintImpactInputs.map((input) => input.revision.constraint.statement)).toEqual([
+        "Entregar em duas semanas",
+        "Entregar em duas semanas",
+        "Entregar em cinco semanas",
+      ]);
+
+    it("advances when a new try of the first gets a confident `no`", async () => {
+      const { id, first, second } = await chain([unavailable, impactOutcome("no"), impactOutcome("yes")]);
+
+      const retried = await api.inject({
+        method: "POST",
+        url: `/api/processes/${id}/constraint-revisions/${first.id}/impact-assessments`,
+        payload: { confirmation: { kind: "stage", stage: "R" } },
+      });
+
+      expect(retried.statusCode).toBe(201);
+      assessedSecond();
+      expect((await api.getProcess(id)).constraintReassessments).toMatchObject([{ revision: { id: second.id }, status: "pendency_open" }]);
+    });
+
+    it("advances when the user keeps the Confirmation on the first", async () => {
+      const { id, first, reassessment } = await chain([impactOutcome("yes", 0.5)]);
+
+      const kept = await api.inject({
+        method: "POST",
+        url: `/api/processes/${id}/constraint-revisions/${first.id}/impact-decision`,
+        payload: { confirmation: { kind: "stage", stage: "R" }, impactAssessmentId: reassessment.impactAssessments[0].id, decision: "keep_confirmation" },
+      });
+
+      expect(kept.statusCode).toBe(201);
+      expect(assessor.constraintImpactInputs.map((input) => input.revision.constraint.statement)).toEqual([
+        "Entregar em duas semanas",
+        "Entregar em cinco semanas",
+      ]);
+      // Sem impacto na segunda, nada fica em revisão, e o histórico guarda as duas.
+      const process = await api.getProcess(id);
+      expect(process.constraintReassessments).toEqual([]);
+      expect(process.constraintRevisions).toHaveLength(2);
+    });
+  });
 });

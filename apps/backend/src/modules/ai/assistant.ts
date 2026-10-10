@@ -1,5 +1,6 @@
 // Porta da IA. A implementação real chama o executor; nos testes, uma versão falsa a substitui.
 
+import type { ConflictClarification } from "../assessments/assessor.ts";
 import type { ItemStatements } from "../process/constraints-and-preferences.ts";
 import type { StagePoint } from "../process/stage-points.ts";
 import type { Stage } from "../process/stage.ts";
@@ -175,7 +176,7 @@ export interface ResolutionQuestionInput extends ItemStatements {
   problemStatement: string;
   answers: [ConflictingAnswer, ConflictingAnswer];
   // Os esclarecimentos com que o usuário resolveu outras Pendências de conflito, com as respostas como estavam.
-  clarifications: { answers: [ConflictingAnswer, ConflictingAnswer]; clarification: string }[];
+  clarifications: ConflictClarification[];
 }
 
 export interface GeneratedResolutionQuestion {

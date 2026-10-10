@@ -8,6 +8,7 @@ import type { Blocks } from "./blocks.ts";
 import { conflictChecksOf, type ConflictConstraintRevision, type ConflictDecision, type Conflicts } from "./conflicts.ts";
 import { constraintReassessmentsOf, type ConstraintReassessments } from "./constraint-reassessments.ts";
 import {
+  constraintRevisionsOf,
   constraintsAndPreferencesOf,
   itemPaths,
   type ConstraintRevisionRequest,
@@ -300,6 +301,8 @@ export const processRoutes =
         reassessments: await reassessmentsOf(db, id),
         // Confirmações de Etapa que sustentavam uma Restrição revista, ainda em revisão.
         constraintReassessments: await constraintReassessmentsOf(db, id),
+        // As Revisões de Restrição, na ordem: o histórico de cada Restrição revista.
+        constraintRevisions: await constraintRevisionsOf(db, id),
         impactAssessments: await impactAssessmentsOf(db, id),
         // As verificações de conflito entre respostas confirmadas, com os pares e as Avaliações.
         conflictChecks: await conflictChecksOf(db, id),
