@@ -2,7 +2,7 @@
 
 import type { ConflictClarification } from "../assessments/assessor.ts";
 import type { ItemStatements } from "../process/constraints-and-preferences.ts";
-import type { OptionStatus } from "../process/options.ts";
+import type { OptionStatus, OptionViability } from "../process/options.ts";
 import type { StagePoint } from "../process/stage-points.ts";
 import type { Stage } from "../process/stage.ts";
 
@@ -220,6 +220,65 @@ export interface OptionProposalInput extends ItemStatements {
   options: KnownOption[];
 }
 
+// O que a matriz qualitativa diz de uma Opção, cada célula em texto: sem pontuação nem peso. O
+// atendimento às Restrições não entra: vem dos pares Opção × Restrição, nunca da IA.
+export interface ComparisonCells {
+  gains: string;
+  losses: string;
+  effort: string;
+  scalability: string;
+  maintenance: string;
+  reversibility: string;
+}
+
+export const comparisonDimensions = ["gains", "losses", "effort", "scalability", "maintenance", "reversibility"] as const satisfies readonly (keyof ComparisonCells)[];
+
+// As células da matriz, cada uma dada por `cell`.
+export const comparisonCellsOf = (cell: (dimension: keyof ComparisonCells) => string): ComparisonCells => ({
+  gains: cell("gains"),
+  losses: cell("losses"),
+  effort: cell("effort"),
+  scalability: cell("scalability"),
+  maintenance: cell("maintenance"),
+  reversibility: cell("reversibility"),
+});
+
+// Opção aceita como a IA a recebe para recomendar: a referência ("O1", pela ordem em que foi
+// registrada), a viabilidade, as Restrições que viola e a linha da matriz que o usuário gravou, se há.
+export interface ComparedOption {
+  ref: string;
+  statement: string;
+  description: string | null;
+  viability: OptionViability;
+  violatedConstraints: string[];
+  comparison: ComparisonCells | null;
+}
+
+// O que a IA recebe para recomendar uma Opção: o problema, as Etapas já confirmadas, as Restrições e
+// Preferências em vigor, os Pontos de B que os Blocos cobrem, o que já foi perguntado nela e as Opções
+// aceitas, com a matriz.
+export interface RecommendationInput extends ItemStatements {
+  originalDescription: string;
+  problemStatement: string;
+  confirmedStages: ConfirmedStageAnswers[];
+  stagePoints: StagePoint[];
+  askedQuestions: AskedQuestion[];
+  options: ComparedOption[];
+}
+
+// Linha da matriz que a IA sugere para uma Opção viável, pela referência.
+export interface SuggestedComparison extends ComparisonCells {
+  option: string;
+}
+
+// Recomendação como a IA a devolve: uma linha para cada Opção viável, a Opção viável que ela
+// recomenda e por quê. É sugestão: nunca vira Escolha sem ato do usuário.
+export interface GeneratedRecommendation {
+  comparisons: SuggestedComparison[];
+  recommendedOption: string;
+  rationale: string;
+}
+
 export interface Assistant {
   refineProblemStatement(
     input: { originalDescription: string },
@@ -229,6 +288,7 @@ export interface Assistant {
   synthesizeBlock(input: SynthesisInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedSynthesis>>;
   formulateResolutionQuestion(input: ResolutionQuestionInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedResolutionQuestion>>;
   proposeOptions(input: OptionProposalInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedOptions>>;
+  recommendOption(input: RecommendationInput, context: AttemptContext): Promise<AssistantOutcome<GeneratedRecommendation>>;
   // Pedido mínimo à CLI, só para saber se a cadeia até ela funciona; o resultado é a resposta crua.
   testConnection(context: AttemptContext): Promise<AssistantOutcome<string>>;
 }

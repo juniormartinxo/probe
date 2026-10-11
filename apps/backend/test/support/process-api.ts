@@ -4,6 +4,7 @@ import { waitFor, type TestApp } from "./test-app.ts";
 
 export const description = "Nosso deploy demora demais e o time perde a manhã.";
 export const statement = "O deploy leva 40 minutos e bloqueia o time durante a manhã.";
+export const costConstraint = "O custo da infraestrutura não pode passar de 500 reais por mês";
 
 // Chamadas que o frontend faz, sobre um TestApp que pode ser trocado entre os testes.
 export function processApi(current: () => TestApp) {
@@ -157,8 +158,41 @@ export function processApi(current: () => TestApp) {
   const reconfirm = (id: string, pendencyId: string, payload?: Record<string, unknown>) =>
     inject({ method: "POST", url: `/api/processes/${id}/pendencies/${pendencyId}/reconfirmation`, ...(payload && { payload }) });
 
+  // Processo na Etapa O: a Etapa R foi confirmada com a Restrição de custo e uma Preferência, sem Bloco.
+  async function processInStageO() {
+    const { id } = await processInStageR();
+    const constraint = await inject({ method: "POST", url: `/api/processes/${id}/constraints`, payload: { statement: costConstraint } });
+    expect(constraint.statusCode).toBe(201);
+    const preference = await inject({ method: "POST", url: `/api/processes/${id}/preferences`, payload: { statement: "Manter o GitHub Actions" } });
+    expect(preference.statusCode).toBe(201);
+    for (const key of ["deadline", "systems_and_apis"]) {
+      expect((await inject({ method: "POST", url: `/api/processes/${id}/stage-points/${key}/absence` })).statusCode).toBe(201);
+    }
+    expect((await declareInapplicable(id, "constraints_vs_preferences", { justification: "Já registradas." })).statusCode).toBe(201);
+    expect((await confirmStage(id, { stageAssessmentId: null }, "R")).statusCode).toBe(201);
+    return { id, constraintId: constraint.json().constraint.id as string };
+  }
+
+  const addOption = (id: string, payload: Record<string, unknown>) => inject({ method: "POST", url: `/api/processes/${id}/options`, payload });
+
+  // Fecha os Pontos da Etapa O, inaplicáveis, e pede a Confirmação dela (sem Ponto coberto a avaliar).
+  async function confirmStageO(id: string) {
+    for (const key of ["eliminate_problem", "simplest_solution", "eighty_twenty", "reversibility"]) {
+      const point = (await getProcess(id)).stagePoints.find((item: { key: string }) => item.key === key);
+      if (point.status === "open") await declareInapplicable(id, key, { justification: "Fora deste exemplo." });
+    }
+    return confirmStage(id, { stageAssessmentId: null }, "O");
+  }
+
+  const reviseConstraint = (id: string, constraintId: string, replacement: Record<string, unknown> | null) =>
+    inject({ method: "POST", url: `/api/processes/${id}/constraints/${constraintId}/revision`, payload: { replacement, note: "Mudou." } });
+
   return {
     inject,
+    processInStageO,
+    addOption,
+    confirmStageO,
+    reviseConstraint,
     retryImpact,
     decideImpact,
     reconfirm,

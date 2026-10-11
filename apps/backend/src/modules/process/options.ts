@@ -23,6 +23,9 @@ export type OptionOrigin = "ai" | "user";
 
 export type OptionStatus = "suggested" | "accepted" | "discarded";
 
+// A Opção pelo que basta para nomeá-la: na Recomendação, na Escolha e nos descartes.
+export type NamedOption = { id: string; statement: string };
+
 export interface Option {
   id: string;
   statement: string;
@@ -189,6 +192,10 @@ export async function optionsOf(db: Db, process: { id: string; stagePointsVersio
     ...(optionStatus(row) === "accepted" ? viabilityOf(row.id, pairs, constraints) : { viability: null, violations: [] }),
   }));
 }
+
+// Como a IA e o Jev se referem à Opção: pela ordem em que foi registrada no Processo ("O1"), entre
+// todas as Opções de `optionsOf`.
+export const optionRefOf = (options: { id: string }[], optionId: string): string => `O${options.findIndex((option) => option.id === optionId) + 1}`;
 
 // A Opção como a IA a recebe: o estado e as Restrições que ela viola.
 export const knownOptionOf = ({ statement, description, status, violations }: Option): KnownOption => ({

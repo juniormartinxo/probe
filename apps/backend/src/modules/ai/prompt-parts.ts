@@ -1,8 +1,8 @@
 import type { StagePoint } from "../process/stage-points.ts";
 import type { ItemStatement, ItemStatements } from "../process/constraints-and-preferences.ts";
-import type { OptionStatus } from "../process/options.ts";
+import type { OptionStatus, OptionViability } from "../process/options.ts";
 import type { Stage } from "../process/stage.ts";
-import type { AskedQuestion, ConfirmedStageAnswers, KnownOption } from "./assistant.ts";
+import type { AskedQuestion, ComparedOption, ComparisonCells, ConfirmedStageAnswers, KnownOption } from "./assistant.ts";
 
 export const stageNames = { P: "Problema", R: "Restrições", O: "Opções", B: "Balanceamento", E: "Execução" } as const;
 
@@ -43,6 +43,10 @@ export function confirmedStagesText(confirmed: ConfirmedStageAnswers[]): string 
 
 // O que cada Etapa pede de particular às Perguntas, além dos Pontos.
 const stageGuidance: Partial<Record<Stage, string>> = {
+  B:
+    "Nesta Etapa, ajude a pessoa a enxergar as concessões entre as Opções que ela aceitou (abaixo): o que cada uma ganha e perde, " +
+    "como se comporta quando a demanda cresce e o esforço de mantê-la. Opções que violam uma Restrição são inviáveis e nada as compensa. " +
+    "Não pergunte qual Opção ela escolhe nem recomende uma: a Escolha é registrada por ela à parte.",
   O:
     "Nesta Etapa, ajude a pessoa a explorar caminhos para o problema: se ele pode deixar de existir, qual a solução mais simples " +
     "(inclusive manual), qual entrega a maior parte do resultado com pouco esforço e o quanto cada Opção é reversível. " +
@@ -69,6 +73,39 @@ const itemsText = (items: ItemStatement[]): string => (items.length > 0 ? items.
 // dentro dos delimitadores de dado.
 export const constraintsAndPreferencesText = ({ constraints, preferences }: ItemStatements): string =>
   `Restrições (inegociáveis):\n${itemsText(constraints)}\nPreferências (negociáveis):\n${itemsText(preferences)}`;
+
+const viabilityNames: Record<OptionViability, string> = { viable: "viável", inviable: "inviável", undecided: "viabilidade sem decisão" };
+
+const comparisonNames: Record<keyof ComparisonCells, string> = {
+  gains: "Ganhos",
+  losses: "Perdas",
+  effort: "Esforço",
+  scalability: "Escala",
+  maintenance: "Manutenção",
+  reversibility: "Reversibilidade",
+};
+
+// Opções aceitas, como entram no prompt da Recomendação: referência, viabilidade, Restrições violadas
+// e a linha da matriz que o usuário escreveu, se há. O texto é do usuário ou da IA e vai dentro dos
+// delimitadores de dado.
+export function comparedOptionsText(options: ComparedOption[]): string {
+  if (options.length === 0) return "(nenhuma)";
+  return options
+    .map(({ ref, statement, description, viability, violatedConstraints, comparison }) => {
+      const lines = [`[${ref}] (${viabilityNames[viability]}) ${statement}`];
+      if (description) lines.push(description);
+      if (violatedConstraints.length > 0) lines.push(`Viola: ${violatedConstraints.join("; ")}`);
+      lines.push(
+        comparison
+          ? Object.entries(comparisonNames)
+              .map(([key, name]) => `${name}: ${comparison[key as keyof ComparisonCells]}`)
+              .join("\n")
+          : "Matriz: a pessoa ainda não escreveu esta linha.",
+      );
+      return lines.join("\n");
+    })
+    .join("\n\n");
+}
 
 const optionStatusNames: Record<OptionStatus, string> = { suggested: "sugerida", accepted: "aceita", discarded: "descartada" };
 

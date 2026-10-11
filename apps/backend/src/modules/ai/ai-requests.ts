@@ -19,7 +19,8 @@ export type Operation =
   | "generate_block"
   | "synthesize_block"
   | "formulate_resolution_question"
-  | "propose_options";
+  | "propose_options"
+  | "recommend_option";
 
 export type AttemptStatus = "running" | "completed" | "failed" | "timed_out" | "canceled" | "interrupted";
 

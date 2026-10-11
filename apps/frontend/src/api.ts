@@ -202,7 +202,8 @@ export interface Block {
 }
 
 // `absent`: o usuário registrou que não há o que o Ponto pede (prazo, sistemas); conta como cobertura.
-export type StagePointStatus = "open" | "covered" | "inapplicable" | "absent";
+// `chosen`: o Ponto da Escolha, coberto enquanto a Escolha em vigor se sustenta.
+export type StagePointStatus = "open" | "covered" | "inapplicable" | "absent" | "chosen";
 
 export interface StagePointState extends StagePoint {
   // Como se registra a ausência, nos Pontos que a admitem; null nos outros.
@@ -211,6 +212,8 @@ export interface StagePointState extends StagePoint {
   blockId: string | null;
   justification: string | null;
   recordedAt: string | null;
+  // Só a Escolha cobre o Ponto: nenhum Bloco pergunta sobre ele e ele não se declara inaplicável.
+  coveredByChoice?: true;
 }
 
 // Confirmação que depende de respostas: a síntese de um Bloco ou a de uma Etapa.
@@ -470,6 +473,53 @@ export interface OptionCheck {
   assessments: OptionAssessment[];
 }
 
+// O que a matriz qualitativa diz de uma Opção, em texto: sem nota nem peso.
+export interface ComparisonCells {
+  gains: string;
+  losses: string;
+  effort: string;
+  scalability: string;
+  maintenance: string;
+  reversibility: string;
+}
+
+// Linha da matriz que você gravou, do zero ou a partir da que uma Recomendação sugeriu.
+export interface OptionComparison extends ComparisonCells {
+  id: string;
+  recommendationId: string | null;
+  recordedAt: string;
+}
+
+// Uma linha por Opção aceita: o atendimento às Restrições vem dos pares Opção × Restrição; as outras
+// células, da linha que vale (as anteriores ficam no histórico).
+export interface ComparisonMatrixRow {
+  option: { id: string; statement: string; description: string | null };
+  viability: OptionViability;
+  violations: OptionViolation[];
+  comparison: OptionComparison | null;
+  history: OptionComparison[];
+}
+
+type NamedOption = { id: string; statement: string };
+
+// Recomendação da IA a favor de uma Opção viável, com a linha que ela sugere para cada viável. É
+// sugestão: nunca vira Escolha sem ato seu.
+export interface Recommendation {
+  id: string;
+  status: AttemptStatus;
+  attempts: Attempt[];
+  recommendation: { option: NamedOption; rationale: string; comparisons: (ComparisonCells & { option: NamedOption })[] } | null;
+}
+
+// Escolha: a Opção que você selecionou, com o motivo de cada descarte. A última vale; trocar cria outra.
+export interface ChosenOption {
+  id: string;
+  option: NamedOption;
+  discards: { option: NamedOption; reason: string }[];
+  chosenAt: string;
+  supersededAt: string | null;
+}
+
 // Resumo do entendimento atual do Processo, montado sem chamar a IA.
 export interface Understanding {
   originalDescription: string;
@@ -487,6 +537,8 @@ export interface Understanding {
   openPendencies: { reason: PendencyReason; wording: string }[];
   // As Opções aceitas, com a viabilidade.
   options: Pick<Option, "statement" | "viability" | "violations">[];
+  // A Escolha em vigor, com o motivo de cada descarte e se a Opção escolhida ainda é viável.
+  chosenOption: { statement: string; viable: boolean; discards: { statement: string; reason: string }[] } | null;
 }
 
 export type AssessmentChoice = "yes" | "no" | "insufficient";
@@ -574,6 +626,10 @@ export interface ProcessDetail extends ProcessWithConversation {
   options: Option[];
   optionProposals: OptionProposal[];
   optionChecks: OptionCheck[];
+  // Na Etapa B: a matriz qualitativa, as Recomendações da IA e as Escolhas (a última vale).
+  comparisonMatrix: ComparisonMatrixRow[];
+  recommendations: Recommendation[];
+  chosenOptions: ChosenOption[];
 }
 
 // Configurações não sensíveis; segredos ficam no ambiente do backend e nunca chegam aqui.
@@ -1027,6 +1083,43 @@ export async function decideOptions(
     body: JSON.stringify(decision),
   });
   return optionCheck;
+}
+
+// Grava a linha da matriz de uma Opção aceita; `recommendationId`, a Recomendação de que ela partiu.
+export async function recordComparison(
+  processId: string,
+  optionId: string,
+  comparison: ComparisonCells & { recommendationId: string | null },
+): Promise<OptionComparison> {
+  const { comparison: recorded } = await request<{ comparison: OptionComparison }>(`${optionPath(processId, optionId)}/comparisons`, {
+    method: "POST",
+    body: JSON.stringify(comparison),
+  });
+  return recorded;
+}
+
+// Pede a Recomendação à IA, enquanto a Etapa B é a atual.
+export async function requestRecommendation(processId: string): Promise<Recommendation> {
+  const { recommendation } = await request<{ recommendation: Recommendation }>(`${processPath(processId)}/recommendations`, { method: "POST" });
+  return recommendation;
+}
+
+// Nova tentativa da Recomendação que não veio, com a CLI escolhida.
+export async function newRecommendationAttempt(processId: string, recommendationId: string, cli: Cli): Promise<Recommendation> {
+  const { recommendation } = await request<{ recommendation: Recommendation }>(
+    `${processPath(processId)}/recommendations/${encodeURIComponent(recommendationId)}/attempts`,
+    { method: "POST", body: JSON.stringify({ cli }) },
+  );
+  return recommendation;
+}
+
+// Registra a Escolha (ou troca a que vale), com o motivo de descarte de cada outra Opção viável.
+export async function chooseOption(processId: string, choice: { optionId: string; discards: { optionId: string; reason: string }[] }): Promise<ChosenOption> {
+  const { chosenOption } = await request<{ chosenOption: ChosenOption }>(`${processPath(processId)}/chosen-options`, {
+    method: "POST",
+    body: JSON.stringify(choice),
+  });
+  return chosenOption;
 }
 
 export async function getUnderstanding(processId: string): Promise<Understanding> {

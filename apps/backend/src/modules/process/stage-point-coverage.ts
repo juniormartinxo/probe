@@ -5,13 +5,14 @@ import type { Stage } from "./stage.ts";
 // Um Ponto deixa de estar aberto quando o usuário o confirma coberto, com a síntese de um Bloco; o
 // declara inaplicável, com justificativa; ou registra explicitamente a ausência do que ele pede (não
 // há prazo, nenhum sistema envolvido), o que também conta como cobertura. Sugestão da IA nunca cobre
-// nada sozinha.
+// nada sozinha. O Ponto que só a Escolha cobre fica fora disso: está coberto ("chosen") enquanto a
+// Escolha em vigor se sustenta.
 export type CoverageStatus = "covered" | "inapplicable" | "absent";
 
 export interface StagePointState extends Omit<StagePoint, "absence"> {
   // Como se diz a ausência, nos Pontos que a admitem; null nos outros.
   absence: string | null;
-  status: "open" | CoverageStatus;
+  status: "open" | CoverageStatus | "chosen";
   // O Bloco cuja síntese confirmou a cobertura.
   blockId: string | null;
   justification: string | null;
@@ -44,14 +45,22 @@ export async function stagePointStates(db: Db, process: ProcessPoints, stage: St
   });
 }
 
+// Os Pontos abertos que os Blocos cobrem; o da Escolha não entra.
 export const openPoints = (states: StagePointState[]): StagePoint[] =>
-  states.filter((point) => point.status === "open").map(({ key, name, description }) => ({ key, name, description }));
+  states
+    .filter((point) => point.status === "open" && !point.coveredByChoice)
+    .map(({ key, name, description }) => ({ key, name, description }));
 
 export async function openStagePointsOf(db: Db, process: ProcessPoints, stage: Stage): Promise<StagePoint[]> {
   return openPoints(await stagePointStates(db, process, stage));
 }
 
-export type InapplicabilityError = "process_not_found" | "process_not_open" | "stage_point_not_found" | "stage_point_closed";
+export type InapplicabilityError =
+  | "process_not_found"
+  | "process_not_open"
+  | "stage_point_not_found"
+  | "stage_point_closed"
+  | "stage_point_covered_by_choice";
 
 export type AbsenceError = InapplicabilityError | "absence_not_allowed";
 
@@ -82,6 +91,7 @@ async function lockOpenPoint(
   if (process.status !== "open") return { ok: false, error: "process_not_open" };
   const point = (await stagePointStates(trx, process, process.currentStage)).find((item) => item.key === key);
   if (!point) return { ok: false, error: "stage_point_not_found" };
+  if (point.coveredByChoice) return { ok: false, error: "stage_point_covered_by_choice" };
   if (point.status !== "open") return { ok: false, error: "stage_point_closed" };
   return { ok: true, stage: process.currentStage, point };
 }

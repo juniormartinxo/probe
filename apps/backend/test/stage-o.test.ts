@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { GeneratedOptions } from "../src/modules/ai/assistant.ts";
 import { FakeAssistant, completed } from "./support/fake-assistant.ts";
 import { FakeAssessor, optionOutcome, verdict } from "./support/fake-assessor.ts";
-import { processApi } from "./support/process-api.ts";
+import { costConstraint, processApi } from "./support/process-api.ts";
 import { createTestApp, resetDatabase, waitFor, type TestApp } from "./support/test-app.ts";
 
 let testApp: TestApp;
@@ -21,7 +21,6 @@ afterEach(async () => {
   await testApp.close();
 });
 
-const costConstraint = "O custo da infraestrutura não pode passar de 500 reais por mês";
 
 const proposedOptions: GeneratedOptions = {
   options: [
@@ -33,21 +32,6 @@ const proposedOptions: GeneratedOptions = {
     { statement: "Cachear as dependências no GitHub Actions", description: null, stagePoints: ["eighty_twenty"] },
   ],
 };
-
-// Processo na Etapa O: a Etapa R foi confirmada com a Restrição de custo e uma Preferência, sem Bloco.
-async function processInStageO() {
-  const { id } = await api.processInStageR();
-  const constraint = await api.inject({ method: "POST", url: `/api/processes/${id}/constraints`, payload: { statement: costConstraint } });
-  expect(constraint.statusCode).toBe(201);
-  const preference = await api.inject({ method: "POST", url: `/api/processes/${id}/preferences`, payload: { statement: "Manter o GitHub Actions" } });
-  expect(preference.statusCode).toBe(201);
-  for (const key of ["deadline", "systems_and_apis"]) {
-    expect((await api.inject({ method: "POST", url: `/api/processes/${id}/stage-points/${key}/absence` })).statusCode).toBe(201);
-  }
-  expect((await api.declareInapplicable(id, "constraints_vs_preferences", { justification: "Já registradas." })).statusCode).toBe(201);
-  expect((await api.confirmStage(id, { stageAssessmentId: null }, "R")).statusCode).toBe(201);
-  return { id, constraintId: constraint.json().constraint.id as string };
-}
 
 const requestProposal = (id: string) => api.inject({ method: "POST", url: `/api/processes/${id}/option-proposals` });
 
@@ -65,7 +49,7 @@ async function proposeOptions(id: string) {
 
 describe("Options proposed by the AI", () => {
   it("arrive as suggestions, from the problem, the confirmed Stages and the Constraints in force", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
     assistant.options.willRespond(completed(proposedOptions));
 
     const process = await proposeOptions(id);
@@ -99,7 +83,7 @@ describe("Options proposed by the AI", () => {
   });
 });
 
-const addOption = (id: string, payload: Record<string, unknown>) => api.inject({ method: "POST", url: `/api/processes/${id}/options`, payload });
+const { addOption, confirmStageO, reviseConstraint: revise } = api;
 
 const acceptOption = (id: string, optionId: string, payload?: Record<string, unknown>) =>
   api.inject({ method: "POST", url: `/api/processes/${id}/options/${optionId}/acceptance`, ...(payload && { payload }) });
@@ -108,7 +92,7 @@ const discardOption = (id: string, optionId: string) => api.inject({ method: "PO
 
 describe("The user, on the suggested Options", () => {
   it("accepts one as it came", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
     const { options } = await proposeOptions(id);
 
     const response = await acceptOption(id, options[0].id);
@@ -123,7 +107,7 @@ describe("The user, on the suggested Options", () => {
   });
 
   it("accepts one edited, keeping the suggestion as the AI made it", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
     const { options } = await proposeOptions(id);
 
     const response = await acceptOption(id, options[1].id, {
@@ -141,7 +125,7 @@ describe("The user, on the suggested Options", () => {
   });
 
   it("discards one, which stays in the history", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
     const { options } = await proposeOptions(id);
 
     const response = await discardOption(id, options[0].id);
@@ -152,7 +136,7 @@ describe("The user, on the suggested Options", () => {
   });
 
   it("cannot accept an Option twice nor discard it twice", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
     const { options } = await proposeOptions(id);
     await acceptOption(id, options[0].id);
     await discardOption(id, options[1].id);
@@ -169,7 +153,7 @@ describe("The user, on the suggested Options", () => {
   });
 
   it("asks for new Options, and the AI receives the ones already recorded so as not to repeat them", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
     const { options } = await proposeOptions(id);
     await acceptOption(id, options[0].id);
     await discardOption(id, options[1].id);
@@ -188,7 +172,7 @@ describe("The user, on the suggested Options", () => {
 
 describe("Options of the user", () => {
   it("are added already accepted", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
 
     const response = await addOption(id, {
       statement: " Trocar o runner por um maior ",
@@ -208,7 +192,7 @@ describe("Options of the user", () => {
   });
 
   it("need a statement and Points of Stage O only", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
 
     for (const payload of [{}, { statement: "  " }, { statement: "Algo", description: 3 }, { statement: "Algo", stagePoints: "deadline" }]) {
       const response = await addOption(id, payload);
@@ -234,9 +218,6 @@ describe("Options of the user", () => {
   });
 });
 
-const revise = (id: string, constraintId: string, replacement: Record<string, unknown> | null) =>
-  api.inject({ method: "POST", url: `/api/processes/${id}/constraints/${constraintId}/revision`, payload: { replacement, note: "Mudou." } });
-
 const retryOptionAssessment = (id: string, checkId: string) =>
   api.inject({ method: "POST", url: `/api/processes/${id}/option-checks/${checkId}/option-assessments` });
 
@@ -249,7 +230,7 @@ async function optionOf(id: string, optionId: string) {
 
 // Processo na Etapa O com uma Opção do usuário aceita.
 async function processWithOption() {
-  const { id, constraintId } = await processInStageO();
+  const { id, constraintId } = await api.processInStageO();
   const added = await addOption(id, { statement: "Trocar o runner por um maior", description: "Máquina com o dobro de CPU." });
   expect(added.statusCode).toBe(201);
   return { id, constraintId, optionId: added.json().option.id as string };
@@ -290,7 +271,7 @@ describe("The Jev, on each accepted Option against each Constraint in force", ()
   });
 
   it("marks the Option inviable on a confident violation, whatever else it offers", async () => {
-    const { id, constraintId } = await processInStageO();
+    const { id, constraintId } = await api.processInStageO();
     assessor.willAssessOptions(optionOutcome(() => verdict("yes", 0.95)));
 
     const added = await addOption(id, { statement: "Contratar uma plataforma de CI de 2.000 reais por mês" });
@@ -320,7 +301,7 @@ describe("The Jev, on each accepted Option against each Constraint in force", ()
   });
 
   it("leaves an uncertain pair to the user, who decides on the Assessment they saw", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
     assessor.willAssessOptions(optionOutcome(() => verdict("yes", 0.6)));
     const { optionId } = { optionId: (await addOption(id, { statement: "Usar runners spot" })).json().option.id as string };
     const [check] = (await api.getProcess(id)).optionChecks;
@@ -343,7 +324,7 @@ describe("The Jev, on each accepted Option against each Constraint in force", ()
 
   it("lets the user retry when the Jev fails, or decide without it", async () => {
     const { id, optionId } = await (async () => {
-      const stageO = await processInStageO();
+      const stageO = await api.processInStageO();
       assessor.willAssessOptions({ status: "failed", reason: "jev_unavailable", message: "O Jev não respondeu em 60 s." });
       const added = await addOption(stageO.id, { statement: "Usar runners spot" });
       return { id: stageO.id, optionId: added.json().option.id as string };
@@ -368,7 +349,7 @@ describe("The Jev, on each accepted Option against each Constraint in force", ()
   });
 
   it("has a failed pair decided by the user without an Assessment", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
     assessor.willAssessOptions({ status: "failed", reason: "jev_unavailable", message: "O Jev não respondeu em 60 s." });
     const optionId = (await addOption(id, { statement: "Usar runners spot" })).json().option.id;
     const [check] = (await api.getProcess(id)).optionChecks;
@@ -393,7 +374,7 @@ describe("The Jev, on each accepted Option against each Constraint in force", ()
   });
 
   it("assesses the accepted Options against the Constraint that replaces a revised one, and forgets the withdrawn one", async () => {
-    const { id, constraintId } = await processInStageO();
+    const { id, constraintId } = await api.processInStageO();
     assessor.willAssessOptions(optionOutcome(() => verdict("yes", 0.95)));
     const optionId = (await addOption(id, { statement: "Contratar uma plataforma de CI de 2.000 reais por mês" })).json().option.id;
     expect(await optionOf(id, optionId)).toMatchObject({ viability: "inviable" });
@@ -411,7 +392,7 @@ describe("The Jev, on each accepted Option against each Constraint in force", ()
   });
 
   it("tells the AI which Constraints each accepted Option violates", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
     assessor.willAssessOptions(optionOutcome(() => verdict("yes", 0.95)));
     await addOption(id, { statement: "Contratar uma plataforma de CI de 2.000 reais por mês" });
 
@@ -422,15 +403,6 @@ describe("The Jev, on each accepted Option against each Constraint in force", ()
     ]);
   });
 });
-
-// Fecha os Pontos da Etapa O, inaplicáveis, e pede a Confirmação dela (sem Ponto coberto a avaliar).
-async function confirmStageO(id: string) {
-  for (const key of ["eliminate_problem", "simplest_solution", "eighty_twenty", "reversibility"]) {
-    const point = (await api.getProcess(id)).stagePoints.find((item: { key: string }) => item.key === key);
-    if (point.status === "open") await api.declareInapplicable(id, key, { justification: "Fora deste exemplo." });
-  }
-  return api.confirmStage(id, { stageAssessmentId: null }, "O");
-}
 
 describe("Confirming Stage O", () => {
   it("opens Stage B with a viable Option", async () => {
@@ -446,12 +418,13 @@ describe("Confirming Stage O", () => {
       "gains_and_losses",
       "scalability",
       "maintenance",
-      "chosen_option_and_discards",
     ]);
+    // O Ponto da Escolha não é dos Blocos: só a Escolha o cobre.
+    expect(process.stagePoints.map((point: { key: string }) => point.key)).toContain("chosen_option_and_discards");
   });
 
   it("is refused without any accepted Option", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
 
     const response = await confirmStageO(id);
 
@@ -461,7 +434,7 @@ describe("Confirming Stage O", () => {
   });
 
   it("explains the impediments when no Option meets the Constraints, and keeps the Process open", async () => {
-    const { id, constraintId } = await processInStageO();
+    const { id, constraintId } = await api.processInStageO();
     assessor.willAssessOptions(optionOutcome(() => verdict("yes", 0.95)));
     const optionId = (await addOption(id, { statement: "Contratar uma plataforma de CI de 2.000 reais por mês" })).json().option.id;
     const discarded = (await addOption(id, { statement: "Desistir do deploy" })).json().option.id;
@@ -486,7 +459,7 @@ describe("Confirming Stage O", () => {
   });
 
   it("is accepted after a Constraint revision makes an Option viable", async () => {
-    const { id, constraintId } = await processInStageO();
+    const { id, constraintId } = await api.processInStageO();
     assessor.willAssessOptions(optionOutcome(() => verdict("yes", 0.95)));
     await addOption(id, { statement: "Contratar uma plataforma de CI de 2.000 reais por mês" });
     expect((await confirmStageO(id)).statusCode).toBe(409);
@@ -534,7 +507,7 @@ describe("Confirming Stage O", () => {
 
 describe("Blocks of Stage O", () => {
   it("are generated for the Points of O, with the accepted Options as context", async () => {
-    const { id } = await processInStageO();
+    const { id } = await api.processInStageO();
     assessor.willAssessOptions(optionOutcome(() => verdict("yes", 0.95)));
     await addOption(id, { statement: "Contratar uma plataforma de CI de 2.000 reais por mês" });
     const discarded = (await addOption(id, { statement: "Desistir do deploy" })).json().option.id;
