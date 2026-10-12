@@ -19,14 +19,14 @@ import {
   type ItemReplacement,
   type ItemStatement,
 } from "./constraints-and-preferences.ts";
-import { executionConfirmed, executionPlanOf, type ExecutionPlan, type PlanDecision } from "./execution-plan.ts";
+import { executionPlanOf, type ExecutionPlan, type PlanDecision } from "./execution-plan.ts";
 import { optionChecksOf } from "./option-checks.ts";
 import { optionProposalsOf, optionsOf, type OptionDecision, type Options, type OptionStatement, type UserOption } from "./options.ts";
 import type { Pendencies } from "./pendencies.ts";
 import type { ProblemStatements, StatementConfirmation } from "./problem-statement.ts";
 import { reassessmentsOf, type ImpactDecision, type Reassessments } from "./reassessments.ts";
 import { recommendationsOf, type Recommendations } from "./recommendations.ts";
-import { createProcess, findProcess, listProcesses } from "./process.ts";
+import { createProcess, executionConfirmed, findProcess, listProcesses } from "./process.ts";
 import type { StagePointCoverage } from "./stage-point-coverage.ts";
 import { stageConfirmationsOf, type StageConfirmations, type StageConfirmationRequest } from "./stage-confirmations.ts";
 import { isStage, stages } from "./stage.ts";

@@ -28,6 +28,8 @@ const errorText: Record<string, string> = {
   unknown_assessment: "Há uma Avaliação mais recente do que a que você viu. Confira-a antes de decidir.",
   justification_required: "Diga por que mantém o elemento contra a Avaliação do Jev.",
   plan_element_decided: "Este elemento já está decidido.",
+  assessment_required: "Este elemento não tem Avaliação sobre a Escolha em vigor (ela pode ter mudado em outra aba). Peça uma nova.",
+  plan_element_not_recorded: "Escreva o elemento antes de decidir sobre ele.",
 };
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;

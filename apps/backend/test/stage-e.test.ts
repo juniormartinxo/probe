@@ -295,6 +295,22 @@ describe("The compatibility of the plan with the Choice", () => {
     expect((await confirmStageE(id)).statusCode).toBe(201);
   });
 
+  it("discards an Assessment that arrives after the user decided on the element", async () => {
+    const { id } = await processInStageE();
+    assessor.willAssessPlan(jevDown);
+    await recordElement(id, "first_step", { text: firstStep });
+    const failed = (await elementOf(id, "first_step")).compatibility.assessment;
+    // Enquanto o Jev responde a nova tentativa, o usuário mantém o elemento em outra aba.
+    assessor.willAssessPlan(async () => {
+      expect((await keepElement(id, "first_step", { planAssessmentId: failed.id })).statusCode).toBe(201);
+      return planOutcome("no", 0.95);
+    });
+
+    expect((await assessPlan(id)).statusCode).toBe(201);
+
+    expect((await elementOf(id, "first_step")).compatibility).toMatchObject({ status: "kept", assessment: { id: failed.id } });
+  });
+
   it("is not decided by the user when the Jev already found it compatible", async () => {
     const { id } = await processInStageE();
     await recordElement(id, "first_step", { text: firstStep });

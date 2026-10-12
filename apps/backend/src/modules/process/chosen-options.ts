@@ -1,8 +1,7 @@
 import type { Db } from "../../db/database.ts";
 import type { AssessedChoice } from "../assessments/assessor.ts";
-import { executionConfirmed } from "./execution-plan.ts";
 import { optionsOf, type NamedOption, type Option } from "./options.ts";
-import { lockOpenProcessFrom } from "./process.ts";
+import { executionConfirmed, lockOpenProcessFrom } from "./process.ts";
 import type { StagePointState } from "./stage-point-coverage.ts";
 import type { Stage } from "./stage.ts";
 

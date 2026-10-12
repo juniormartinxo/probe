@@ -1,19 +1,12 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { Db } from "../../db/database.ts";
-import {
-  failureOnThrow,
-  type AssessmentChoice,
-  type Assessor,
-  type AssessorFailureReason,
-  type AssessorOutcome,
-  type PlanCompatibilityInput,
-  type Verdict,
-} from "../assessments/assessor.ts";
-import { decidesAlone, verdictProblem } from "../assessments/impact-assessments.ts";
+import type { AssessmentChoice, Assessor, AssessorFailureReason, Verdict } from "../assessments/assessor.ts";
+import { decidesAlone, impactOutcomeColumns, judgedImpact } from "../assessments/impact-assessments.ts";
 import { PLAN_CONFIDENCE_THRESHOLD, PLAN_RUBRIC_REVISION } from "../assessments/plan-rubric.ts";
 import { choiceInForceOf, chosenOptionsOf } from "./chosen-options.ts";
-import { lockOpenProcessFrom } from "./process.ts";
-import type { ProcessPoints, StagePointState } from "./stage-point-coverage.ts";
+import { confirmedStatementOf } from "./problem-statement.ts";
+import { executionConfirmed, lockOpenProcessFrom } from "./process.ts";
+import { openPoints, type ProcessPoints, type StagePointState } from "./stage-point-coverage.ts";
 import { stagePointsOf, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
 
@@ -148,12 +141,14 @@ export async function executionPlanOf(db: Db, process: ProcessPoints): Promise<E
   });
 }
 
-// Os Pontos de E ainda sem elemento: os que os Blocos de E ainda servem.
-export async function unplannedPointsOf(db: Db, process: ProcessPoints, stage: Stage): Promise<StagePoint[]> {
-  if (stage !== EXECUTION_STAGE) return [];
-  return (await executionPlanOf(db, process))
-    .filter((element) => element.current === null)
-    .map(({ key, name, description }) => ({ key, name, description }));
+// Os Pontos que os Blocos da Etapa servem: os abertos e, em E, os ainda sem elemento do plano, que só
+// o elemento cobre.
+export async function blockPointsOf(db: Db, process: ProcessPoints, stage: Stage, states: StagePointState[]): Promise<StagePoint[]> {
+  const unplanned =
+    stage === EXECUTION_STAGE
+      ? (await executionPlanOf(db, process)).filter((element) => element.current === null).map(({ key, name, description }) => ({ key, name, description }))
+      : [];
+  return [...openPoints(states), ...unplanned];
 }
 
 // Os Pontos da Etapa com os de E cobertos ("planned") pelos elementos registrados.
@@ -161,18 +156,6 @@ export async function withPlanCoverage(db: Db, process: ProcessPoints, states: S
   if (!states.some((point) => point.coveredByPlan)) return states;
   const planned = new Set((await executionPlanOf(db, process)).filter((element) => element.current).map((element) => element.key));
   return states.map((point) => (point.coveredByPlan && planned.has(point.key) ? { ...point, status: "planned" } : point));
-}
-
-// A Etapa E foi confirmada: o Processo está pronto para a Revisão final, e o plano e a Escolha não
-// mudam mais nesta fatia (ADR 0008).
-export async function executionConfirmed(db: Db, processId: string): Promise<boolean> {
-  const row = await db
-    .selectFrom("stageConfirmations")
-    .select("stage")
-    .where("processId", "=", processId)
-    .where("stage", "=", EXECUTION_STAGE)
-    .executeTakeFirst();
-  return row !== undefined;
 }
 
 export type PlanNotReady = "execution_plan_incomplete" | "undecided_plan_compatibility";
@@ -231,43 +214,35 @@ async function lockStageE(trx: Db, processId: string) {
 }
 
 export function executionPlan({ db, assessor, log }: { db: Db; assessor: Assessor; log: FastifyBaseLogger }): ExecutionPlan {
-  // Um julgamento válido, ou a falha, qualquer que seja o Assessor.
-  async function judge(input: PlanCompatibilityInput): Promise<AssessorOutcome<Verdict>> {
-    const outcome = await failureOnThrow(() => assessor.assessPlan(input));
-    if (outcome.status !== "completed") return outcome;
-    const problem = verdictProblem(outcome.result);
-    return problem ? { status: "failed", reason: "invalid_output", message: problem } : outcome;
-  }
-
   // Chama o Jev fora da transação (o Processo não fica travado enquanto ele responde) e grava a
-  // Avaliação de cada elemento, concluída ou falha, sobre a Escolha em vigor.
+  // Avaliação de cada elemento, concluída ou falha, sobre a Escolha em vigor. Uma resposta que chega
+  // depois de o elemento ser reescrito ou decidido, de a Escolha mudar ou de E ser confirmada não é
+  // gravada: ela julgou um estado que já não vale.
   async function assess(processId: string, elements: ExecutionPlanElement[]): Promise<void> {
     const chosen = await choiceInForceOf(db, processId);
     if (!chosen) return;
-    const { statement: problemStatement } = await db
-      .selectFrom("problemStatements")
-      .select("statement")
-      .where("processId", "=", processId)
-      .executeTakeFirstOrThrow();
+    const problemStatement = await confirmedStatementOf(db, processId);
     for (const { key, name, description, current } of elements) {
-      const outcome = await judge({ problemStatement, chosenOption: chosen.choice, element: { key, name, description, text: current!.text } });
-      await db
-        .insertInto("planAssessments")
-        .values({
-          processId,
-          elementId: current!.id,
-          chosenOptionId: chosen.id,
-          status: outcome.status,
-          requestedModel: assessor.model,
-          jevModel: outcome.status === "completed" ? outcome.model : null,
-          rubricRevision: PLAN_RUBRIC_REVISION,
-          choice: outcome.status === "completed" ? outcome.result.choice : null,
-          confidence: outcome.status === "completed" ? outcome.result.confidence : null,
-          probabilities: outcome.status === "completed" ? JSON.stringify(outcome.result.probabilities) : null,
-          failureReason: outcome.status === "failed" ? outcome.reason : null,
-          message: outcome.status === "failed" ? outcome.message : null,
-        })
-        .execute();
+      const outcome = await judgedImpact(() =>
+        assessor.assessPlan({ problemStatement, chosenOption: chosen.choice, element: { key, name, description, text: current!.text } }),
+      );
+      await db.transaction().execute(async (trx) => {
+        const locked = await lockStageE(trx, processId);
+        if (!locked.ok) return;
+        if ((await chosenOptionsOf(trx, processId)).at(-1)?.id !== chosen.id) return;
+        const now = (await executionPlanOf(trx, locked.process)).find((element) => element.key === key);
+        if (now?.current?.id !== current!.id || !undecidedStatuses.includes(now.compatibility.status)) return;
+        await trx
+          .insertInto("planAssessments")
+          .values({
+            processId,
+            elementId: current!.id,
+            chosenOptionId: chosen.id,
+            rubricRevision: PLAN_RUBRIC_REVISION,
+            ...impactOutcomeColumns(outcome, assessor.model),
+          })
+          .execute();
+      });
     }
   }
 

@@ -60,3 +60,15 @@ export async function lockOpenProcessFrom(trx: Db, processId: string, stage: Sta
   if (stages.indexOf(locked.process.currentStage) < stages.indexOf(stage)) return { ok: false, error: "stage_not_current" } as const;
   return locked;
 }
+
+// A Etapa E foi confirmada: o Processo está pronto para a Revisão final, e o plano e a Escolha não
+// mudam mais nesta fatia (ADR 0008).
+export async function executionConfirmed(db: Db, processId: string): Promise<boolean> {
+  const row = await db
+    .selectFrom("stageConfirmations")
+    .select("stage")
+    .where("processId", "=", processId)
+    .where("stage", "=", "E")
+    .executeTakeFirst();
+  return row !== undefined;
+}

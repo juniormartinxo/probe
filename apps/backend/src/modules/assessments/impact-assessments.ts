@@ -70,7 +70,7 @@ export function verdictProblem({ choice, confidence, probabilities }: Verdict): 
   return undefined;
 }
 
-// Um julgamento único válido, ou a falha.
+// Um julgamento único válido (impacto, compatibilidade), ou a falha.
 export async function judgedImpact(call: () => Promise<AssessorOutcome<Verdict>>): Promise<AssessorOutcome<Verdict>> {
   const outcome = await failureOnThrow(call);
   if (outcome.status !== "completed") return outcome;
@@ -78,7 +78,7 @@ export async function judgedImpact(call: () => Promise<AssessorOutcome<Verdict>>
   return problem ? { status: "failed", reason: "invalid_output", message: problem } : outcome;
 }
 
-// As colunas do desfecho do Jev numa Avaliação de impacto gravada.
+// As colunas do desfecho do Jev numa Avaliação de julgamento único gravada (impacto, compatibilidade).
 export const impactOutcomeColumns = (outcome: AssessorOutcome<Verdict>, requestedModel: string) => ({
   status: outcome.status,
   requestedModel,

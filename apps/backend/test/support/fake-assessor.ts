@@ -65,6 +65,9 @@ export const optionOutcome =
 
 type OptionStep = AssessorOutcome<Verdicts> | ((input: OptionViolationInput) => AssessorOutcome<Verdicts>);
 
+// Um desfecho, ou o que o Jev faz enquanto "responde" (por exemplo, o usuário agindo em outra aba).
+type PlanStep = AssessorOutcome<Verdict> | (() => Promise<AssessorOutcome<Verdict>>);
+
 type ConflictStep = AssessorOutcome<Verdicts> | ((input: ConflictInput) => AssessorOutcome<Verdicts>);
 
 // `Assessor` falso: desfechos na ordem; sem roteiro, `yes` em todos os Pontos, no impacto (de uma Versão
@@ -84,16 +87,17 @@ export class FakeAssessor implements Assessor {
   private readonly conflictSteps: ConflictStep[] = [];
   private readonly constraintImpactSteps: AssessorOutcome<Verdict>[] = [];
   private readonly optionSteps: OptionStep[] = [];
-  private readonly planSteps: AssessorOutcome<Verdict>[] = [];
+  private readonly planSteps: PlanStep[] = [];
 
-  willAssessPlan(...outcomes: AssessorOutcome<Verdict>[]): this {
-    this.planSteps.push(...outcomes);
+  willAssessPlan(...steps: PlanStep[]): this {
+    this.planSteps.push(...steps);
     return this;
   }
 
   async assessPlan(input: PlanCompatibilityInput): Promise<AssessorOutcome<Verdict>> {
     this.planInputs.push(input);
-    return this.planSteps.shift() ?? impactOutcome("yes");
+    const step = this.planSteps.shift() ?? impactOutcome("yes");
+    return typeof step === "function" ? step() : step;
   }
 
   willAssessOptions(...steps: OptionStep[]): this {

@@ -1,11 +1,12 @@
 import type { Db } from "../../db/database.ts";
 import { stageAssessmentsOf } from "../assessments/stage-assessments.ts";
 import { choiceBlockingStage, type ChoiceNotReady } from "./chosen-options.ts";
-import { executionConfirmed, planBlockingStage, type PlanNotReady } from "./execution-plan.ts";
+import { planBlockingStage, type PlanNotReady } from "./execution-plan.ts";
 import { undecidedConflictsBlocking } from "./conflicts.ts";
 import { undecidedConstraintReassessmentsBlocking } from "./constraint-reassessments.ts";
 import { optionsBlockingStage, type OptionImpediment } from "./options.ts";
 import { pendenciesBlockingStage } from "./pendencies.ts";
+import { executionConfirmed } from "./process.ts";
 import { undecidedReassessmentsBlocking } from "./reassessments.ts";
 import type { ProcessPoints } from "./stage-point-coverage.ts";
 import { readyStage, type StageNotReady } from "./stage-readiness.ts";

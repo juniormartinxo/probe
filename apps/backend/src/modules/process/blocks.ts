@@ -14,8 +14,8 @@ import type {
 import type { SettingsModule } from "../settings/settings.ts";
 import { answersOf, type AnswerDraft, type Answer } from "./answers.ts";
 import { choiceInForceOf, withChoiceCoverage } from "./chosen-options.ts";
-import { unplannedPointsOf, withPlanCoverage } from "./execution-plan.ts";
-import { openPoints, stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
+import { blockPointsOf, withPlanCoverage } from "./execution-plan.ts";
+import { stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
 import { statementsInForceOf } from "./constraints-and-preferences.ts";
 import { knownOptionOf, optionsOf } from "./options.ts";
 import { confirmedStagesOf } from "./stage-readiness.ts";
@@ -148,8 +148,7 @@ async function lockOpenProcess(
     trx,
     confirmedSyntheses.map((row) => row.id),
   );
-  // Em E, os Blocos servem os Pontos ainda sem elemento do plano, que só o elemento cobre.
-  const openStagePoints = [...openPoints(await stagePointStates(trx, process, stage)), ...(await unplannedPointsOf(trx, process, stage))];
+  const openStagePoints = await blockPointsOf(trx, process, stage, await stagePointStates(trx, process, stage));
   const open = new Set(openStagePoints.map((point) => point.key));
   // Uma resposta ambígua só é oferecida para reformular enquanto não ganhou reformulação e ainda
   // serve a algum Ponto aberto: a reformulação também precisa servir a um Ponto aberto.
@@ -388,7 +387,7 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       };
       return {
         stagePoints,
-        openStagePoints: [...openPoints(stagePoints), ...(await unplannedPointsOf(db, process, process.currentStage))],
+        openStagePoints: await blockPointsOf(db, process, process.currentStage, stagePoints),
         blockRequests,
         blocks: blockRows.map((block) => ({
           ...block,
