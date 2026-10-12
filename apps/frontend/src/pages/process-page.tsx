@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import {
   ApiError,
   downloadReport,
   getFinalization,
   getProcess,
+  reconsiderProcess,
   type Finalization,
   type ProcessDetail,
   type ReportFormat,
@@ -12,7 +13,7 @@ import {
 } from "@/api";
 import { FinalReviewSection } from "@/components/final-review";
 import { ProblemStatementSection } from "@/components/problem-statement-section";
-import { ReportView } from "@/components/report-view";
+import { derivationText, ReportView } from "@/components/report-view";
 import { StageSection } from "@/components/stage-section";
 import { UnderstandingPanel } from "@/components/understanding-panel";
 import { Button } from "@/components/ui/button";
@@ -89,6 +90,15 @@ function ProcessView({ process, onChange }: { process: ProcessDetail; onChange: 
             Criado em {formatDate(process.createdAt)} · {statusName(process.status)}
             {process.finalizedAt && ` em ${formatDate(process.finalizedAt)}`}
           </p>
+          {process.derivation && (
+            <p className="text-muted-foreground text-xs">
+              {derivationText[process.derivation.kind]} do{" "}
+              <Link to={`/processes/${process.derivation.originProcessId}`} className="underline">
+                Processo finalizado em {formatDate(process.derivation.originFinalizedAt)}
+              </Link>
+              , que continua como foi finalizado.
+            </p>
+          )}
         </div>
         <StageIndicator current={process.currentStage} />
       </header>
@@ -119,6 +129,7 @@ function FinalizedReport({ processId }: { processId: string }) {
           <>
             <p className="text-muted-foreground text-xs">Finalizado em {formatDate(finalization.finalizedAt)}. Somente leitura.</p>
             <ReportExports processId={processId} />
+            <Reconsider processId={processId} />
           </>
         )}
       </CardHeader>
@@ -162,6 +173,37 @@ function ReportExports({ processId }: { processId: string }) {
         ))}
       </div>
       {failed && <p className="text-destructive text-xs">Não foi possível gerar o arquivo. Tente de novo.</p>}
+    </div>
+  );
+}
+
+// A Reconsideração abre um Processo novo com a cópia deste: as respostas, as Confirmações, a Escolha e o
+// plano valem lá até você mudá-los. Este continua como foi finalizado.
+function Reconsider({ processId }: { processId: string }) {
+  const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const reconsider = () => {
+    setCreating(true);
+    setFailed(false);
+    reconsiderProcess(processId).then(
+      (process) => navigate(`/processes/${process.id}`),
+      () => {
+        setCreating(false);
+        setFailed(true);
+      },
+    );
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-muted-foreground text-xs">
+        Para revisar esta Decisão, abra uma Reconsideração: um Processo novo que herda as respostas, as Confirmações, a Escolha e o plano.
+        Cada mudança passa pela Avaliação de impacto; este Processo fica como está.
+      </p>
+      <Button variant="outline" size="sm" className="self-start" disabled={creating} onClick={reconsider}>
+        {creating ? "Abrindo…" : "Reconsiderar a Decisão"}
+      </Button>
+      {failed && <p className="text-destructive text-xs">Não foi possível abrir a Reconsideração. Tente de novo.</p>}
     </div>
   );
 }

@@ -11,6 +11,31 @@ export interface Process {
   createdAt: string;
 }
 
+// Derivação: por ora, a Reconsideração, que reabre uma Decisão finalizada para revisá-la.
+export type DerivationKind = "reconsideration";
+
+// Processo como a lista o traz: com a Derivação de que veio, se veio de uma.
+export interface ListedProcess extends Process {
+  derivation: { kind: DerivationKind; originProcessId: string } | null;
+}
+
+// O que mudou em relação ao conjunto confirmado da origem: como estava (null no acrescentado) e como
+// está (null no retirado).
+export interface OriginChange {
+  kind: "answer" | "constraint" | "preference" | "choice" | "plan_element";
+  subject: string;
+  before: string | null;
+  after: string | null;
+}
+
+// A origem de um Processo derivado e o que mudou desde ela.
+export interface Derivation {
+  kind: DerivationKind;
+  originProcessId: string;
+  originFinalizedAt: string;
+  changes: OriginChange[];
+}
+
 export interface ProcessWithConversation extends Process {
   conversation: { id: string };
 }
@@ -692,13 +717,16 @@ export interface ProcessDetail extends ProcessWithConversation {
   readyForFinalReview: boolean;
   // Quando a Finalização congelou o Processo; null enquanto ele está aberto.
   finalizedAt: string | null;
+  // A origem, num Processo derivado, e o que mudou desde ela; null nos demais.
+  derivation: Derivation | null;
 }
 
 // Relatório do Processo: o conteúdo estruturado que a Revisão final apresenta e a Finalização congela.
 // Começa pelo resumo da Decisão, segue com o registro por Etapa e termina no histórico.
 export interface Report {
-  // `finalizedAt`: null na Revisão final; a data da Finalização no relatório congelado.
-  identification: { processId: string; createdAt: string; finalizedAt: string | null; origin: null };
+  // `finalizedAt`: null na Revisão final; a data da Finalização no relatório congelado. `origin`: a
+  // Derivação de que o Processo veio, com o que mudou desde a origem; null num Processo não derivado.
+  identification: { processId: string; createdAt: string; finalizedAt: string | null; origin: ReportOrigin | null };
   decisionSummary: {
     problemStatement: string;
     chosenOption: string;
@@ -725,6 +753,13 @@ export interface Report {
   discardedOptions: { option: string; by: "choice" | "constraint" | "options_stage"; reason: string | null }[];
   executionPlan: { key: string; name: string; text: string; compatibility: PlanCompatibilityStatus; justification: string | null }[];
   history: ReportHistoryEntry[];
+}
+
+export interface ReportOrigin {
+  kind: DerivationKind;
+  processId: string;
+  finalizedAt: string;
+  changes: OriginChange[];
 }
 
 export interface ReportStage {
@@ -843,8 +878,8 @@ export async function createProcess(description: string): Promise<ProcessWithCon
   return process;
 }
 
-export async function listProcesses(): Promise<Process[]> {
-  const { processes } = await request<{ processes: Process[] }>("/processes");
+export async function listProcesses(): Promise<ListedProcess[]> {
+  const { processes } = await request<{ processes: ListedProcess[] }>("/processes");
   return processes;
 }
 
@@ -1357,6 +1392,13 @@ export async function finalizeProcess(processId: string, fingerprint: string): P
 export async function getFinalization(processId: string): Promise<Finalization> {
   const { finalization } = await request<{ finalization: Finalization }>(`${processPath(processId)}/finalization`);
   return finalization;
+}
+
+// Abre uma Reconsideração do Processo finalizado: um Processo novo, aberto, com a cópia do que ele
+// registrou. O finalizado continua como está.
+export async function reconsiderProcess(processId: string): Promise<ProcessDetail> {
+  const { process } = await request<{ process: ProcessDetail }>(`${processPath(processId)}/reconsiderations`, { method: "POST" });
+  return process;
 }
 
 export type ReportFormat = "md" | "pdf";

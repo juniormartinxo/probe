@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import type { ComparisonCells, ItemStatement, OptionViability, Report, ReportAssumption, ReportHistoryEntry, ReportStage } from "@/api";
+import { Link } from "react-router";
+import type { ComparisonCells, DerivationKind, ItemStatement, OptionViability, OriginChange, Report, ReportAssumption, ReportHistoryEntry, ReportStage } from "@/api";
 import { dimensions } from "@/components/balancing";
 import { itemDetails } from "@/components/constraints-and-preferences";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +75,43 @@ function Items({ items, empty }: { items: ItemStatement[]; empty: string }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+export const derivationText: Record<DerivationKind, string> = { reconsideration: "Reconsideração" };
+
+// Uma mudança em relação à origem, como o relatório exportado a escreve.
+export function describeChange({ subject, before, after }: OriginChange): string {
+  if (before === null) return `${subject} (acrescentada): ${after}`;
+  if (after === null) return `${subject} (retirada): ${before}`;
+  return `${subject}: ${before} → ${after}`;
+}
+
+// Num Processo derivado, de onde ele veio e o que mudou em relação à origem.
+export function OriginSection({ report }: { report: Report }) {
+  const { origin } = report.identification;
+  if (!origin) return null;
+  return (
+    <Section title="O que mudou em relação à origem">
+      <p className="text-muted-foreground text-xs">
+        {derivationText[origin.kind]} do{" "}
+        <Link to={`/processes/${origin.processId}`} className="underline">
+          Processo finalizado em {formatDate(origin.finalizedAt)}
+        </Link>
+        .
+      </p>
+      {origin.changes.length === 0 ? (
+        <p className="text-muted-foreground text-xs">Nada mudou em relação à origem.</p>
+      ) : (
+        <ul className="flex list-disc flex-col gap-0.5 pl-5">
+          {origin.changes.map((change, index) => (
+            <li key={index} className="whitespace-pre-wrap">
+              {describeChange(change)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
   );
 }
 
@@ -239,6 +277,7 @@ function StageRecord({ stage }: { stage: ReportStage }) {
 export function ReportView({ report }: { report: Report }) {
   return (
     <div className="flex flex-col gap-5 text-sm">
+      <OriginSection report={report} />
       <DecisionSummarySection report={report} />
       <ProblemSection report={report} />
       <ConstraintsAndPreferencesSection report={report} />

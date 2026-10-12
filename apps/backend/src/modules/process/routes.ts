@@ -21,6 +21,7 @@ import {
   type ItemStatement,
 } from "./constraints-and-preferences.ts";
 import type { ExecutionPlan, PlanDecision } from "./execution-plan.ts";
+import type { Reconsiderations } from "./derivations.ts";
 import type { Finalization } from "./finalization.ts";
 import { optionChecksOf } from "./option-checks.ts";
 import type { OptionDecision, Options, OptionStatement, UserOption } from "./options.ts";
@@ -413,6 +414,7 @@ export const processRoutes =
     chosenOptions,
     executionPlan,
     finalization,
+    reconsiderations,
   }: {
     db: Db;
     problemStatements: ProblemStatements;
@@ -433,6 +435,7 @@ export const processRoutes =
     chosenOptions: ChosenOptions;
     executionPlan: ExecutionPlan;
     finalization: Finalization;
+    reconsiderations: Reconsiderations;
   }): FastifyPluginAsync =>
   async (app) => {
     app.post("/processes", async (request, reply) => {
@@ -1000,6 +1003,16 @@ export const processRoutes =
           .send(file);
       });
     }
+
+    // A Reconsideração de um Processo finalizado: um Processo novo, aberto, com a cópia do que a origem
+    // registrou. A origem continua como foi finalizada.
+    app.post<{ Params: { id: string } }>("/processes/:id/reconsiderations", async (request, reply) => {
+      const { id } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      const result = await reconsiderations.create(id);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ process: await processDetailOf(db, result.processId) });
+    });
 
     for (const kind of itemKinds) {
       const path = itemPaths[kind];

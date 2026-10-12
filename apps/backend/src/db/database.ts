@@ -10,6 +10,7 @@ import type { ConfirmationBasis } from "../modules/process/reassessments.ts";
 import type { StatementOrigin } from "../modules/process/problem-statement.ts";
 import type { CoverageStatus } from "../modules/process/stage-point-coverage.ts";
 import type { SynthesisOrigin } from "../modules/process/syntheses.ts";
+import type { DerivationKind } from "../modules/process/derivations.ts";
 import type { ConfirmedSet } from "../modules/process/finalization.ts";
 import type { ProcessStatus } from "../modules/process/process.ts";
 import type { Report } from "../modules/reports/report.ts";
@@ -460,6 +461,24 @@ export interface FinalizationTable {
   finalizedAt: Generated<Date>;
 }
 
+// Derivação: o Processo criado de um finalizado, a origem e o conjunto confirmado dela, pelos ids das
+// cópias.
+export interface DerivationTable {
+  processId: string;
+  originProcessId: string;
+  kind: DerivationKind;
+  inheritedSet: ColumnType<ConfirmedSet, string, never>;
+  createdAt: Generated<Date>;
+}
+
+// Registro copiado da origem numa Derivação: a tabela, o id na origem e o da cópia.
+export interface DerivationCopyTable {
+  processId: string;
+  tableName: string;
+  originId: string;
+  copyId: string;
+}
+
 export interface Database {
   processes: ProcessTable;
   conversations: ConversationTable;
@@ -502,6 +521,8 @@ export interface Database {
   planAssessments: PlanAssessmentTable;
   planDecisions: PlanDecisionTable;
   finalizations: FinalizationTable;
+  derivations: DerivationTable;
+  derivationCopies: DerivationCopyTable;
   settings: SettingsTable;
 }
 

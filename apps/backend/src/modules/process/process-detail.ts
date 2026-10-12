@@ -7,6 +7,7 @@ import { comparisonMatrixOf } from "./comparison-matrix.ts";
 import { conflictChecksOf } from "./conflicts.ts";
 import { constraintReassessmentsOf } from "./constraint-reassessments.ts";
 import { constraintRevisionsOf, constraintsAndPreferencesOf } from "./constraints-and-preferences.ts";
+import { changesFromOrigin, derivationRecordOf, type Derivation } from "./derivations.ts";
 import { executionPlanOf } from "./execution-plan.ts";
 import { optionChecksOf } from "./option-checks.ts";
 import { optionProposalsOf, optionsOf } from "./options.ts";
@@ -24,7 +25,7 @@ export async function processDetailOf(db: Db, id: string) {
   const process = await findProcess(db, id);
   if (!process) return undefined;
   const finalization = await db.selectFrom("finalizations").select("finalizedAt").where("processId", "=", id).executeTakeFirst();
-  return {
+  const detail = {
     ...process,
     // Quando a Finalização congelou o Processo; null enquanto ele está aberto.
     finalizedAt: finalization?.finalizedAt ?? null,
@@ -60,6 +61,17 @@ export async function processDetailOf(db: Db, id: string) {
     // A Etapa E foi confirmada: o Processo espera a Revisão final.
     readyForFinalReview: await executionConfirmed(db, id),
   };
+  const record = await derivationRecordOf(db, id);
+  // A origem, num Processo derivado, e o que mudou desde ela; null nos demais.
+  const derivation: Derivation | null = record
+    ? {
+        kind: record.kind,
+        originProcessId: record.originProcessId,
+        originFinalizedAt: record.originFinalizedAt,
+        changes: changesFromOrigin(record.inheritedSet, detail),
+      }
+    : null;
+  return { ...detail, derivation };
 }
 
 export type ProcessDetail = NonNullable<Awaited<ReturnType<typeof processDetailOf>>>;

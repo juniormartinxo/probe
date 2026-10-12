@@ -4,7 +4,7 @@ import type { ItemStatement } from "../process/constraints-and-preferences.ts";
 import type { OptionViability } from "../process/options.ts";
 import type { StagePointState } from "../process/stage-point-coverage.ts";
 import type { FrozenFinalization } from "../process/finalization.ts";
-import type { Assumption, HistoryEntry, Report, ReportQuestion, ReportStage } from "./report.ts";
+import type { Assumption, HistoryEntry, Report, ReportOrigin, ReportQuestion, ReportStage } from "./report.ts";
 
 // O relatório congelado como documento: títulos, parágrafos, listas e tabelas, na ordem da tela. As
 // exportações em Markdown e em PDF são duas formas de escrever o mesmo documento.
@@ -91,6 +91,24 @@ const cells = (row: ComparisonCells): DocumentNode => ({
   columns: ["narrow", "wide"],
   rows: comparisonDimensions.map((dimension) => [comparisonNames[dimension], row[dimension]]),
 });
+
+const derivationText: Record<ReportOrigin["kind"], string> = { reconsideration: "Reconsideração" };
+
+// Num Processo derivado, de onde ele veio e o que mudou em relação à origem.
+function origin({ identification: { origin } }: Report): DocumentNode[] {
+  if (!origin) return [];
+  return [
+    paragraph(`${derivationText[origin.kind]} do Processo ${origin.processId}, finalizado em ${formatDate(origin.finalizedAt)}.`, { label: "Origem" }),
+    heading(2, "O que mudou em relação à origem"),
+    origin.changes.length === 0
+      ? paragraph("Nada mudou em relação à origem.", { note: true })
+      : list(
+          origin.changes.map(({ subject, before, after }) => [
+            before === null ? `${subject} (acrescentada): ${after}` : after === null ? `${subject} (retirada): ${before}` : `${subject}: ${before} → ${after}`,
+          ]),
+        ),
+  ];
+}
 
 function decisionSummary({ decisionSummary: summary }: Report): DocumentNode[] {
   return [
@@ -219,6 +237,7 @@ export function reportDocument({ finalizedAt, report }: FrozenFinalization): Rep
     nodes: [
       heading(1, "Relatório da Decisão"),
       paragraph(`Finalizado em ${formatDate(finalizedAt.toISOString())}.`, { note: true }),
+      ...origin(report),
       ...decisionSummary(report),
       heading(2, "Problema"),
       paragraph(report.problem.originalDescription, { label: "Descrição original" }),

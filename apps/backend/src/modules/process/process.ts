@@ -5,6 +5,7 @@ import {
   startConversation,
   type Conversation,
 } from "../conversation/conversation.ts";
+import type { DerivationKind } from "./derivations.ts";
 import { CURRENT_STAGE_POINTS_VERSION } from "./stage-points.ts";
 import { stages, type Stage } from "./stage.ts";
 
@@ -36,8 +37,24 @@ export async function findProcess(db: Db, id: string): Promise<ProcessWithConver
   return { ...process, conversation: await findConversationOfProcess(db, id) };
 }
 
-export async function listProcesses(db: Db): Promise<Process[]> {
-  return db.selectFrom("processes").selectAll().orderBy("createdAt", "desc").orderBy("id", "desc").execute();
+// Cada Processo com a Derivação de que veio, se veio de uma.
+export interface ListedProcess extends Process {
+  derivation: { kind: DerivationKind; originProcessId: string } | null;
+}
+
+export async function listProcesses(db: Db): Promise<ListedProcess[]> {
+  const rows = await db
+    .selectFrom("processes")
+    .leftJoin("derivations", "derivations.processId", "processes.id")
+    .selectAll("processes")
+    .select(["derivations.kind as derivationKind", "derivations.originProcessId"])
+    .orderBy("processes.createdAt", "desc")
+    .orderBy("processes.id", "desc")
+    .execute();
+  return rows.map(({ derivationKind, originProcessId, ...process }) => ({
+    ...process,
+    derivation: derivationKind && originProcessId ? { kind: derivationKind, originProcessId } : null,
+  }));
 }
 
 // Trava o Processo aberto para a transação.
