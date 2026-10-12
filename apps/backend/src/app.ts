@@ -12,6 +12,7 @@ import { conflicts as conflictsModule } from "./modules/process/conflicts.ts";
 import { constraintReassessments as constraintReassessmentsModule } from "./modules/process/constraint-reassessments.ts";
 import { constraintsAndPreferences } from "./modules/process/constraints-and-preferences.ts";
 import { executionPlan } from "./modules/process/execution-plan.ts";
+import { reconsiderations } from "./modules/process/derivations.ts";
 import { finalization } from "./modules/process/finalization.ts";
 import { options as optionsModule } from "./modules/process/options.ts";
 import { pendencies } from "./modules/process/pendencies.ts";
@@ -92,6 +93,7 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
           chosenOptions: chosenOptions({ db }),
           executionPlan: executionPlan({ db, assessor, log: app.log }),
           finalization: finalization({ db }),
+          reconsiderations: reconsiderations({ db }),
         }),
       );
       await api.register(settingsRoutes({ settings }));

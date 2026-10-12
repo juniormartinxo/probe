@@ -245,9 +245,14 @@ _Code_: `Derivation`
 _Avoid_: Branch, fork, cópia
 
 **Reconsideração**:
-Derivação que reabre uma Decisão para revisá-la, herdando contexto e respostas da origem.
-_Code_: `Reconsideration`
+Derivação que reabre uma Decisão para revisá-la: um Processo novo, aberto, com a cópia de tudo o que a origem registrou (respostas, Confirmações, Escolha, plano e o histórico deles). As Confirmações herdadas valem até uma mudança, que passa pela Avaliação de impacto; a Finalização segue as regras de qualquer Processo.
+_Code_: `Reconsideration` (cada registro copiado: `derivation_copies`; o conjunto confirmado da origem, pelos ids das cópias: `inheritedSet`)
 _Avoid_: Revisão de decisão, reabertura
+
+**Mudança em relação à origem**:
+O que, numa Derivação, deixou de valer como a origem confirmou: uma resposta com outro conteúdo, uma Restrição ou Preferência retirada ou acrescentada, outra Escolha, um elemento do plano reescrito. Lida contra o conjunto confirmado da origem, sem chamar a IA, e congelada no relatório pela Finalização.
+_Code_: `OriginChange`
+_Avoid_: Diff, diferença
 
 **Desdobramento**:
 Derivação que estabelece um problema novo, herdando apenas o contexto selecionado da origem e percorrendo o PROBE completo.

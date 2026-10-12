@@ -1,20 +1,20 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { createProcess, listProcesses, requestRefinement, type Process } from "@/api";
+import { createProcess, listProcesses, requestRefinement, type ListedProcess } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/lib/format";
-import { stageName, statusName } from "@/stages";
+import { derivationText, stageName, statusName } from "@/stages";
 
 export function ProcessesPage() {
   const navigate = useNavigate();
   const [description, setDescription] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string>();
-  const [processes, setProcesses] = useState<Process[]>();
+  const [processes, setProcesses] = useState<ListedProcess[]>();
   const [listError, setListError] = useState<string>();
 
   useEffect(() => {
@@ -88,6 +88,7 @@ export function ProcessesPage() {
               >
                 <span className="line-clamp-2 text-sm whitespace-pre-wrap">{process.originalDescription}</span>
                 <span className="flex shrink-0 flex-col items-end gap-1">
+                  {process.derivation && <Badge variant="outline">{derivationText[process.derivation.kind]}</Badge>}
                   <Badge variant="secondary">
                     Etapa {process.currentStage} · {stageName(process.currentStage)}
                   </Badge>

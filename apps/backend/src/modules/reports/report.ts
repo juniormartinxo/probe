@@ -4,6 +4,7 @@ import { comparisonNames } from "../ai/prompt-parts.ts";
 import { describeAnswer } from "../process/answers.ts";
 import type { Block } from "../process/blocks.ts";
 import type { ChosenOption } from "../process/chosen-options.ts";
+import type { Derivation, DerivationKind, OriginChange } from "../process/derivations.ts";
 import type { ComparisonMatrixRow } from "../process/comparison-matrix.ts";
 import {
   inForceOf,
@@ -27,8 +28,9 @@ import { synthesisInForce } from "../process/syntheses.ts";
 // que está gravado, sem chamar a IA; as datas vão em ISO 8601, como ficam depois de congeladas.
 export interface Report {
   // `finalizedAt`: null na Revisão final (e na impressão digital); a data da Finalização no congelado.
-  // `origin`: a Derivação de que o Processo veio; null até haver Derivações (PRB-30, PRB-31).
-  identification: { processId: string; createdAt: string; finalizedAt: string | null; origin: null };
+  // `origin`: a Derivação de que o Processo veio, com o que mudou desde a origem; null num Processo
+  // que não é derivado.
+  identification: { processId: string; createdAt: string; finalizedAt: string | null; origin: ReportOrigin | null };
   // A Decisão em poucas linhas: o problema, a Escolha, os descartes e o plano.
   decisionSummary: {
     problemStatement: string;
@@ -69,6 +71,14 @@ export interface Report {
     justification: string | null;
   }[];
   history: HistoryEntry[];
+}
+
+export interface ReportOrigin {
+  kind: DerivationKind;
+  processId: string;
+  // Quando a origem foi finalizada.
+  finalizedAt: string;
+  changes: OriginChange[];
 }
 
 export interface ReportStage {
@@ -131,6 +141,7 @@ export interface ReportSource extends ConstraintsAndPreferencesState {
   recommendations: Recommendation[];
   chosenOptions: ChosenOption[];
   executionPlan: ExecutionPlanElement[];
+  derivation: Derivation | null;
 }
 
 const iso = (date: Date): string => date.toISOString();
@@ -308,7 +319,17 @@ export function reportOf(source: ReportSource): Report {
   const plan = source.executionPlan.filter((element) => element.current !== null);
   const violations = (option: Pick<Option, "violations">) => option.violations.map((violation) => violation.statement);
   return {
-    identification: { processId: source.id, createdAt: iso(source.createdAt), finalizedAt: null, origin: null },
+    identification: {
+      processId: source.id,
+      createdAt: iso(source.createdAt),
+      finalizedAt: null,
+      origin: source.derivation && {
+        kind: source.derivation.kind,
+        processId: source.derivation.originProcessId,
+        finalizedAt: iso(source.derivation.originFinalizedAt),
+        changes: source.derivation.changes,
+      },
+    },
     decisionSummary: {
       problemStatement: statement.statement,
       chosenOption: chosen.option.statement,

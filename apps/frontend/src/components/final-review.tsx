@@ -4,6 +4,7 @@ import {
   ChoiceSection,
   ConstraintsAndPreferencesSection,
   DiscardsSection,
+  OriginSection,
   PlanSection,
   ProblemSection,
   ReportView,
@@ -86,6 +87,7 @@ export function FinalReviewSection({ process, onChange }: { process: ProcessDeta
       {!review && !loadError && <p className="text-muted-foreground text-xs">Carregando…</p>}
       {review && (
         <>
+          <OriginSection report={review.report} />
           <ProblemSection report={review.report} />
           <ConstraintsAndPreferencesSection report={review.report} />
           <ChoiceSection report={review.report} />
