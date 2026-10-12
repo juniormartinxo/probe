@@ -1,7 +1,7 @@
 import type { Db } from "../../db/database.ts";
 import type { AssessedChoice } from "../assessments/assessor.ts";
 import { optionsOf, type NamedOption, type Option } from "./options.ts";
-import { executionConfirmed, lockOpenProcessFrom } from "./process.ts";
+import { lockOpenProcessFrom } from "./process.ts";
 import type { StagePointState } from "./stage-point-coverage.ts";
 import type { Stage } from "./stage.ts";
 
@@ -121,15 +121,14 @@ export type ChoiceError =
   | "process_not_found"
   | "process_not_open"
   | "stage_not_current"
-  | "execution_confirmed"
   | "option_not_found"
   | "option_not_choosable"
   | "invalid_discards"
   | "discard_reasons_required";
 
 export interface ChosenOptions {
-  // Registra a Escolha (ou troca a que vale), da Etapa B em diante, enquanto o Processo está aberto e a
-  // Etapa E não foi confirmada (ADR 0008).
+  // Registra a Escolha (ou troca a que vale), da Etapa B em diante, enquanto o Processo está aberto:
+  // depois da Confirmação de E, na Revisão final (ADR 0009).
   choose(processId: string, request: ChoiceRequest): Promise<{ ok: true; chosenOption: ChosenOption } | { ok: false; error: ChoiceError }>;
 }
 
@@ -139,7 +138,6 @@ export function chosenOptions({ db }: { db: Db }): ChosenOptions {
       return db.transaction().execute(async (trx) => {
         const locked = await lockOpenProcessFrom(trx, processId, "B");
         if (!locked.ok) return locked;
-        if (await executionConfirmed(trx, processId)) return { ok: false, error: "execution_confirmed" } as const;
         const options = await optionsOf(trx, locked.process);
         const chosen = options.find((option) => option.id === optionId);
         if (!chosen) return { ok: false, error: "option_not_found" } as const;

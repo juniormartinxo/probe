@@ -91,7 +91,8 @@ export function chosenOptionText(choice: AssessedChoice | null): string {
 
 const viabilityNames: Record<OptionViability, string> = { viable: "viável", inviable: "inviável", undecided: "viabilidade sem decisão" };
 
-const comparisonNames: Record<keyof ComparisonCells, string> = {
+// O nome de cada dimensão da Matriz qualitativa, como aparece no prompt e no relatório.
+export const comparisonNames: Record<keyof ComparisonCells, string> = {
   gains: "Ganhos",
   losses: "Perdas",
   effort: "Esforço",

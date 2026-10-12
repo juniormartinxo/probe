@@ -16,3 +16,5 @@ Uma troca de Escolha antes da Confirmação de E desatualiza as Avaliações dos
 ## Consequences
 
 Rever o plano ou a Escolha depois de E fica para a Revisão final (PRB-28), que precisará dizer como isso se faz. Uma Revisão de Restrição ou uma Versão nova de resposta depois de E continuam pelos caminhos de Reavaliação que já existem; uma Revisão de Restrição que torne a Opção escolhida inviável depois de E também fica para a Revisão final. O limite de 0,7 continua sem calibração e muda junto com o do impacto, do conflito e da violação.
+
+O ADR 0009 respondeu a essa pendência: entre a Confirmação de E e a Finalização, o plano e a Escolha voltam a mudar pelos mesmos caminhos, e a Finalização exige de novo cada elemento compatível ou mantido sobre a Escolha em vigor.

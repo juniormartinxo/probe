@@ -23,7 +23,6 @@ const choiceText: Record<AssessmentChoice, string> = {
 };
 
 const errorText: Record<string, string> = {
-  execution_confirmed: "A Etapa E já foi confirmada: o plano não muda mais.",
   stage_not_current: "O Processo ainda não chegou à Etapa E.",
   unknown_assessment: "Há uma Avaliação mais recente do que a que você viu. Confira-a antes de decidir.",
   justification_required: "Diga por que mantém o elemento contra a Avaliação do Jev.",
@@ -60,7 +59,7 @@ function useAction(onChange: () => void) {
 // vigor; a Avaliação informa, e quem decide é você.
 export function ExecutionPlan({ process, onChange }: { process: ProcessDetail; onChange: () => void }) {
   if (process.currentStage !== "E") return null;
-  const editable = process.status === "open" && !process.readyForFinalReview;
+  const editable = process.status === "open";
   const chosen = process.chosenOptions.at(-1) ?? null;
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-4 text-sm">
@@ -78,7 +77,8 @@ export function ExecutionPlan({ process, onChange }: { process: ProcessDetail; o
       </ul>
       {process.readyForFinalReview && (
         <p className="rounded-md border border-dashed p-3 text-sm">
-          A Etapa E está confirmada: o Processo está pronto para a Revisão final. O plano e a Escolha não mudam mais.
+          A Etapa E está confirmada: confira a Revisão final abaixo. Até finalizar, o plano e a Escolha ainda podem ser revistos; uma
+          Escolha nova pede outra Avaliação de cada elemento.
         </p>
       )}
     </div>

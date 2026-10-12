@@ -61,8 +61,8 @@ export async function lockOpenProcessFrom(trx: Db, processId: string, stage: Sta
   return locked;
 }
 
-// A Etapa E foi confirmada: o Processo está pronto para a Revisão final, e o plano e a Escolha não
-// mudam mais nesta fatia (ADR 0008).
+// A Etapa E foi confirmada: o Processo está pronto para a Revisão final, em que o plano e a Escolha
+// ainda podem mudar até a Finalização (ADR 0009).
 export async function executionConfirmed(db: Db, processId: string): Promise<boolean> {
   const row = await db
     .selectFrom("stageConfirmations")

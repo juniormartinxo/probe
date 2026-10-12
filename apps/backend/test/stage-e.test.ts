@@ -3,7 +3,7 @@ import type { GeneratedBlock } from "../src/modules/ai/assistant.ts";
 import type { AssessorOutcome, Verdict } from "../src/modules/assessments/assessor.ts";
 import { FakeAssistant, completed } from "./support/fake-assistant.ts";
 import { FakeAssessor, impactOutcome, optionOutcome, verdict } from "./support/fake-assessor.ts";
-import { costConstraint, processApi, statement } from "./support/process-api.ts";
+import { cache, costConstraint, firstStep, planB, processApi, runner, statement, successCriteria } from "./support/process-api.ts";
 import { createTestApp, resetDatabase, type TestApp } from "./support/test-app.ts";
 
 let testApp: TestApp;
@@ -22,31 +22,7 @@ afterEach(async () => {
   await testApp.close();
 });
 
-const runner = "Trocar o runner por um maior";
-const cache = "Cachear as dependências no GitHub Actions";
-
-const firstStep = "Ativar o cache de dependências no workflow de deploy nesta sexta.";
-const successCriteria = "O deploy cai para menos de 20 minutos em duas semanas.";
-const planB = "Se o deploy não cair, trocar o runner por um maior.";
-
-// Processo na Etapa E: na Etapa O, duas Opções viáveis; na B, o cache escolhido, com o runner descartado.
-async function processInStageE() {
-  const { id, constraintId } = await api.processInStageO();
-  const runnerId = (await api.addOption(id, { statement: runner })).json().option.id as string;
-  const cacheId = (await api.addOption(id, { statement: cache, description: "Cache do pnpm por hash do lockfile." })).json().option.id as string;
-  expect((await api.confirmStageO(id)).statusCode).toBe(201);
-  for (const key of ["gains_and_losses", "scalability", "maintenance"]) {
-    expect((await api.declareInapplicable(id, key, { justification: "Fora deste exemplo." })).statusCode).toBe(201);
-  }
-  expect((await choose(id, { optionId: cacheId, discards: [{ optionId: runnerId, reason: "Mais caro." }] })).statusCode).toBe(201);
-  expect((await api.confirmStage(id, { stageAssessmentId: null }, "B")).statusCode).toBe(201);
-  return { id, constraintId, runnerId, cacheId };
-}
-
-const choose = (id: string, payload: Record<string, unknown>) => api.inject({ method: "POST", url: `/api/processes/${id}/chosen-options`, payload });
-
-const recordElement = (id: string, element: string, payload: Record<string, unknown>) =>
-  api.inject({ method: "POST", url: `/api/processes/${id}/execution-plan/${element}`, payload });
+const { choose, processInStageE, recordElement, recordPlan } = api;
 
 const assessPlan = (id: string) => api.inject({ method: "POST", url: `/api/processes/${id}/execution-plan/assessments` });
 
@@ -54,17 +30,6 @@ const keepElement = (id: string, element: string, payload: Record<string, unknow
   api.inject({ method: "POST", url: `/api/processes/${id}/execution-plan/${element}/decision`, payload });
 
 const confirmStageE = (id: string) => api.confirmStage(id, { stageAssessmentId: null }, "E");
-
-// Registra os três elementos, cada um avaliado compatível pelo Jev falso, salvo roteiro.
-async function recordPlan(id: string) {
-  for (const [element, text] of [
-    ["first_step", firstStep],
-    ["success_criteria", successCriteria],
-    ["plan_b", planB],
-  ]) {
-    expect((await recordElement(id, element!, { text })).statusCode).toBe(201);
-  }
-}
 
 const elementOf = async (id: string, key: string) =>
   (await api.getProcess(id)).executionPlan.find((element: { key: string }) => element.key === key);
@@ -367,7 +332,7 @@ describe("Confirming Stage E", () => {
     expect(response.json()).toEqual({ error: "chosen_option_not_viable" });
   });
 
-  it("leaves the Process ready for the final review, with the plan and the Choice no longer changing", async () => {
+  it("leaves the Process ready for the final review, where the plan and the Choice can still be revised", async () => {
     const { id, runnerId, cacheId } = await processInStageE();
     await recordPlan(id);
     expect((await api.getProcess(id)).readyForFinalReview).toBe(false);
@@ -379,12 +344,10 @@ describe("Confirming Stage E", () => {
     const process = await api.getProcess(id);
     expect(process.currentStage).toBe("E");
     expect(process.readyForFinalReview).toBe(true);
-    const rewrite = await recordElement(id, "plan_b", { text: "Outro plano B." });
-    expect(rewrite.statusCode).toBe(409);
-    expect(rewrite.json()).toEqual({ error: "execution_confirmed" });
-    const rechoice = await choose(id, { optionId: runnerId, discards: [{ optionId: cacheId, reason: "Mudei de ideia." }] });
-    expect(rechoice.statusCode).toBe(409);
-    expect(rechoice.json()).toEqual({ error: "execution_confirmed" });
+    // Na Revisão final (ADR 0009), o plano e a Escolha voltam a mudar pelos mesmos caminhos.
+    expect((await recordElement(id, "plan_b", { text: "Outro plano B." })).statusCode).toBe(201);
+    expect((await choose(id, { optionId: runnerId, discards: [{ optionId: cacheId, reason: "Mudei de ideia." }] })).statusCode).toBe(201);
+    expect((await elementOf(id, "plan_b")).compatibility.status).toBe("outdated");
     const again = await confirmStageE(id);
     expect(again.statusCode).toBe(409);
     expect(again.json()).toEqual({ error: "execution_confirmed" });

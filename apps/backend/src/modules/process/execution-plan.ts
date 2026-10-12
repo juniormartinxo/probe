@@ -3,10 +3,10 @@ import type { Db } from "../../db/database.ts";
 import type { AssessmentChoice, Assessor, AssessorFailureReason, Verdict } from "../assessments/assessor.ts";
 import { decidesAlone, impactOutcomeColumns, judgedImpact } from "../assessments/impact-assessments.ts";
 import { PLAN_CONFIDENCE_THRESHOLD, PLAN_RUBRIC_REVISION } from "../assessments/plan-rubric.ts";
-import { choiceInForceOf, chosenOptionsOf } from "./chosen-options.ts";
+import { choiceInForceOf, chosenOptionsOf, withChoiceCoverage } from "./chosen-options.ts";
 import { confirmedStatementOf } from "./problem-statement.ts";
-import { executionConfirmed, lockOpenProcessFrom } from "./process.ts";
-import { openPoints, type ProcessPoints, type StagePointState } from "./stage-point-coverage.ts";
+import { lockOpenProcessFrom } from "./process.ts";
+import { openPoints, stagePointStates, type ProcessPoints, type StagePointState } from "./stage-point-coverage.ts";
 import { stagePointsOf, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
 
@@ -158,6 +158,12 @@ export async function withPlanCoverage(db: Db, process: ProcessPoints, states: S
   return states.map((point) => (point.coveredByPlan && planned.has(point.key) ? { ...point, status: "planned" } : point));
 }
 
+// Os Pontos da Etapa como o usuário os vê: com o da Escolha coberto enquanto ela se sustenta e os de E
+// cobertos pelos elementos do plano.
+export async function stagePointsWithCoverage(db: Db, process: ProcessPoints, stage: Stage): Promise<StagePointState[]> {
+  return withPlanCoverage(db, process, await withChoiceCoverage(db, process, await stagePointStates(db, process, stage)));
+}
+
 export type PlanNotReady = "execution_plan_incomplete" | "undecided_plan_compatibility";
 
 // Na Etapa E, o que o plano ainda segura na Confirmação da Etapa: algum elemento faltando ou algum
@@ -170,7 +176,7 @@ export async function planBlockingStage(db: Db, process: ProcessPoints, stage: S
   return undecided ? "undecided_plan_compatibility" : null;
 }
 
-export type PlanError = "process_not_found" | "process_not_open" | "stage_not_current" | "execution_confirmed" | "plan_element_not_found";
+export type PlanError = "process_not_found" | "process_not_open" | "stage_not_current" | "plan_element_not_found";
 
 export type PlanDecisionError =
   | PlanError
@@ -187,7 +193,7 @@ export interface PlanDecision {
 }
 
 export interface ExecutionPlan {
-  // Registra (ou reescreve) um elemento na Etapa E, antes da Confirmação dela, e pede ao Jev a
+  // Registra (ou reescreve) um elemento da Etapa E até a Finalização, e pede ao Jev a
   // Avaliação de compatibilidade dele com a Escolha em vigor.
   record(
     processId: string,
@@ -205,19 +211,15 @@ export interface ExecutionPlan {
   ): Promise<{ ok: true; executionPlan: ExecutionPlanElement[] } | { ok: false; error: PlanDecisionError }>;
 }
 
-// Trava o Processo aberto na Etapa E, ainda sem a Confirmação dela.
-async function lockStageE(trx: Db, processId: string) {
-  const locked = await lockOpenProcessFrom(trx, processId, EXECUTION_STAGE);
-  if (!locked.ok) return locked;
-  if (await executionConfirmed(trx, processId)) return { ok: false, error: "execution_confirmed" } as const;
-  return locked;
-}
+// Trava o Processo aberto na Etapa E. Depois da Confirmação dela, o plano continua mudando até a
+// Finalização: é a Revisão final (ADR 0009).
+const lockStageE = (trx: Db, processId: string) => lockOpenProcessFrom(trx, processId, EXECUTION_STAGE);
 
 export function executionPlan({ db, assessor, log }: { db: Db; assessor: Assessor; log: FastifyBaseLogger }): ExecutionPlan {
   // Chama o Jev fora da transação (o Processo não fica travado enquanto ele responde) e grava a
   // Avaliação de cada elemento, concluída ou falha, sobre a Escolha em vigor. Uma resposta que chega
-  // depois de o elemento ser reescrito ou decidido, de a Escolha mudar ou de E ser confirmada não é
-  // gravada: ela julgou um estado que já não vale.
+  // depois de o elemento ser reescrito ou decidido, de a Escolha mudar ou de o Processo ser finalizado
+  // não é gravada: ela julgou um estado que já não vale.
   async function assess(processId: string, elements: ExecutionPlanElement[]): Promise<void> {
     const chosen = await choiceInForceOf(db, processId);
     if (!chosen) return;

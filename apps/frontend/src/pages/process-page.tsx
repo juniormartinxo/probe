@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import { ApiError, getProcess, type ProcessDetail, type Stage } from "@/api";
+import { ApiError, getFinalization, getProcess, type Finalization, type ProcessDetail, type Stage } from "@/api";
+import { FinalReviewSection } from "@/components/final-review";
 import { ProblemStatementSection } from "@/components/problem-statement-section";
+import { ReportView } from "@/components/report-view";
 import { StageSection } from "@/components/stage-section";
 import { UnderstandingPanel } from "@/components/understanding-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,10 +77,50 @@ function ProcessView({ process, onChange }: { process: ProcessDetail; onChange: 
           <h1 className="text-xl font-semibold tracking-tight">Processo</h1>
           <p className="text-muted-foreground text-xs">
             Criado em {formatDate(process.createdAt)} · {statusName(process.status)}
+            {process.finalizedAt && ` em ${formatDate(process.finalizedAt)}`}
           </p>
         </div>
         <StageIndicator current={process.currentStage} />
       </header>
+
+      {process.status === "finalized" ? <FinalizedReport processId={process.id} /> : <OpenProcess process={process} onChange={onChange} />}
+    </>
+  );
+}
+
+// O relatório congelado pela Finalização: o Processo finalizado é somente leitura.
+function FinalizedReport({ processId }: { processId: string }) {
+  const [finalization, setFinalization] = useState<Finalization | "error">();
+  useEffect(() => {
+    let current = true;
+    getFinalization(processId).then(
+      (loaded) => current && setFinalization(loaded),
+      () => current && setFinalization("error"),
+    );
+    return () => {
+      current = false;
+    };
+  }, [processId]);
+  return (
+    <Card className="gap-3">
+      <CardHeader>
+        <CardTitle className="text-sm">Relatório da Decisão</CardTitle>
+        {finalization && finalization !== "error" && (
+          <p className="text-muted-foreground text-xs">Finalizado em {formatDate(finalization.finalizedAt)}. Somente leitura.</p>
+        )}
+      </CardHeader>
+      <CardContent>
+        {finalization === undefined && <p className="text-muted-foreground text-sm">Carregando…</p>}
+        {finalization === "error" && <p className="text-destructive text-sm">Não foi possível carregar o relatório.</p>}
+        {finalization && finalization !== "error" && <ReportView report={finalization.report} />}
+      </CardContent>
+    </Card>
+  );
+}
+
+function OpenProcess({ process, onChange }: { process: ProcessDetail; onChange: () => void }) {
+  return (
+    <>
 
       <UnderstandingPanel processId={process.id} />
 
@@ -94,6 +136,8 @@ function ProcessView({ process, onChange }: { process: ProcessDetail; onChange: 
       <ProblemStatementSection process={process} onChange={onChange} />
 
       {process.problemStatement && <StageSection process={process} onChange={onChange} />}
+
+      {process.readyForFinalReview && <FinalReviewSection process={process} onChange={onChange} />}
     </>
   );
 }
