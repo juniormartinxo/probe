@@ -4,7 +4,7 @@ import type { ItemStatement } from "../process/constraints-and-preferences.ts";
 import type { OptionViability } from "../process/options.ts";
 import type { StagePointState } from "../process/stage-point-coverage.ts";
 import type { FrozenFinalization } from "../process/finalization.ts";
-import type { Assumption, HistoryEntry, Report, ReportOrigin, ReportQuestion, ReportStage } from "./report.ts";
+import type { Assumption, DecisionSummary, HistoryEntry, Report, ReportOrigin, ReportQuestion, ReportStage } from "./report.ts";
 
 // O relatório congelado como documento: títulos, parágrafos, listas e tabelas, na ordem da tela. As
 // exportações em Markdown e em PDF são duas formas de escrever o mesmo documento.
@@ -92,13 +92,25 @@ const cells = (row: ComparisonCells): DocumentNode => ({
   rows: comparisonDimensions.map((dimension) => [comparisonNames[dimension], row[dimension]]),
 });
 
-const derivationText: Record<ReportOrigin["kind"], string> = { reconsideration: "Reconsideração" };
+const derivationText: Record<ReportOrigin["kind"], string> = { reconsideration: "Reconsideração", spinoff: "Desdobramento" };
 
-// Num Processo derivado, de onde ele veio e o que mudou em relação à origem.
+// Num Processo derivado, de onde ele veio e, numa Reconsideração, o que mudou em relação à origem; num
+// Desdobramento, a Decisão da origem, só como contexto.
 function origin({ identification: { origin } }: Report): DocumentNode[] {
   if (!origin) return [];
+  const from = paragraph(`${derivationText[origin.kind]} do Processo ${origin.processId}, finalizado em ${formatDate(origin.finalizedAt)}.`, {
+    label: "Origem",
+  });
+  if (origin.kind === "spinoff") {
+    return [
+      from,
+      heading(2, "Decisão da origem"),
+      paragraph("Só como contexto: não é resposta, Escolha nem plano deste Processo.", { note: true }),
+      ...summaryNodes(origin.decision),
+    ];
+  }
   return [
-    paragraph(`${derivationText[origin.kind]} do Processo ${origin.processId}, finalizado em ${formatDate(origin.finalizedAt)}.`, { label: "Origem" }),
+    from,
     heading(2, "O que mudou em relação à origem"),
     origin.changes.length === 0
       ? paragraph("Nada mudou em relação à origem.", { note: true })
@@ -111,8 +123,11 @@ function origin({ identification: { origin } }: Report): DocumentNode[] {
 }
 
 function decisionSummary({ decisionSummary: summary }: Report): DocumentNode[] {
+  return [heading(2, "Resumo da Decisão"), ...summaryNodes(summary)];
+}
+
+function summaryNodes(summary: DecisionSummary): DocumentNode[] {
   return [
-    heading(2, "Resumo da Decisão"),
     paragraph(summary.problemStatement),
     paragraph(summary.chosenOption, { label: "Escolha" }),
     ...(summary.discards.length > 0 ? [list(summary.discards.map((discard) => [`${discard.option}: ${discard.reason}`]))] : []),
@@ -126,7 +141,7 @@ function stageRecord(stage: ReportStage): DocumentNode[] {
     heading(3, `Etapa ${stage.stage} · ${stageNames[stage.stage]}${confirmed}`),
     list(stage.stagePoints.map((point) => [`${point.name}: ${stagePointStatusText[point.status]}${point.justification ? ` (${point.justification})` : ""}`])),
     ...stage.blocks.flatMap((block) => [
-      heading(4, `Bloco ${block.number}`),
+      heading(4, `Bloco ${block.number}${block.inherited ? " · Respostas herdadas" : ""}`),
       list(
         block.questions.map((question) => [
           `${block.number}.${question.number} ${question.wording}${question.reformulates ? ` (reformula a ${question.reformulates})` : ""}`,

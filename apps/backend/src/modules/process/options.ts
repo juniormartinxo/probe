@@ -12,7 +12,7 @@ import { optionChecksOf, optionPairRowsOf, undecidedOptionStatuses, type OptionC
 import { confirmedStatementOf } from "./problem-statement.ts";
 import { lockOpenProcess } from "./process.ts";
 import { confirmedStagesOf } from "./stage-readiness.ts";
-import { askedQuestionOf, currentVersionsOf, stageQuestions } from "./stage-questions.ts";
+import { askedQuestionOf, currentVersionsOf, heldQuestionsOf, stageQuestions } from "./stage-questions.ts";
 import { namedStagePoint, stagePointsOf } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
 
@@ -290,7 +290,8 @@ async function prepareProposal(trx: Db, process: { id: string; stagePointsVersio
     .select("originalDescription")
     .where("id", "=", process.id)
     .executeTakeFirstOrThrow();
-  const questions = await stageQuestions(trx, process.id, OPTIONS_STAGE);
+  // Respostas herdadas só valem reconfirmadas: até lá, ficam fora do que a IA recebe.
+  const questions = heldQuestionsOf(await stageQuestions(trx, process.id, OPTIONS_STAGE));
   const options = await optionsOf(trx, process);
   return {
     input: {

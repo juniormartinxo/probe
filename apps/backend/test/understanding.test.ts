@@ -78,6 +78,7 @@ describe("Understanding of the Process", () => {
       blocks: [
         {
           number: 1,
+          inherited: false,
           synthesis: "Síntese confirmada.",
           answers: [
             { questionId: single.id, wording: single.wording, answer: single.choices[1], confirmed: true, unknown: false },

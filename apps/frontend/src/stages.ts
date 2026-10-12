@@ -31,4 +31,4 @@ export const pendencyReasonText: Record<PendencyReason, string> = {
   conflict: "Conflito",
 };
 
-export const derivationText: Record<DerivationKind, string> = { reconsideration: "Reconsideração" };
+export const derivationText: Record<DerivationKind, string> = { reconsideration: "Reconsideração", spinoff: "Desdobramento" };

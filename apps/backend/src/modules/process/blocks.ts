@@ -54,6 +54,9 @@ export interface Block extends BlockSynthesisState {
   id: string;
   number: number;
   stage: Stage;
+  // Bloco de Respostas herdadas: cópias das Perguntas e respostas que o usuário escolheu herdar da
+  // origem num Desdobramento, provisórias até a Confirmação da síntese dele. Não veio da IA.
+  inherited: boolean;
   createdAt: Date;
   questions: Question[];
 }
@@ -243,7 +246,7 @@ export async function stageWorkOf(db: Db, process: { id: string; currentStage: S
   const blockRequests = await blockRequestsOf(db, process.id);
   const blockRows = await db
     .selectFrom("blocks")
-    .select(["id", "number", "stage", "createdAt"])
+    .select(["id", "number", "stage", "attemptId", "createdAt"])
     .where("processId", "=", process.id)
     .orderBy("number")
     .execute();
@@ -294,8 +297,9 @@ export async function stageWorkOf(db: Db, process: { id: string; currentStage: S
     stagePoints,
     openStagePoints: await blockPointsOf(db, process, process.currentStage, stagePoints),
     blockRequests,
-    blocks: blockRows.map((block) => ({
+    blocks: blockRows.map(({ attemptId, ...block }) => ({
       ...block,
+      inherited: attemptId === null,
       questions: questionRows
         .filter((question) => question.blockId === block.id)
         .map(({ blockId: _blockId, position: _position, stagePoints: keys, reformulatesQuestionId, ...question }) => ({

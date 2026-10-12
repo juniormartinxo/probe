@@ -7,8 +7,8 @@ import { openStagePointsOf, type ProcessPoints } from "./stage-point-coverage.ts
 import { constraintsAndPreferencesOf, hasAny, inForceOf, type ItemsRequired } from "./constraints-and-preferences.ts";
 import { confirmedStagesOf } from "./stage-readiness.ts";
 import { askedQuestionOf, currentVersionsOf, stageQuestions } from "./stage-questions.ts";
-import { findStagePoint, namedStagePoint } from "./stage-points.ts";
-import type { Stage } from "./stage.ts";
+import { findStagePoint, namedStagePoint, stagePointsOf } from "./stage-points.ts";
+import { stages, type Stage } from "./stage.ts";
 
 // Como a síntese confirmada nasceu: aceita como a IA propôs ou corrigida pelo usuário.
 export type SynthesisOrigin = "proposal" | "corrected";
@@ -83,7 +83,13 @@ export interface SynthesisConfirmation {
   coveredStagePoints: string[];
 }
 
-type BlockClosed = "process_not_found" | "process_not_open" | "block_not_found" | "synthesis_confirmed";
+type BlockClosed =
+  | "process_not_found"
+  | "process_not_open"
+  | "block_not_found"
+  | "synthesis_confirmed"
+  | "problem_statement_not_confirmed"
+  | "stage_not_current";
 
 export type SynthesisRequestError =
   | BlockClosed
@@ -149,7 +155,7 @@ async function lockBlock(
 ): Promise<{ ok: true; block: LockedBlock } | { ok: false; error: BlockClosed }> {
   const process = await trx
     .selectFrom("processes")
-    .select(["id", "status", "stagePointsVersion", "originalDescription"])
+    .select(["id", "status", "currentStage", "stagePointsVersion", "originalDescription"])
     .where("id", "=", processId)
     .forUpdate()
     .executeTakeFirst();
@@ -162,14 +168,20 @@ async function lockBlock(
     .where("processId", "=", processId)
     .executeTakeFirst();
   if (!block) return { ok: false, error: "block_not_found" };
+  // Um Bloco de Respostas herdadas de uma Etapa ainda fechada espera por ela: os Pontos dele só se
+  // cobrem com a Etapa aberta.
+  if (stages.indexOf(block.stage) > stages.indexOf(process.currentStage)) return { ok: false, error: "stage_not_current" };
   const confirmed = await trx.selectFrom("blockSyntheses").select("blockId").where("blockId", "=", blockId).executeTakeFirst();
   if (confirmed) return { ok: false, error: "synthesis_confirmed" };
-  // Um Bloco só existe depois da Confirmação do enunciado.
-  const { statement } = await trx
+  // Um Bloco da IA só existe depois da Confirmação do enunciado; o de Respostas herdadas nasce com o
+  // Desdobramento, antes dela, e espera o problema novo para ser sintetizado.
+  const confirmedStatement = await trx
     .selectFrom("problemStatements")
     .select("statement")
     .where("processId", "=", processId)
-    .executeTakeFirstOrThrow();
+    .executeTakeFirst();
+  if (!confirmedStatement) return { ok: false, error: "problem_statement_not_confirmed" };
+  const { statement } = confirmedStatement;
   const questions = (await stageQuestions(trx, processId, block.stage)).filter(
     (question) => question.blockNumber <= block.number,
   );
@@ -267,7 +279,10 @@ export async function synthesesOf(
             origin: confirmed.origin,
             proposalId: confirmed.proposalId,
             confirmedAt: confirmed.confirmedAt,
-            coveredStagePoints: coverageRows.filter((row) => row.blockId === block.id).map((row) => pointRef(row.stagePoint)),
+            // Na ordem da lista de Pontos: a leitura não tem outra ordem estável.
+            coveredStagePoints: stagePointsOf(process.stagePointsVersion, block.stage)
+              .filter((point) => coverageRows.some((row) => row.blockId === block.id && row.stagePoint === point.key))
+              .map((point) => pointRef(point.key)),
             corrections: corrections.get(block.id)!,
           }
         : null,

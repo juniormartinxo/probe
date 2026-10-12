@@ -126,7 +126,10 @@ function UnderstandingView({ understanding }: { understanding: Understanding }) 
       )}
       {understanding.blocks.map((block) => (
         <div key={block.number} className="flex flex-col gap-1">
-          <p className="text-muted-foreground text-xs">Bloco {block.number}</p>
+          <p className="text-muted-foreground text-xs">
+            Bloco {block.number}
+            {block.inherited && " · Respostas herdadas"}
+          </p>
           <p className="whitespace-pre-wrap">
             {block.synthesis ?? <span className="text-muted-foreground">Síntese ainda não confirmada.</span>}
           </p>

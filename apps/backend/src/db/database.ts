@@ -13,7 +13,7 @@ import type { SynthesisOrigin } from "../modules/process/syntheses.ts";
 import type { DerivationKind } from "../modules/process/derivations.ts";
 import type { ConfirmedSet } from "../modules/process/finalization.ts";
 import type { ProcessStatus } from "../modules/process/process.ts";
-import type { Report } from "../modules/reports/report.ts";
+import type { DecisionSummary, Report } from "../modules/reports/report.ts";
 import type { Stage } from "../modules/process/stage.ts";
 
 export interface ProcessTable {
@@ -78,7 +78,8 @@ export interface BlockTable {
   processId: string;
   number: number;
   stage: Stage;
-  attemptId: string;
+  // A tentativa da IA que gerou o Bloco; null no Bloco de Respostas herdadas de um Desdobramento.
+  attemptId: string | null;
   createdAt: Generated<Date>;
 }
 
@@ -461,13 +462,14 @@ export interface FinalizationTable {
   finalizedAt: Generated<Date>;
 }
 
-// Derivação: o Processo criado de um finalizado, a origem e o conjunto confirmado dela, pelos ids das
-// cópias.
+// Derivação: o Processo criado de um finalizado e a origem. Numa Reconsideração, o conjunto confirmado
+// da origem, pelos ids das cópias; num Desdobramento, a Decisão da origem, copiada como contexto.
 export interface DerivationTable {
   processId: string;
   originProcessId: string;
   kind: DerivationKind;
-  inheritedSet: ColumnType<ConfirmedSet, string, never>;
+  inheritedSet: ColumnType<ConfirmedSet | null, string | null, never>;
+  originDecision: ColumnType<DecisionSummary | null, string | null, never>;
   createdAt: Generated<Date>;
 }
 

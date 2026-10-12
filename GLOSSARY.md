@@ -136,8 +136,8 @@ O que o usuário preencheu numa Pergunta e ainda não salvou como Versão, compl
 _Code_: `AnswerDraft`
 
 **Resposta herdada**:
-Resposta copiada de outro Processo num Desdobramento, que só vale no Processo novo depois de reconfirmada.
-_Code_: `InheritedAnswer`
+Resposta copiada de outro Processo num Desdobramento, escolhida pelo usuário entre as que valiam na Finalização da origem. Chega num Bloco de Respostas herdadas, provisória, e só vale no Processo novo depois de reconfirmada pela Confirmação da síntese desse Bloco; até lá, pode ser alterada.
+_Code_: `InheritedAnswer` (o Bloco: `inherited`)
 _Avoid_: Fato herdado, resposta importada
 
 **Versão**:
@@ -255,6 +255,6 @@ _Code_: `OriginChange`
 _Avoid_: Diff, diferença
 
 **Desdobramento**:
-Derivação que estabelece um problema novo, herdando apenas o contexto selecionado da origem e percorrendo o PROBE completo.
-_Code_: `Spinoff`
+Derivação que estabelece um problema novo, herdando apenas o contexto selecionado da origem e percorrendo o PROBE completo. Nasce aberto, na Etapa P, com a descrição do problema novo; herda as respostas que o usuário escolheu, como Respostas herdadas, e a Decisão da origem só como contexto, nunca como resposta.
+_Code_: `Spinoff` (a Decisão da origem: `originDecision`)
 _Avoid_: Problema relacionado, subprocesso

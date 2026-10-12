@@ -13,6 +13,8 @@ export const firstStep = "Ativar o cache de dependências no workflow de deploy 
 export const successCriteria = "O deploy cai para menos de 20 minutos em duas semanas.";
 export const planB = "Se o deploy não cair, trocar o runner por um maior.";
 
+type Start = { start?: () => Promise<string> };
+
 // Chamadas que o frontend faz, sobre um TestApp que pode ser trocado entre os testes.
 export function processApi(current: () => TestApp) {
   const inject = (options: InjectOptions) => current().app.inject(options);
@@ -100,10 +102,17 @@ export function processApi(current: () => TestApp) {
     }
   }
 
-  // Processo com o primeiro Bloco gerado e todas as Perguntas respondidas.
-  async function processWithAnsweredBlock() {
+  // Processo novo com o enunciado confirmado.
+  async function processWithStatement() {
     const id = await createProcess();
     await confirmStatement(id);
+    return id;
+  }
+
+  // Processo com o primeiro Bloco da IA gerado e todas as Perguntas respondidas. `start`: abre o
+  // Processo e o deixa pronto para esse Bloco, com o enunciado confirmado.
+  async function processWithAnsweredBlock({ start = processWithStatement }: Start = {}) {
+    const id = await start();
     const block = await generateBlock(id);
     await answerAll(id, block);
     return { id, block };
@@ -126,8 +135,8 @@ export function processApi(current: () => TestApp) {
 
   // Processo com o primeiro Bloco respondido e a síntese confirmada dando por cobertos o problema
   // real e a consequência, como a IA sugeriu, e a urgência declarada inaplicável: nenhum Ponto aberto.
-  async function processWithClosedPoints() {
-    const { id, block } = await processWithAnsweredBlock();
+  async function processWithClosedPoints(options: Start = {}) {
+    const { id, block } = await processWithAnsweredBlock(options);
     const proposal = await synthesize(id, block.id);
     const confirmed = await confirmSynthesis(id, block.id, {
       proposalId: proposal.id,
@@ -148,8 +157,8 @@ export function processApi(current: () => TestApp) {
   }
 
   // Processo com a Etapa P confirmada (com a Avaliação do Jev): a Etapa R é a atual.
-  async function processInStageR() {
-    const { id, block } = await processWithClosedPoints();
+  async function processInStageR(options: Start = {}) {
+    const { id, block } = await processWithClosedPoints(options);
     const stageAssessment = await assess(id);
     expect((await confirmStage(id, { stageAssessmentId: stageAssessment.id })).statusCode).toBe(201);
     return { id, block };
@@ -165,9 +174,11 @@ export function processApi(current: () => TestApp) {
   const reconfirm = (id: string, pendencyId: string, payload?: Record<string, unknown>) =>
     inject({ method: "POST", url: `/api/processes/${id}/pendencies/${pendencyId}/reconfirmation`, ...(payload && { payload }) });
 
-  // Processo na Etapa O: a Etapa R foi confirmada com a Restrição de custo e uma Preferência, sem Bloco.
-  async function processInStageO() {
-    const { id } = await processInStageR();
+  // Processo na Etapa O: a Etapa R foi confirmada com a Restrição de custo e uma Preferência, sem Bloco
+  // que cubra Ponto. `inStageR`: o que mais fazer enquanto a Etapa R é a atual.
+  async function processInStageO({ start, inStageR }: Start & { inStageR?: (id: string) => Promise<void> } = {}) {
+    const { id } = await processInStageR({ start });
+    await inStageR?.(id);
     const constraint = await inject({ method: "POST", url: `/api/processes/${id}/constraints`, payload: { statement: costConstraint } });
     expect(constraint.statusCode).toBe(201);
     const preference = await inject({ method: "POST", url: `/api/processes/${id}/preferences`, payload: { statement: "Manter o GitHub Actions" } });
@@ -197,9 +208,13 @@ export function processApi(current: () => TestApp) {
   const choose = (id: string, payload: Record<string, unknown>) => inject({ method: "POST", url: `/api/processes/${id}/chosen-options`, payload });
 
   // Processo na Etapa E: na Etapa O, duas Opções viáveis; na B, o cache escolhido, com o runner descartado.
-  // `inStageO`: o que mais fazer enquanto a Etapa O é a atual.
-  async function processInStageE({ inStageO }: { inStageO?: (id: string) => Promise<void> } = {}) {
-    const { id, constraintId } = await processInStageO();
+  // `inStageR` e `inStageO`: o que mais fazer enquanto a Etapa R ou a O é a atual.
+  async function processInStageE({
+    start,
+    inStageR,
+    inStageO,
+  }: Start & { inStageR?: (id: string) => Promise<void>; inStageO?: (id: string) => Promise<void> } = {}) {
+    const { id, constraintId } = await processInStageO({ start, inStageR });
     await inStageO?.(id);
     const runnerId = (await addOption(id, { statement: runner })).json().option.id as string;
     const cacheId = (await addOption(id, { statement: cache, description: "Cache do pnpm por hash do lockfile." })).json().option.id as string;
@@ -227,8 +242,8 @@ export function processApi(current: () => TestApp) {
   }
 
   // Processo finalizado sobre a Revisão final apresentada: a Etapa E confirmada e nada impedindo.
-  async function finalizedProcess() {
-    const ids = await processInStageE();
+  async function finalizedProcess(steps: Parameters<typeof processInStageE>[0] = {}) {
+    const ids = await processInStageE(steps);
     await recordPlan(ids.id);
     expect((await confirmStage(ids.id, { stageAssessmentId: null }, "E")).statusCode).toBe(201);
     const review = await inject({ method: "GET", url: `/api/processes/${ids.id}/final-review` });

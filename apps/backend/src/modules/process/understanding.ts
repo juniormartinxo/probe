@@ -20,6 +20,8 @@ export interface Understanding extends ItemStatements {
   // Restrições e Preferências: as em vigor.
   blocks: {
     number: number;
+    // Bloco de Respostas herdadas da origem, num Desdobramento.
+    inherited: boolean;
     // A síntese que o usuário confirmou; null enquanto não há.
     synthesis: string | null;
     // A resposta que vale em cada Pergunta, como o usuário a vê.
@@ -62,6 +64,7 @@ export function understandingOf(process: {
     ...statementsOf(inForceOf(process)),
     blocks: process.blocks.map((block) => ({
       number: block.number,
+      inherited: block.inherited,
       synthesis: block.synthesis ? synthesisInForce(block.synthesis) : null,
       answers: block.questions.map((question) => ({
         questionId: question.id,

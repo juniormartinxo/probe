@@ -62,15 +62,22 @@ export async function processDetailOf(db: Db, id: string) {
     readyForFinalReview: await executionConfirmed(db, id),
   };
   const record = await derivationRecordOf(db, id);
-  // A origem, num Processo derivado, e o que mudou desde ela; null nos demais.
-  const derivation: Derivation | null = record
-    ? {
-        kind: record.kind,
-        originProcessId: record.originProcessId,
-        originFinalizedAt: record.originFinalizedAt,
-        changes: changesFromOrigin(record.inheritedSet, detail),
-      }
-    : null;
+  // A origem, num Processo derivado: o que mudou desde ela ou, num Desdobramento, a Decisão dela; null nos demais.
+  const derivation: Derivation | null = !record
+    ? null
+    : record.kind === "reconsideration"
+      ? {
+          kind: record.kind,
+          originProcessId: record.originProcessId,
+          originFinalizedAt: record.originFinalizedAt,
+          changes: changesFromOrigin(record.inheritedSet!, detail),
+        }
+      : {
+          kind: record.kind,
+          originProcessId: record.originProcessId,
+          originFinalizedAt: record.originFinalizedAt,
+          originDecision: record.originDecision!,
+        };
   return { ...detail, derivation };
 }
 
