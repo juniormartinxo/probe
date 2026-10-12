@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import type { ComparisonCells, DerivationKind, ItemStatement, OptionViability, OriginChange, Report, ReportAssumption, ReportHistoryEntry, ReportStage } from "@/api";
+import type { ComparisonCells, ItemStatement, OptionViability, OriginChange, Report, ReportAssumption, ReportHistoryEntry, ReportStage } from "@/api";
 import { dimensions } from "@/components/balancing";
 import { itemDetails } from "@/components/constraints-and-preferences";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format";
-import { stageName, stagePointStatusText } from "@/stages";
+import { derivationText, stageName, stagePointStatusText } from "@/stages";
 
 const viabilityText: Record<OptionViability, string> = { viable: "viável", inviable: "inviável", undecided: "sem decisão" };
 
@@ -78,14 +78,8 @@ function Items({ items, empty }: { items: ItemStatement[]; empty: string }) {
   );
 }
 
-export const derivationText: Record<DerivationKind, string> = { reconsideration: "Reconsideração" };
-
-// Uma mudança em relação à origem, como o relatório exportado a escreve.
-export function describeChange({ subject, before, after }: OriginChange): string {
-  if (before === null) return `${subject} (acrescentada): ${after}`;
-  if (after === null) return `${subject} (retirada): ${before}`;
-  return `${subject}: ${before} → ${after}`;
-}
+// Uma mudança em relação à origem, como o relatório exportado a escreve: "—" no que não havia.
+const describeChange = ({ subject, before, after }: OriginChange): string => `${subject}: ${before ?? "—"} → ${after ?? "—"}`;
 
 // Num Processo derivado, de onde ele veio e o que mudou em relação à origem.
 export function OriginSection({ report }: { report: Report }) {

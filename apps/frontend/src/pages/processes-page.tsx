@@ -1,14 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { createProcess, listProcesses, requestRefinement, type ListedProcess } from "@/api";
-import { derivationText } from "@/components/report-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/lib/format";
-import { stageName, statusName } from "@/stages";
+import { derivationText, stageName, statusName } from "@/stages";
 
 export function ProcessesPage() {
   const navigate = useNavigate();

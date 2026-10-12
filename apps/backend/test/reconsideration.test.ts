@@ -364,6 +364,9 @@ describe("Changing a Reconsideration", () => {
     const choice = await api.choose(process.id, { optionId: copyOf(runnerId, runner), discards: [{ optionId: copyOf(cacheId, cache), reason: "Não resolveu." }] });
     expect(choice.statusCode).toBe(201);
     expect((await api.recordElement(process.id, "plan_b", { text: planB })).statusCode).toBe(201);
+    const cost = (await api.getProcess(process.id)).constraints.find((item: { statement: string }) => item.statement === costConstraint);
+    const revised = await api.reviseConstraint(process.id, cost.id, { kind: "preference", statement: "Gastar pouco com infraestrutura" });
+    expect(revised.statusCode).toBe(201);
 
     const { derivation } = await api.getProcess(process.id);
     expect(derivation.changes).toEqual([
@@ -373,6 +376,8 @@ describe("Changing a Reconsideration", () => {
         before: "A demora é sintoma de outra coisa",
         after: "A demora é o problema em si",
       },
+      { kind: "constraint", subject: "Restrição", before: costConstraint, after: null },
+      { kind: "preference", subject: "Preferência", before: null, after: "Gastar pouco com infraestrutura" },
       { kind: "choice", subject: "Escolha", before: cache, after: runner },
       { kind: "plan_element", subject: "Plano B", before: "Voltar ao deploy manual.", after: planB },
     ]);

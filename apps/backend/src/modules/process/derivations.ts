@@ -6,7 +6,7 @@ import type { ChosenOption } from "./chosen-options.ts";
 import type { ConstraintsAndPreferencesState, StatedItem } from "./constraints-and-preferences.ts";
 import type { ExecutionPlanElement } from "./execution-plan.ts";
 import type { ConfirmedSet } from "./finalization.ts";
-import { copyProcessRecords } from "./process-copy.ts";
+import { copyProcessRecords, insertInChunks } from "./process-copy.ts";
 
 // Por ora, a Derivação que reabre uma Decisão para revisá-la; o Desdobramento vem depois (PRB-31).
 export type DerivationKind = "reconsideration";
@@ -118,9 +118,6 @@ function inheritedSetOf(set: ConfirmedSet, ids: Map<string, string>): ConfirmedS
   };
 }
 
-// Até quantas cópias vão num único insert.
-const INSERT_CHUNK = 1000;
-
 export function reconsiderations({ db }: { db: Db }): Reconsiderations {
   return {
     async create(originId) {
@@ -153,12 +150,11 @@ export function reconsiderations({ db }: { db: Db }): Reconsiderations {
             inheritedSet: JSON.stringify(inheritedSetOf(finalization.confirmedSet, ids)),
           })
           .execute();
-        for (let start = 0; start < copied.length; start += INSERT_CHUNK) {
-          await trx
-            .insertInto("derivationCopies")
-            .values(copied.slice(start, start + INSERT_CHUNK).map(({ table, originId, copyId }) => ({ processId: process.id, tableName: table, originId, copyId })))
-            .execute();
-        }
+        await insertInChunks(
+          trx,
+          "derivationCopies",
+          copied.map(({ table, originId, copyId }) => ({ processId: process.id, tableName: table, originId, copyId })),
+        );
         return { ok: true, processId: process.id } as const;
       });
     },

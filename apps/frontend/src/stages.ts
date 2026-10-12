@@ -1,4 +1,4 @@
-import type { PendencyReason, ProcessStatus, Stage, StagePointStatus } from "./api";
+import type { DerivationKind, PendencyReason, ProcessStatus, Stage, StagePointStatus } from "./api";
 
 export const stages: { stage: Stage; name: string }[] = [
   { stage: "P", name: "Problema" },
@@ -30,3 +30,5 @@ export const pendencyReasonText: Record<PendencyReason, string> = {
   reassessment: "Reavaliação",
   conflict: "Conflito",
 };
+
+export const derivationText: Record<DerivationKind, string> = { reconsideration: "Reconsideração" };

@@ -102,6 +102,13 @@ const keyOf = (table: string, columns: string[], values: unknown[]) => `${table}
 // Até quantas linhas vão num único insert: o PostgreSQL aceita até 65535 parâmetros por comando.
 const INSERT_CHUNK = 500;
 
+// Grava as linhas em lotes, para que nenhum insert passe do limite de parâmetros.
+export async function insertInChunks(db: Kysely<any>, table: string, rows: Record<string, unknown>[]): Promise<void> {
+  for (let start = 0; start < rows.length; start += INSERT_CHUNK) {
+    await db.insertInto(table).values(rows.slice(start, start + INSERT_CHUNK)).execute();
+  }
+}
+
 export interface CopiedRecord {
   table: string;
   originId: string;
@@ -177,10 +184,7 @@ export async function copyProcessRecords(trx: Db, originId: string, copyId: stri
     const ready = pending.filter((item) => item.needs.every((key) => inserted.has(key)));
     if (ready.length === 0) throw new Error(`Registros sem como entrar na cópia: ${[...new Set(pending.map((item) => item.table))].join(", ")}.`);
     for (const { table } of copiedTables) {
-      const rows = ready.filter((item) => item.table === table).map((item) => remap(table, item.row));
-      for (let start = 0; start < rows.length; start += INSERT_CHUNK) {
-        await raw.insertInto(table).values(rows.slice(start, start + INSERT_CHUNK)).execute();
-      }
+      await insertInChunks(raw, table, ready.filter((item) => item.table === table).map((item) => remap(table, item.row)));
     }
     for (const item of ready) for (const key of item.provides) inserted.add(key);
     const done = new Set(ready);

@@ -13,14 +13,14 @@ import {
 } from "@/api";
 import { FinalReviewSection } from "@/components/final-review";
 import { ProblemStatementSection } from "@/components/problem-statement-section";
-import { derivationText, ReportView } from "@/components/report-view";
+import { ReportView } from "@/components/report-view";
 import { StageSection } from "@/components/stage-section";
 import { UnderstandingPanel } from "@/components/understanding-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/format";
-import { stages, statusName } from "@/stages";
+import { derivationText, stages, statusName } from "@/stages";
 
 const POLL_INTERVAL_MS = 1_500;
 

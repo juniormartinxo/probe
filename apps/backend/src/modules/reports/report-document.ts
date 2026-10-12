@@ -104,7 +104,7 @@ function origin({ identification: { origin } }: Report): DocumentNode[] {
       ? paragraph("Nada mudou em relação à origem.", { note: true })
       : list(
           origin.changes.map(({ subject, before, after }) => [
-            before === null ? `${subject} (acrescentada): ${after}` : after === null ? `${subject} (retirada): ${before}` : `${subject}: ${before} → ${after}`,
+            `${subject}: ${before ?? "—"} → ${after ?? "—"}`,
           ]),
         ),
   ];
