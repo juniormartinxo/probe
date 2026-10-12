@@ -113,8 +113,10 @@ describe("The Finalization", () => {
 
     expect(response.statusCode).toBe(201);
     const frozen = response.json().finalization;
-    expect(frozen.report).toEqual(review.report);
     expect(new Date(frozen.finalizedAt).getTime()).not.toBeNaN();
+    expect(review.report.identification.finalizedAt).toBeNull();
+    // O congelado é o que a Revisão apresentou, agora com a data da Finalização.
+    expect(frozen.report).toEqual({ ...review.report, identification: { ...review.report.identification, finalizedAt: frozen.finalizedAt } });
     const process = await api.getProcess(id);
     expect(process.status).toBe("finalized");
     expect(process.finalizedAt).toBe(frozen.finalizedAt);
@@ -155,6 +157,26 @@ describe("The Finalization", () => {
     const pendencyIds = (await api.getProcess(id)).pendencies.map((pendency: { id: string }) => pendency.id);
     expect(response.json()).toEqual({ error: "blocking_pendencies", pendencyIds });
     expect((await api.getProcess(id)).status).toBe("open");
+  });
+
+  it("is refused while any Pendency is open, even one of an earlier Stage", async () => {
+    // Na Etapa O, um Bloco cuja Pergunta fica sem resposta.
+    const { id } = await api.processInStageE({
+      inStageO: async (id) => {
+        assistant.block.willRespond(completed(optionsBlock));
+        await api.generateBlock(id);
+      },
+    });
+    await api.recordPlan(id);
+    expect((await api.confirmStage(id, { stageAssessmentId: null }, "E")).statusCode).toBe(201);
+    const question = (await api.getProcess(id)).blocks.find((block: { stage: string }) => block.stage === "O").questions[0];
+    expect((await api.markUnknown(id, question.id)).statusCode).toBe(201);
+    const pendencyIds = (await api.getProcess(id)).pendencies.map((pendency: { id: string }) => pendency.id);
+
+    const review = await reviewed(id);
+    expect(review.blockers).toEqual([{ reason: "blocking_pendencies", pendencyIds }]);
+    expect((await finalize(id, { fingerprint: review.fingerprint })).json()).toEqual({ error: "blocking_pendencies", pendencyIds });
+    expect(review.report.stages[2].blocks[0].questions[0].status).toBe("unknown");
   });
 
   it("is refused when something changed between the final review and the confirmation", async () => {
@@ -252,6 +274,21 @@ describe("A finalized Process", () => {
   });
 });
 
+const optionsBlock: GeneratedBlock = {
+  questions: [
+    {
+      wording: "Dá para deixar de fazer o deploy pela manhã?",
+      subject: "Eliminar o problema",
+      contextRelation: "O deploy bloqueia o time durante a manhã.",
+      rationale: null,
+      stagePoints: ["eliminate_problem"],
+      reformulates: null,
+      answerType: "free_text",
+      choices: [],
+    },
+  ],
+};
+
 const executionBlock: GeneratedBlock = {
   questions: [
     {
@@ -273,7 +310,7 @@ describe("The report", () => {
 
     const { report } = await reviewed(id);
 
-    expect(report.identification).toMatchObject({ processId: id, origin: null });
+    expect(report.identification).toMatchObject({ processId: id, finalizedAt: null, origin: null });
     expect(report.decisionSummary).toEqual({
       problemStatement: statement,
       chosenOption: cache,

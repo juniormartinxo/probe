@@ -71,6 +71,37 @@ export interface ProblemStatements {
 
 const OPERATION = "refine_problem_statement";
 
+// O refinamento pedido à IA, com a proposta que veio, se veio.
+async function refinementOf(db: Db, processId: string, confirmedAt: Date | null): Promise<Refinement | null> {
+  const request = await findAiRequest<StatementProposal>(db, processId, OPERATION);
+  if (!request) return null;
+  const { result } = request;
+  return {
+    id: request.id,
+    status: request.status,
+    proposal: result && {
+      id: result.attemptId,
+      ...result.value,
+      arrivedAfterConfirmation: confirmedAt !== null && result.finishedAt > confirmedAt,
+    },
+    attempts: request.attempts,
+  };
+}
+
+// O enunciado confirmado, se já há, e o refinamento pedido à IA.
+export async function problemStatementStateOf(
+  db: Db,
+  processId: string,
+): Promise<{ problemStatement: ProblemStatement | null; refinement: Refinement | null }> {
+  const problemStatement =
+    (await db
+      .selectFrom("problemStatements")
+      .select(["statement", "origin", "proposalId", "confirmedAt"])
+      .where("processId", "=", processId)
+      .executeTakeFirst()) ?? null;
+  return { problemStatement, refinement: await refinementOf(db, processId, problemStatement?.confirmedAt ?? null) };
+}
+
 // Trava o Processo para a transação e verifica que o enunciado ainda está por confirmar.
 async function lockOpenProcess(
   trx: Db,
@@ -101,22 +132,6 @@ export function problemStatements(deps: {
 }): ProblemStatements {
   const { db, assistant, runner, settings } = deps;
 
-  async function findRefinement(processId: string, confirmedAt: Date | null): Promise<Refinement | null> {
-    const request = await findAiRequest<StatementProposal>(db, processId, OPERATION);
-    if (!request) return null;
-    const { result } = request;
-    return {
-      id: request.id,
-      status: request.status,
-      proposal: result && {
-        id: result.attemptId,
-        ...result.value,
-        arrivedAfterConfirmation: confirmedAt !== null && result.finishedAt > confirmedAt,
-      },
-      attempts: request.attempts,
-    };
-  }
-
   // Abre uma tentativa, com o Processo travado até a transação terminar, e só depois de gravá-la
   // dispara a geração. `prepare` diz a que solicitação ela pertence e, numa nova tentativa, com que
   // CLI, ou por que não pode abrir.
@@ -137,7 +152,7 @@ export function problemStatements(deps: {
     if (!opened.ok) return opened;
     try {
       // Lido antes de disparar a geração: a resposta mostra a tentativa recém-aberta.
-      return { ok: true, refinement: (await findRefinement(processId, null))! };
+      return { ok: true, refinement: (await refinementOf(db, processId, null))! };
     } finally {
       // Aberta, a tentativa sempre segue, mesmo que a leitura falhe: nunca fica "running" à toa.
       runner.run(opened.attempt, (context) =>
@@ -192,14 +207,8 @@ export function problemStatements(deps: {
       });
     },
 
-    async find(processId) {
-      const problemStatement =
-        (await db
-          .selectFrom("problemStatements")
-          .select(["statement", "origin", "proposalId", "confirmedAt"])
-          .where("processId", "=", processId)
-          .executeTakeFirst()) ?? null;
-      return { problemStatement, refinement: await findRefinement(processId, problemStatement?.confirmedAt ?? null) };
+    find(processId) {
+      return problemStatementStateOf(db, processId);
     },
   };
 }

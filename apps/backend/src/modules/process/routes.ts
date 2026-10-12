@@ -436,7 +436,7 @@ export const processRoutes =
     app.get("/processes", async () => ({ processes: await listProcesses(db) }));
 
     async function processDetail(id: string) {
-      return uuidPattern.test(id) ? processDetailOf({ db, problemStatements, blocks, pendencies }, id) : undefined;
+      return uuidPattern.test(id) ? processDetailOf(db, id) : undefined;
     }
 
     app.get<{ Params: { id: string } }>("/processes/:id", async (request, reply) => {

@@ -92,7 +92,14 @@ function ProcessView({ process, onChange }: { process: ProcessDetail; onChange: 
 function FinalizedReport({ processId }: { processId: string }) {
   const [finalization, setFinalization] = useState<Finalization | "error">();
   useEffect(() => {
-    getFinalization(processId).then(setFinalization, () => setFinalization("error"));
+    let current = true;
+    getFinalization(processId).then(
+      (loaded) => current && setFinalization(loaded),
+      () => current && setFinalization("error"),
+    );
+    return () => {
+      current = false;
+    };
   }, [processId]);
   return (
     <Card className="gap-3">

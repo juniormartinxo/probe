@@ -13,8 +13,8 @@ import type {
 } from "../ai/assistant.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 import { answersOf, type AnswerDraft, type Answer } from "./answers.ts";
-import { choiceInForceOf, withChoiceCoverage } from "./chosen-options.ts";
-import { blockPointsOf, withPlanCoverage } from "./execution-plan.ts";
+import { choiceInForceOf } from "./chosen-options.ts";
+import { blockPointsOf, stagePointsWithCoverage } from "./execution-plan.ts";
 import { stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
 import { statementsInForceOf } from "./constraints-and-preferences.ts";
 import { knownOptionOf, optionsOf } from "./options.ts";
@@ -219,23 +219,99 @@ const saveBlock =
       .execute();
   };
 
+// As solicitações de Bloco do Processo, cada uma com o Bloco que trouxe, se trouxe.
+async function blockRequestsOf(db: Db, processId: string): Promise<BlockRequest[]> {
+  const requests = await listAiRequests<GeneratedBlock>(db, processId, OPERATION);
+  const generated = await db
+    .selectFrom("blocks")
+    .select(["id", "attemptId"])
+    .where("processId", "=", processId)
+    .execute();
+  return requests.map(({ id, status, attempts, result }) => ({
+    id,
+    status,
+    blockId: generated.find((block) => block.attemptId === result?.attemptId)?.id ?? null,
+    attempts,
+  }));
+}
+
+// O trabalho da Etapa atual, como o frontend o retoma: os Pontos, as solicitações de Bloco e os
+// Blocos de todas as Etapas, com as Perguntas, as respostas, os rascunhos e as sínteses.
+export async function stageWorkOf(db: Db, process: { id: string; currentStage: Stage; stagePointsVersion: number }): Promise<StageWork> {
+  // As solicitações antes dos Blocos: o Bloco é gravado na mesma transação que conclui a
+  // tentativa, então uma solicitação lida como concluída já tem o seu Bloco na leitura seguinte.
+  const blockRequests = await blockRequestsOf(db, process.id);
+  const blockRows = await db
+    .selectFrom("blocks")
+    .select(["id", "number", "stage", "createdAt"])
+    .where("processId", "=", process.id)
+    .orderBy("number")
+    .execute();
+  const questionRows = blockRows.length
+    ? await db
+        .selectFrom("questions")
+        .select([
+          "id",
+          "blockId",
+          "position",
+          "wording",
+          "subject",
+          "contextRelation",
+          "rationale",
+          "stagePoints",
+          "reformulatesQuestionId",
+          "answerType",
+          "choices",
+        ])
+        .where(
+          "blockId",
+          "in",
+          blockRows.map((block) => block.id),
+        )
+        .orderBy("position")
+        .execute()
+    : [];
+  const questionIds = questionRows.map((question) => question.id);
+  const answers = await answersOf(db, questionIds);
+  const unknown = questionIds.length
+    ? await db
+        .selectFrom("pendencies")
+        .select("questionId")
+        .where("questionId", "in", questionIds)
+        .where("reason", "=", "unknown_information")
+        .where("resolvedAt", "is", null)
+        .execute()
+    : [];
+  const syntheses = await synthesesOf(db, process, blockRows);
+  const stagePoints = await stagePointsWithCoverage(db, process, process.currentStage);
+  const reformulated = (id: string | null): Question["reformulates"] => {
+    const original = id === null ? undefined : questionRows.find((question) => question.id === id);
+    if (!original) return null;
+    const block = blockRows.find((item) => item.id === original.blockId)!;
+    return { questionId: original.id, blockNumber: block.number, number: original.position + 1, wording: original.wording };
+  };
+  return {
+    stagePoints,
+    openStagePoints: await blockPointsOf(db, process, process.currentStage, stagePoints),
+    blockRequests,
+    blocks: blockRows.map((block) => ({
+      ...block,
+      questions: questionRows
+        .filter((question) => question.blockId === block.id)
+        .map(({ blockId: _blockId, position: _position, stagePoints: keys, reformulatesQuestionId, ...question }) => ({
+          ...question,
+          stagePoints: keys.map((key) => namedStagePoint(process.stagePointsVersion, block.stage, key)),
+          reformulates: reformulated(reformulatesQuestionId),
+          ...answers.get(question.id)!,
+          unknown: unknown.some((pendency) => pendency.questionId === question.id),
+        })),
+      ...syntheses.get(block.id)!,
+    })),
+  };
+}
+
 export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRunner; settings: SettingsModule }): Blocks {
   const { db, assistant, runner, settings } = deps;
-
-  async function findBlockRequests(processId: string): Promise<BlockRequest[]> {
-    const requests = await listAiRequests<GeneratedBlock>(db, processId, OPERATION);
-    const generated = await db
-      .selectFrom("blocks")
-      .select(["id", "attemptId"])
-      .where("processId", "=", processId)
-      .execute();
-    return requests.map(({ id, status, attempts, result }) => ({
-      id,
-      status,
-      blockId: generated.find((block) => block.attemptId === result?.attemptId)?.id ?? null,
-      attempts,
-    }));
-  }
 
   // Os Pontos são da aplicação, não da IA (ADR 0002): um Bloco com Pergunta que sirva a um Ponto
   // fora dos abertos, ou que reformule uma Pergunta que não foi feita, é recusado, qualquer que seja a
@@ -284,7 +360,7 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
     const { input } = prepared;
     try {
       // Lido antes de disparar a geração: a resposta mostra a tentativa recém-aberta.
-      const blockRequest = (await findBlockRequests(processId)).find((request) => request.id === aiRequestId)!;
+      const blockRequest = (await blockRequestsOf(db, processId)).find((request) => request.id === aiRequestId)!;
       return { ok: true, blockRequest };
     } finally {
       // Aberta, a tentativa sempre segue, mesmo que a leitura falhe: nunca fica "running" à toa.
@@ -328,81 +404,8 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       });
     },
 
-    async find(process) {
-      // As solicitações antes dos Blocos: o Bloco é gravado na mesma transação que conclui a
-      // tentativa, então uma solicitação lida como concluída já tem o seu Bloco na leitura seguinte.
-      const blockRequests = await findBlockRequests(process.id);
-      const blockRows = await db
-        .selectFrom("blocks")
-        .select(["id", "number", "stage", "createdAt"])
-        .where("processId", "=", process.id)
-        .orderBy("number")
-        .execute();
-      const questionRows = blockRows.length
-        ? await db
-            .selectFrom("questions")
-            .select([
-              "id",
-              "blockId",
-              "position",
-              "wording",
-              "subject",
-              "contextRelation",
-              "rationale",
-              "stagePoints",
-              "reformulatesQuestionId",
-              "answerType",
-              "choices",
-            ])
-            .where(
-              "blockId",
-              "in",
-              blockRows.map((block) => block.id),
-            )
-            .orderBy("position")
-            .execute()
-        : [];
-      const questionIds = questionRows.map((question) => question.id);
-      const answers = await answersOf(db, questionIds);
-      const unknown = questionIds.length
-        ? await db
-            .selectFrom("pendencies")
-            .select("questionId")
-            .where("questionId", "in", questionIds)
-            .where("reason", "=", "unknown_information")
-            .where("resolvedAt", "is", null)
-            .execute()
-        : [];
-      const syntheses = await synthesesOf(db, process, blockRows);
-      const stagePoints = await withPlanCoverage(
-        db,
-        process,
-        await withChoiceCoverage(db, process, await stagePointStates(db, process, process.currentStage)),
-      );
-      const reformulated = (id: string | null): Question["reformulates"] => {
-        const original = id === null ? undefined : questionRows.find((question) => question.id === id);
-        if (!original) return null;
-        const block = blockRows.find((item) => item.id === original.blockId)!;
-        return { questionId: original.id, blockNumber: block.number, number: original.position + 1, wording: original.wording };
-      };
-      return {
-        stagePoints,
-        openStagePoints: await blockPointsOf(db, process, process.currentStage, stagePoints),
-        blockRequests,
-        blocks: blockRows.map((block) => ({
-          ...block,
-          questions: questionRows
-            .filter((question) => question.blockId === block.id)
-            .map(({ blockId: _blockId, position: _position, stagePoints: keys, reformulatesQuestionId, ...question }) => ({
-              ...question,
-              stagePoints: keys.map((key) => namedStagePoint(process.stagePointsVersion, block.stage, key)),
-              reformulates: reformulated(reformulatesQuestionId),
-              ...answers.get(question.id)!,
-              unknown: unknown.some((pendency) => pendency.questionId === question.id),
-            })),
-          ...syntheses.get(block.id)!,
-        })),
-      };
+    find(process) {
+      return stageWorkOf(db, process);
     },
   };
 }

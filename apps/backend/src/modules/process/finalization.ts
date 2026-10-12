@@ -1,22 +1,22 @@
 import type { Db } from "../../db/database.ts";
 import { fingerprintOf, reportOf, type Report, type ReportSource } from "../reports/report.ts";
-import { choiceBlockingStage, withChoiceCoverage, type ChoiceNotReady } from "./chosen-options.ts";
+import { choiceBlockingStage, type ChoiceNotReady } from "./chosen-options.ts";
 import { undecidedConflictsBlocking } from "./conflicts.ts";
 import { undecidedConstraintReassessmentsBlocking } from "./constraint-reassessments.ts";
 import { inForceOf } from "./constraints-and-preferences.ts";
-import { planBlockingStage, withPlanCoverage, type PlanNotReady } from "./execution-plan.ts";
-import { pendenciesBlockingStage } from "./pendencies.ts";
-import { processDetailOf, type ProcessDetailDeps } from "./process-detail.ts";
+import { planBlockingStage, stagePointsWithCoverage, type PlanNotReady } from "./execution-plan.ts";
+import { processDetailOf } from "./process-detail.ts";
 import { executionConfirmed, lockOpenProcess } from "./process.ts";
 import { undecidedReassessmentsBlocking } from "./reassessments.ts";
-import { stagePointStates, type ProcessPoints } from "./stage-point-coverage.ts";
+import type { ProcessPoints } from "./stage-point-coverage.ts";
 import { stages, type Stage } from "./stage.ts";
 
 // A Etapa cujas Confirmações já exigem tudo o que a Finalização exige: a última.
 const LAST_STAGE: Stage = "E";
 
-// O conjunto confirmado que a Finalização congela, pelos ids: o enunciado, a Versão que vale de cada
-// resposta, as Restrições e Preferências em vigor, a Escolha e os elementos do plano.
+// O conjunto confirmado que a Finalização congela: o texto do enunciado (o único por Processo) e, pelos
+// ids, a Versão que vale de cada resposta, as Restrições e Preferências em vigor, a Escolha e os
+// elementos do plano.
 export interface ConfirmedSet {
   problemStatement: string;
   answerVersionIds: string[];
@@ -41,7 +41,7 @@ export interface FinalReview {
   fingerprint: string;
 }
 
-// A Finalização gravada: quando, e o relatório congelado.
+// A Finalização gravada: quando, e o relatório congelado (que traz a mesma data).
 export interface FrozenFinalization {
   finalizedAt: Date;
   report: Report;
@@ -83,7 +83,18 @@ async function aiRequestRunning(db: Db, processId: string): Promise<boolean> {
 // nova, uma Revisão de Restrição ou uma troca de Escolha feitas depois.
 async function blockersOf(db: Db, process: ProcessPoints): Promise<FinalizationBlocker[]> {
   const blockers: FinalizationBlocker[] = [];
-  const pendencyIds = await pendenciesBlockingStage(db, process.id, LAST_STAGE);
+  // Qualquer Pendência aberta, inclusive uma informação desconhecida registrada depois de E numa
+  // Pergunta de uma Etapa anterior (que não bloquearia mais Confirmação nenhuma).
+  const pendencyIds = (
+    await db
+      .selectFrom("pendencies")
+      .select("id")
+      .where("processId", "=", process.id)
+      .where("resolvedAt", "is", null)
+      .orderBy("openedAt")
+      .orderBy("id")
+      .execute()
+  ).map((row) => row.id);
   if (pendencyIds.length > 0) blockers.push({ reason: "blocking_pendencies", pendencyIds });
   const undecided = [
     ...(await undecidedReassessmentsBlocking(db, process.id, LAST_STAGE)),
@@ -101,11 +112,9 @@ async function blockersOf(db: Db, process: ProcessPoints): Promise<FinalizationB
 }
 
 // O Processo como o relatório o lê: o detalhe e os Pontos de cada Etapa, com o da Escolha e os do plano.
-async function reportSourceOf(deps: ProcessDetailDeps, processId: string): Promise<ReportSource> {
-  const detail = (await processDetailOf(deps, processId))!;
-  const byStage = await Promise.all(
-    stages.map(async (stage) => [stage, await withPlanCoverage(deps.db, detail, await withChoiceCoverage(deps.db, detail, await stagePointStates(deps.db, detail, stage)))] as const),
-  );
+async function reportSourceOf(db: Db, processId: string): Promise<ReportSource> {
+  const detail = (await processDetailOf(db, processId))!;
+  const byStage = await Promise.all(stages.map(async (stage) => [stage, await stagePointsWithCoverage(db, detail, stage)] as const));
   return { ...detail, stagePointsByStage: Object.fromEntries(byStage) as ReportSource["stagePointsByStage"] };
 }
 
@@ -121,9 +130,7 @@ function confirmedSetOf(source: ReportSource): ConfirmedSet {
   };
 }
 
-export function finalization(deps: ProcessDetailDeps): Finalization {
-  const { db } = deps;
-
+export function finalization({ db }: { db: Db }): Finalization {
   return {
     // Só lê: a Finalização é que confere, com o Processo travado, se nada mudou desde a Revisão.
     async review(processId) {
@@ -131,7 +138,7 @@ export function finalization(deps: ProcessDetailDeps): Finalization {
       if (!process) return { ok: false, error: "process_not_found" };
       if (process.status !== "open") return { ok: false, error: "process_not_open" };
       if (!(await executionConfirmed(db, processId))) return { ok: false, error: "execution_not_confirmed" };
-      const report = reportOf(await reportSourceOf(deps, processId));
+      const report = reportOf(await reportSourceOf(db, processId));
       return { ok: true, finalReview: { report, blockers: await blockersOf(db, process), fingerprint: fingerprintOf(report) } };
     },
 
@@ -143,12 +150,14 @@ export function finalization(deps: ProcessDetailDeps): Finalization {
         const [blocker] = await blockersOf(trx, locked.process);
         if (blocker?.reason === "blocking_pendencies") return { ok: false, error: blocker.reason, pendencyIds: blocker.pendencyIds } as const;
         if (blocker) return { ok: false, error: blocker.reason } as const;
-        // O Processo está travado: o que se lê agora é o que fica congelado.
-        const source = await reportSourceOf(deps, processId);
-        const report = reportOf(source);
-        if (fingerprintOf(report) !== fingerprint) return { ok: false, error: "final_review_outdated" } as const;
+        // Lido na transação, com o Processo travado: o que se compara é o que fica congelado.
+        const source = await reportSourceOf(trx, processId);
+        const reviewed = reportOf(source);
+        if (fingerprintOf(reviewed) !== fingerprint) return { ok: false, error: "final_review_outdated" } as const;
         const confirmedSet = confirmedSetOf(source);
-        const { finalizedAt } = await trx
+        const finalizedAt = new Date();
+        const report: Report = { ...reviewed, identification: { ...reviewed.identification, finalizedAt: finalizedAt.toISOString() } };
+        await trx
           .insertInto("finalizations")
           .values({
             processId,
@@ -156,16 +165,16 @@ export function finalization(deps: ProcessDetailDeps): Finalization {
             fingerprint,
             confirmedSet: JSON.stringify(confirmedSet),
             report: JSON.stringify(report),
+            finalizedAt,
           })
-          .returning("finalizedAt")
-          .executeTakeFirstOrThrow();
+          .execute();
         await trx.updateTable("processes").set({ status: "finalized" }).where("id", "=", processId).execute();
         return { ok: true, finalization: { finalizedAt, report } } as const;
       });
     },
 
     async find(processId) {
-      const process = await db.selectFrom("processes").select("status").where("id", "=", processId).executeTakeFirst();
+      const process = await db.selectFrom("processes").select("id").where("id", "=", processId).executeTakeFirst();
       if (!process) return { ok: false, error: "process_not_found" };
       const row = await db.selectFrom("finalizations").select(["finalizedAt", "report"]).where("processId", "=", processId).executeTakeFirst();
       if (!row) return { ok: false, error: "process_not_finalized" };

@@ -71,17 +71,14 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
   app.register(
     async (api) => {
       api.get("/health", async () => ({ status: "ok" }));
-      const statements = problemStatements({ db, assistant, runner, settings });
-      const blocksOfProcess = blocks({ db, assistant, runner, settings });
-      const pendenciesOfProcess = pendencies({ db });
       await api.register(
         processRoutes({
           db,
-          problemStatements: statements,
-          blocks: blocksOfProcess,
+          problemStatements: problemStatements({ db, assistant, runner, settings }),
+          blocks: blocks({ db, assistant, runner, settings }),
           answers: answers({ db, afterChange: (processId, questionId) => reassessments.assessChange(processId, questionId) }),
           syntheses: syntheses({ db, assistant, runner, settings, afterConfirm }),
-          pendencies: pendenciesOfProcess,
+          pendencies: pendencies({ db }),
           stagePointCoverage: stagePointCoverage({ db }),
           stageAssessments: stageAssessments({ db, assessor }),
           stageConfirmations: stageConfirmations({ db }),
@@ -94,7 +91,7 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
           recommendations: recommendations({ db, assistant, runner, settings }),
           chosenOptions: chosenOptions({ db }),
           executionPlan: executionPlan({ db, assessor, log: app.log }),
-          finalization: finalization({ db, problemStatements: statements, blocks: blocksOfProcess, pendencies: pendenciesOfProcess }),
+          finalization: finalization({ db }),
         }),
       );
       await api.register(settingsRoutes({ settings }));

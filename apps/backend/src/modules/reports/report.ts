@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { comparisonDimensions, type AnswerType, type ComparisonCells } from "../ai/assistant.ts";
+import { comparisonNames } from "../ai/prompt-parts.ts";
 import { describeAnswer } from "../process/answers.ts";
 import type { Block } from "../process/blocks.ts";
 import type { ChosenOption } from "../process/chosen-options.ts";
@@ -25,7 +26,9 @@ import { synthesisInForce } from "../process/syntheses.ts";
 // Começa pelo resumo da Decisão, segue com o registro por Etapa e termina no histórico. É montado do
 // que está gravado, sem chamar a IA; as datas vão em ISO 8601, como ficam depois de congeladas.
 export interface Report {
-  identification: { processId: string; createdAt: string; origin: null };
+  // `finalizedAt`: null na Revisão final (e na impressão digital); a data da Finalização no congelado.
+  // `origin`: a Derivação de que o Processo veio; null até haver Derivações (PRB-30, PRB-31).
+  identification: { processId: string; createdAt: string; finalizedAt: string | null; origin: null };
   // A Decisão em poucas linhas: o problema, a Escolha, os descartes e o plano.
   decisionSummary: {
     problemStatement: string;
@@ -135,17 +138,8 @@ const iso = (date: Date): string => date.toISOString();
 const cellsOf = (row: ComparisonCells): ComparisonCells =>
   Object.fromEntries(comparisonDimensions.map((dimension) => [dimension, row[dimension]])) as unknown as ComparisonCells;
 
-const dimensionNames: Record<keyof ComparisonCells, string> = {
-  gains: "Ganhos",
-  losses: "Perdas",
-  effort: "Esforço",
-  scalability: "Escala",
-  maintenance: "Manutenção",
-  reversibility: "Reversibilidade",
-};
-
 const describeCells = (row: ComparisonCells): string =>
-  comparisonDimensions.map((dimension) => `${dimensionNames[dimension]}: ${row[dimension]}`).join(" · ");
+  comparisonDimensions.map((dimension) => `${comparisonNames[dimension]}: ${row[dimension]}`).join(" · ");
 
 function stageOf(source: ReportSource, stage: Stage): ReportStage {
   const confirmation = source.stageConfirmations.find((item) => item.stage === stage);
@@ -219,8 +213,8 @@ function assumptionsOf(source: ReportSource): Assumption[] {
   return [...points, ...clarifications, ...confirmations, ...kept];
 }
 
-// Os estados de uma sequência, do mais antigo ao que vale.
-function sequence(kind: HistoryEntry["kind"], subject: string, states: { text: string; recordedAt: Date }[]): HistoryEntry[] {
+// O histórico de algo revisável: os estados, do mais antigo ao que vale.
+function revisions(kind: HistoryEntry["kind"], subject: string, states: { text: string; recordedAt: Date }[]): HistoryEntry[] {
   return states.map(({ text, recordedAt }, index) => ({
     kind,
     subject,
@@ -243,7 +237,7 @@ function historyOf(source: ReportSource): HistoryEntry[] {
   const answers = source.blocks.flatMap((block) =>
     block.questions.flatMap((question, index) =>
       question.answer
-        ? sequence(
+        ? revisions(
             "answer",
             `${block.stage} ${block.number}.${index + 1}: ${question.wording}`,
             [...question.answer.previous].reverse().concat(question.answer.current).map((version) => ({
@@ -256,7 +250,7 @@ function historyOf(source: ReportSource): HistoryEntry[] {
   );
   const syntheses = source.blocks.flatMap((block) =>
     block.synthesis
-      ? sequence("synthesis", `Síntese do Bloco ${block.number}`, [
+      ? revisions("synthesis", `Síntese do Bloco ${block.number}`, [
           { text: block.synthesis.synthesis, recordedAt: block.synthesis.confirmedAt },
           ...block.synthesis.corrections.map((correction) => ({ text: correction.synthesis, recordedAt: correction.correctedAt })),
         ])
@@ -277,20 +271,20 @@ function historyOf(source: ReportSource): HistoryEntry[] {
   );
   const comparisons = source.comparisonMatrix.flatMap((row) =>
     row.comparison
-      ? sequence(
+      ? revisions(
           "comparison",
           row.option.statement,
           [...row.history, row.comparison].map((comparison) => ({ text: describeCells(comparison), recordedAt: comparison.recordedAt })),
         )
       : [],
   );
-  const choices = sequence(
+  const choices = revisions(
     "choice",
     "Escolha",
     source.chosenOptions.map((chosen) => ({ text: chosen.option.statement, recordedAt: chosen.chosenAt })),
   );
   const plan = source.executionPlan.flatMap((element) =>
-    element.current ? sequence("plan_element", element.name, [...element.history, element.current]) : [],
+    element.current ? revisions("plan_element", element.name, [...element.history, element.current]) : [],
   );
   return [
     ...answers,
@@ -314,7 +308,7 @@ export function reportOf(source: ReportSource): Report {
   const plan = source.executionPlan.filter((element) => element.current !== null);
   const violations = (option: Pick<Option, "violations">) => option.violations.map((violation) => violation.statement);
   return {
-    identification: { processId: source.id, createdAt: iso(source.createdAt), origin: null },
+    identification: { processId: source.id, createdAt: iso(source.createdAt), finalizedAt: null, origin: null },
     decisionSummary: {
       problemStatement: statement.statement,
       chosenOption: chosen.option.statement,

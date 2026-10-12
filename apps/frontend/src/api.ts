@@ -697,7 +697,8 @@ export interface ProcessDetail extends ProcessWithConversation {
 // Relatório do Processo: o conteúdo estruturado que a Revisão final apresenta e a Finalização congela.
 // Começa pelo resumo da Decisão, segue com o registro por Etapa e termina no histórico.
 export interface Report {
-  identification: { processId: string; createdAt: string; origin: null };
+  // `finalizedAt`: null na Revisão final; a data da Finalização no relatório congelado.
+  identification: { processId: string; createdAt: string; finalizedAt: string | null; origin: null };
   decisionSummary: {
     problemStatement: string;
     chosenOption: string;

@@ -197,8 +197,10 @@ export function processApi(current: () => TestApp) {
   const choose = (id: string, payload: Record<string, unknown>) => inject({ method: "POST", url: `/api/processes/${id}/chosen-options`, payload });
 
   // Processo na Etapa E: na Etapa O, duas Opções viáveis; na B, o cache escolhido, com o runner descartado.
-  async function processInStageE() {
+  // `inStageO`: o que mais fazer enquanto a Etapa O é a atual.
+  async function processInStageE({ inStageO }: { inStageO?: (id: string) => Promise<void> } = {}) {
     const { id, constraintId } = await processInStageO();
+    await inStageO?.(id);
     const runnerId = (await addOption(id, { statement: runner })).json().option.id as string;
     const cacheId = (await addOption(id, { statement: cache, description: "Cache do pnpm por hash do lockfile." })).json().option.id as string;
     expect((await confirmStageO(id)).statusCode).toBe(201);

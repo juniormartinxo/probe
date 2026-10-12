@@ -1,7 +1,7 @@
 import type { Db } from "../../db/database.ts";
 import { impactAssessmentsOf } from "../assessments/impact-assessments.ts";
 import { stageAssessmentsOf } from "../assessments/stage-assessments.ts";
-import type { Blocks } from "./blocks.ts";
+import { stageWorkOf } from "./blocks.ts";
 import { chosenOptionsOf } from "./chosen-options.ts";
 import { comparisonMatrixOf } from "./comparison-matrix.ts";
 import { conflictChecksOf } from "./conflicts.ts";
@@ -10,24 +10,17 @@ import { constraintRevisionsOf, constraintsAndPreferencesOf } from "./constraint
 import { executionPlanOf } from "./execution-plan.ts";
 import { optionChecksOf } from "./option-checks.ts";
 import { optionProposalsOf, optionsOf } from "./options.ts";
-import type { Pendencies } from "./pendencies.ts";
-import type { ProblemStatements } from "./problem-statement.ts";
+import { listPendencies } from "./pendencies.ts";
+import { problemStatementStateOf } from "./problem-statement.ts";
 import { executionConfirmed, findProcess } from "./process.ts";
 import { reassessmentsOf } from "./reassessments.ts";
 import { recommendationsOf } from "./recommendations.ts";
 import { stageConfirmationsOf } from "./stage-confirmations.ts";
 import { stages } from "./stage.ts";
 
-export interface ProcessDetailDeps {
-  db: Db;
-  problemStatements: ProblemStatements;
-  blocks: Blocks;
-  pendencies: Pendencies;
-}
-
 // O Processo como o frontend o retoma: enunciado, Etapa, Blocos, respostas e Pendências. É também de
-// onde sai o relatório da Revisão final.
-export async function processDetailOf({ db, problemStatements, blocks, pendencies }: ProcessDetailDeps, id: string) {
+// onde sai o relatório da Revisão final; dentro de uma transação, lê o que ela vê.
+export async function processDetailOf(db: Db, id: string) {
   const process = await findProcess(db, id);
   if (!process) return undefined;
   const finalization = await db.selectFrom("finalizations").select("finalizedAt").where("processId", "=", id).executeTakeFirst();
@@ -35,9 +28,9 @@ export async function processDetailOf({ db, problemStatements, blocks, pendencie
     ...process,
     // Quando a Finalização congelou o Processo; null enquanto ele está aberto.
     finalizedAt: finalization?.finalizedAt ?? null,
-    ...(await problemStatements.find(id)),
-    ...(await blocks.find(process)),
-    pendencies: await pendencies.list(process),
+    ...(await problemStatementStateOf(db, id)),
+    ...(await stageWorkOf(db, process)),
+    pendencies: await listPendencies(db, process),
     // Confirmações cuja Versão sustentada foi superada, ainda em revisão, e as Avaliações de impacto.
     reassessments: await reassessmentsOf(db, id),
     // Confirmações de Etapa que sustentavam uma Restrição revista, ainda em revisão.

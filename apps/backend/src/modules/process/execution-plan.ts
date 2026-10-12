@@ -3,10 +3,10 @@ import type { Db } from "../../db/database.ts";
 import type { AssessmentChoice, Assessor, AssessorFailureReason, Verdict } from "../assessments/assessor.ts";
 import { decidesAlone, impactOutcomeColumns, judgedImpact } from "../assessments/impact-assessments.ts";
 import { PLAN_CONFIDENCE_THRESHOLD, PLAN_RUBRIC_REVISION } from "../assessments/plan-rubric.ts";
-import { choiceInForceOf, chosenOptionsOf } from "./chosen-options.ts";
+import { choiceInForceOf, chosenOptionsOf, withChoiceCoverage } from "./chosen-options.ts";
 import { confirmedStatementOf } from "./problem-statement.ts";
 import { lockOpenProcessFrom } from "./process.ts";
-import { openPoints, type ProcessPoints, type StagePointState } from "./stage-point-coverage.ts";
+import { openPoints, stagePointStates, type ProcessPoints, type StagePointState } from "./stage-point-coverage.ts";
 import { stagePointsOf, type StagePoint } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
 
@@ -156,6 +156,12 @@ export async function withPlanCoverage(db: Db, process: ProcessPoints, states: S
   if (!states.some((point) => point.coveredByPlan)) return states;
   const planned = new Set((await executionPlanOf(db, process)).filter((element) => element.current).map((element) => element.key));
   return states.map((point) => (point.coveredByPlan && planned.has(point.key) ? { ...point, status: "planned" } : point));
+}
+
+// Os Pontos da Etapa como o usuário os vê: com o da Escolha coberto enquanto ela se sustenta e os de E
+// cobertos pelos elementos do plano.
+export async function stagePointsWithCoverage(db: Db, process: ProcessPoints, stage: Stage): Promise<StagePointState[]> {
+  return withPlanCoverage(db, process, await withChoiceCoverage(db, process, await stagePointStates(db, process, stage)));
 }
 
 export type PlanNotReady = "execution_plan_incomplete" | "undecided_plan_compatibility";
