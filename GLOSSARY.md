@@ -223,7 +223,7 @@ _Code_: `ChoiceDiscard`
 _Avoid_: Rejeição, eliminação
 
 **Plano de execução**:
-O que o usuário escreve na Etapa E para executar a Escolha: o primeiro passo concreto, como reconhecer sucesso e o plano B, um elemento por Ponto de E. Cada elemento cobre o seu Ponto (estado `planned`), que nenhum Bloco cobre e ninguém declara inaplicável; os Blocos de E perguntam sobre os Pontos ainda sem elemento, a partir da Escolha e das Restrições. Reescrever um elemento guarda o anterior no histórico. Os três são obrigatórios para confirmar E; depois da Confirmação de E, o plano e a Escolha não mudam mais, e o Processo está pronto para a Revisão final.
+O que o usuário escreve na Etapa E para executar a Escolha: o primeiro passo concreto, como reconhecer sucesso e o plano B, um elemento por Ponto de E. Cada elemento cobre o seu Ponto (estado `planned`), que nenhum Bloco cobre e ninguém declara inaplicável; os Blocos de E perguntam sobre os Pontos ainda sem elemento, a partir da Escolha e das Restrições. Reescrever um elemento guarda o anterior no histórico. Os três são obrigatórios para confirmar E; depois da Confirmação de E, o Processo está pronto para a Revisão final, e o plano e a Escolha só mudam por ela.
 _Code_: `ExecutionPlan` (cada elemento: `ExecutionPlanElement`, `first_step`, `success_criteria`, `plan_b`)
 _Avoid_: Plano de ação, próximos passos
 
