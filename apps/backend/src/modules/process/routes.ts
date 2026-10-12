@@ -1,17 +1,15 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { Db } from "../../db/database.ts";
 import { comparisonCellsOf, comparisonDimensions, isCli, type Cli } from "../ai/assistant.ts";
-import { impactAssessmentsOf, type ConfirmationRef } from "../assessments/impact-assessments.ts";
-import { stageAssessmentsOf, type StageAssessments } from "../assessments/stage-assessments.ts";
+import type { ConfirmationRef } from "../assessments/impact-assessments.ts";
+import type { StageAssessments } from "../assessments/stage-assessments.ts";
 import type { AnswerChange, AnswerValue, Answers } from "./answers.ts";
 import type { Blocks } from "./blocks.ts";
-import { chosenOptionsOf, type ChoiceRequest, type ChosenOptions } from "./chosen-options.ts";
-import { comparisonMatrixOf, type ComparisonMatrix, type ComparisonRecord } from "./comparison-matrix.ts";
-import { conflictChecksOf, type ConflictConstraintRevision, type ConflictDecision, type Conflicts } from "./conflicts.ts";
-import { constraintReassessmentsOf, type ConstraintReassessments } from "./constraint-reassessments.ts";
+import type { ChoiceRequest, ChosenOptions } from "./chosen-options.ts";
+import type { ComparisonMatrix, ComparisonRecord } from "./comparison-matrix.ts";
+import type { ConflictConstraintRevision, ConflictDecision, Conflicts } from "./conflicts.ts";
+import type { ConstraintReassessments } from "./constraint-reassessments.ts";
 import {
-  constraintRevisionsOf,
-  constraintsAndPreferencesOf,
   itemPaths,
   type ConstraintRevisionRequest,
   type ConstraintsAndPreferences,
@@ -19,17 +17,19 @@ import {
   type ItemReplacement,
   type ItemStatement,
 } from "./constraints-and-preferences.ts";
-import { executionPlanOf, type ExecutionPlan, type PlanDecision } from "./execution-plan.ts";
+import type { ExecutionPlan, PlanDecision } from "./execution-plan.ts";
+import type { Finalization } from "./finalization.ts";
 import { optionChecksOf } from "./option-checks.ts";
-import { optionProposalsOf, optionsOf, type OptionDecision, type Options, type OptionStatement, type UserOption } from "./options.ts";
+import type { OptionDecision, Options, OptionStatement, UserOption } from "./options.ts";
 import type { Pendencies } from "./pendencies.ts";
 import type { ProblemStatements, StatementConfirmation } from "./problem-statement.ts";
-import { reassessmentsOf, type ImpactDecision, type Reassessments } from "./reassessments.ts";
-import { recommendationsOf, type Recommendations } from "./recommendations.ts";
-import { createProcess, executionConfirmed, findProcess, listProcesses } from "./process.ts";
+import type { ImpactDecision, Reassessments } from "./reassessments.ts";
+import type { Recommendations } from "./recommendations.ts";
+import { processDetailOf } from "./process-detail.ts";
+import { createProcess, findProcess, listProcesses } from "./process.ts";
 import type { StagePointCoverage } from "./stage-point-coverage.ts";
-import { stageConfirmationsOf, type StageConfirmations, type StageConfirmationRequest } from "./stage-confirmations.ts";
-import { isStage, stages } from "./stage.ts";
+import type { StageConfirmations, StageConfirmationRequest } from "./stage-confirmations.ts";
+import { isStage } from "./stage.ts";
 import type { SynthesisConfirmation, Syntheses } from "./syntheses.ts";
 import { understandingOf } from "./understanding.ts";
 
@@ -169,6 +169,13 @@ function planDecisionFrom(body: unknown): PlanDecision | undefined {
   const { planAssessmentId } = body as Record<string, unknown>;
   if (!isUuid(planAssessmentId)) return undefined;
   return { planAssessmentId, justification: filledTextFrom(body, "justification")?.trim() ?? null };
+}
+
+// A impressão digital da Revisão final que o usuário viu e confirma.
+function fingerprintFrom(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { fingerprint } = body as Record<string, unknown>;
+  return typeof fingerprint === "string" && /^[0-9a-f]{64}$/.test(fingerprint) ? fingerprint : undefined;
 }
 
 // A chave de um elemento do plano é a de um Ponto de E; se é uma delas, o módulo decide.
@@ -367,6 +374,10 @@ const errorStatus = {
   plan_element_decided: 409,
   execution_plan_incomplete: 409,
   undecided_plan_compatibility: 409,
+  execution_not_confirmed: 409,
+  ai_request_in_progress: 409,
+  final_review_outdated: 409,
+  process_not_finalized: 409,
 } as const;
 
 // Restrições e Preferências seguem as mesmas rotas, cada uma no seu caminho.
@@ -392,6 +403,7 @@ export const processRoutes =
     recommendations,
     chosenOptions,
     executionPlan,
+    finalization,
   }: {
     db: Db;
     problemStatements: ProblemStatements;
@@ -411,6 +423,7 @@ export const processRoutes =
     recommendations: Recommendations;
     chosenOptions: ChosenOptions;
     executionPlan: ExecutionPlan;
+    finalization: Finalization;
   }): FastifyPluginAsync =>
   async (app) => {
     app.post("/processes", async (request, reply) => {
@@ -422,46 +435,8 @@ export const processRoutes =
 
     app.get("/processes", async () => ({ processes: await listProcesses(db) }));
 
-    // O Processo como o frontend o retoma: enunciado, Etapa, Blocos, respostas e Pendências.
     async function processDetail(id: string) {
-      const process = uuidPattern.test(id) ? await findProcess(db, id) : undefined;
-      if (!process) return undefined;
-      return {
-        ...process,
-        ...(await problemStatements.find(id)),
-        ...(await blocks.find(process)),
-        pendencies: await pendencies.list(process),
-        // Confirmações cuja Versão sustentada foi superada, ainda em revisão, e as Avaliações de impacto.
-        reassessments: await reassessmentsOf(db, id),
-        // Confirmações de Etapa que sustentavam uma Restrição revista, ainda em revisão.
-        constraintReassessments: await constraintReassessmentsOf(db, id),
-        // As Revisões de Restrição, na ordem: o histórico de cada Restrição revista.
-        constraintRevisions: await constraintRevisionsOf(db, id),
-        impactAssessments: await impactAssessmentsOf(db, id),
-        // As verificações de conflito entre respostas confirmadas, com os pares e as Avaliações.
-        conflictChecks: await conflictChecksOf(db, id),
-        // As Avaliações de cada Etapa já aberta, da primeira à atual.
-        stageAssessments: (
-          await Promise.all(
-            stages.slice(0, stages.indexOf(process.currentStage) + 1).map((stage) => stageAssessmentsOf(db, process, stage)),
-          )
-        ).flat(),
-        stageConfirmations: await stageConfirmationsOf(db, process),
-        ...(await constraintsAndPreferencesOf(db, id)),
-        // As Opções da Etapa O, inclusive as descartadas, e as propostas pedidas à IA.
-        options: await optionsOf(db, process),
-        optionProposals: await optionProposalsOf(db, id),
-        // As verificações de viabilidade, com os pares Opção × Restrição e as Avaliações do Jev.
-        optionChecks: await optionChecksOf(db, id),
-        // Na Etapa B: a matriz qualitativa, as Recomendações da IA e as Escolhas (a última vale).
-        comparisonMatrix: await comparisonMatrixOf(db, process),
-        recommendations: await recommendationsOf(db, process),
-        chosenOptions: await chosenOptionsOf(db, id),
-        // Na Etapa E: cada elemento do plano, com a compatibilidade com a Escolha em vigor.
-        executionPlan: await executionPlanOf(db, process),
-        // A Etapa E foi confirmada: o Processo espera a Revisão final.
-        readyForFinalReview: await executionConfirmed(db, id),
-      };
+      return uuidPattern.test(id) ? processDetailOf({ db, problemStatements, blocks, pendencies }, id) : undefined;
     }
 
     app.get<{ Params: { id: string } }>("/processes/:id", async (request, reply) => {
@@ -967,6 +942,38 @@ export const processRoutes =
       const result = await executionPlan.keep(id, element, decision);
       if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
       return reply.code(201).send({ executionPlan: result.executionPlan });
+    });
+
+    // A Revisão final: o relatório como ficaria congelado agora, o que impede a Finalização e a
+    // impressão digital que ela precisa trazer.
+    app.get<{ Params: { id: string } }>("/processes/:id/final-review", async (request, reply) => {
+      const { id } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      const result = await finalization.review(id);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return { finalReview: result.finalReview };
+    });
+
+    app.post<{ Params: { id: string } }>("/processes/:id/finalization", async (request, reply) => {
+      const { id } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      const fingerprint = fingerprintFrom(request.body);
+      if (fingerprint === undefined) return reply.code(400).send({ error: "fingerprint_required" });
+      const result = await finalization.finalize(id, fingerprint);
+      if (!result.ok) {
+        // Com o erro, o que o explica: as Pendências que bloqueiam.
+        const { ok: _, ...body } = result;
+        return reply.code(errorStatus[result.error]).send(body);
+      }
+      return reply.code(201).send({ finalization: result.finalization });
+    });
+
+    app.get<{ Params: { id: string } }>("/processes/:id/finalization", async (request, reply) => {
+      const { id } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      const result = await finalization.find(id);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return { finalization: result.finalization };
     });
 
     for (const kind of itemKinds) {

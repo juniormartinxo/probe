@@ -690,6 +690,104 @@ export interface ProcessDetail extends ProcessWithConversation {
   executionPlan: ExecutionPlanElement[];
   // A Etapa E foi confirmada: o Processo espera a Revisão final.
   readyForFinalReview: boolean;
+  // Quando a Finalização congelou o Processo; null enquanto ele está aberto.
+  finalizedAt: string | null;
+}
+
+// Relatório do Processo: o conteúdo estruturado que a Revisão final apresenta e a Finalização congela.
+// Começa pelo resumo da Decisão, segue com o registro por Etapa e termina no histórico.
+export interface Report {
+  identification: { processId: string; createdAt: string; origin: null };
+  decisionSummary: {
+    problemStatement: string;
+    chosenOption: string;
+    discards: { option: string; reason: string }[];
+    executionPlan: { key: string; name: string; text: string }[];
+  };
+  problem: { originalDescription: string; statement: string; statementOrigin: StatementOrigin };
+  constraints: ItemStatement[];
+  preferences: ItemStatement[];
+  stages: ReportStage[];
+  options: {
+    statement: string;
+    description: string | null;
+    origin: "ai" | "user";
+    status: "accepted" | "discarded";
+    viability: OptionViability | null;
+    violations: string[];
+  }[];
+  assumptionsAndClarifications: ReportAssumption[];
+  comparison: { option: string; viability: OptionViability; violations: string[]; cells: ComparisonCells | null }[];
+  // Recomendações da IA, identificadas como tal.
+  recommendations: { option: string; rationale: string }[];
+  choice: { option: string; description: string | null; comparison: ComparisonCells | null };
+  discardedOptions: { option: string; by: "choice" | "constraint" | "options_stage"; reason: string | null }[];
+  executionPlan: { key: string; name: string; text: string; compatibility: PlanCompatibilityStatus; justification: string | null }[];
+  history: ReportHistoryEntry[];
+}
+
+export interface ReportStage {
+  stage: Stage;
+  stagePoints: { key: string; name: string; status: StagePointStatus; justification: string | null; absence: string | null }[];
+  confirmation: { confirmedAt: string; withoutAssessment: boolean; justification: string | null } | null;
+  blocks: {
+    number: number;
+    synthesis: string | null;
+    questions: {
+      number: number;
+      wording: string;
+      subject: string;
+      answerType: AnswerType;
+      choices: string[];
+      reformulates: string | null;
+      answer: string | null;
+      status: "confirmed" | "provisional" | "unknown" | "unanswered";
+    }[];
+  }[];
+}
+
+export interface ReportAssumption {
+  kind: "inapplicable" | "absence" | "clarification" | "confirmed_against_assessment" | "confirmed_without_assessment" | "plan_element_kept";
+  stage: Stage;
+  subject: string;
+  text: string | null;
+}
+
+export interface ReportHistoryEntry {
+  kind: "answer" | "synthesis" | "constraint" | "preference" | "option" | "comparison" | "choice" | "plan_element";
+  subject: string;
+  text: string;
+  recordedAt: string;
+  status: "valid" | "superseded";
+}
+
+// O que ainda impede a Finalização.
+export type FinalizationBlocker =
+  | { reason: "blocking_pendencies"; pendencyIds: string[] }
+  | {
+      reason:
+        | "undecided_reassessments"
+        | "undecided_conflicts"
+        | "undecided_options"
+        | "choice_required"
+        | "chosen_option_not_viable"
+        | "discard_reasons_required"
+        | "execution_plan_incomplete"
+        | "undecided_plan_compatibility"
+        | "ai_request_in_progress";
+    };
+
+// A Revisão final: o relatório como ficaria congelado agora, o que impede a Finalização e a impressão
+// digital que a Finalização traz, para recusar se algo mudar no meio.
+export interface FinalReview {
+  report: Report;
+  blockers: FinalizationBlocker[];
+  fingerprint: string;
+}
+
+export interface Finalization {
+  finalizedAt: string;
+  report: Report;
 }
 
 // Configurações não sensíveis; segredos ficam no ambiente do backend e nunca chegam aqui.
@@ -1236,4 +1334,23 @@ export async function testConnection(): Promise<ConnectionTest> {
     method: "POST",
   });
   return connectionTest;
+}
+
+export async function getFinalReview(processId: string): Promise<FinalReview> {
+  const { finalReview } = await request<{ finalReview: FinalReview }>(`${processPath(processId)}/final-review`);
+  return finalReview;
+}
+
+// Finaliza o Processo sobre a Revisão final que você viu: congela a Decisão e o relatório.
+export async function finalizeProcess(processId: string, fingerprint: string): Promise<Finalization> {
+  const { finalization } = await request<{ finalization: Finalization }>(`${processPath(processId)}/finalization`, {
+    method: "POST",
+    body: JSON.stringify({ fingerprint }),
+  });
+  return finalization;
+}
+
+export async function getFinalization(processId: string): Promise<Finalization> {
+  const { finalization } = await request<{ finalization: Finalization }>(`${processPath(processId)}/finalization`);
+  return finalization;
 }

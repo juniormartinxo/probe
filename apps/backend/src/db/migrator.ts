@@ -16,6 +16,7 @@ import * as m0013 from "./migrations/0013_conflicts.ts";
 import * as m0014 from "./migrations/0014_options.ts";
 import * as m0015 from "./migrations/0015_stage_b.ts";
 import * as m0016 from "./migrations/0016_stage_e.ts";
+import * as m0017 from "./migrations/0017_finalization.ts";
 
 // Lista explícita, em ordem: o nome é a chave gravada na tabela de controle do Kysely.
 const migrations: Record<string, Migration> = {
@@ -35,6 +36,7 @@ const migrations: Record<string, Migration> = {
   "0014_options": m0014,
   "0015_stage_b": m0015,
   "0016_stage_e": m0016,
+  "0017_finalization": m0017,
 };
 
 function migrator(db: Db): Migrator {

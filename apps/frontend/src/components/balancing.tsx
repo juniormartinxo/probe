@@ -20,7 +20,7 @@ import { formatDate } from "@/lib/format";
 import { attemptProblem } from "@/refinement";
 import { stages } from "@/stages";
 
-const dimensions: { key: keyof ComparisonCells; name: string }[] = [
+export const dimensions: { key: keyof ComparisonCells; name: string }[] = [
   { key: "gains", name: "Ganhos" },
   { key: "losses", name: "Perdas" },
   { key: "effort", name: "Esforço" },
@@ -40,7 +40,6 @@ const errorText: Record<string, string> = {
   recommendation_already_requested: "Já há uma Recomendação em andamento.",
   unknown_recommendation: "Esta Recomendação não sugeriu linha para a Opção.",
   no_viable_option: "Nenhuma Opção aceita é viável: não há o que recomendar.",
-  execution_confirmed: "A Etapa E já foi confirmada: a Escolha não muda mais.",
 };
 
 // A ação do usuário, com o erro que ela devolver traduzido; recarrega o Processo no fim.
@@ -71,8 +70,8 @@ const fromStageB = (process: ProcessDetail) =>
 // Escolha com os motivos dos descartes. A Escolha continua revisável enquanto o Processo estiver aberto.
 export function Balancing({ process, onChange }: { process: ProcessDetail; onChange: () => void }) {
   if (!fromStageB(process) || process.comparisonMatrix.length === 0) return null;
-  // Depois da Confirmação da Etapa E, a Escolha não muda mais (até a Revisão final).
-  const open = process.status === "open" && !process.readyForFinalReview;
+  // Depois da Confirmação da Etapa E, a Escolha ainda muda na Revisão final, até a Finalização.
+  const open = process.status === "open";
   const latest = process.recommendations.at(-1) ?? null;
   // A Recomendação mais recente que veio: as linhas que ela sugere aparecem onde você ainda não escreveu.
   const made = process.recommendations.findLast((item) => item.recommendation !== null)?.recommendation ?? null;

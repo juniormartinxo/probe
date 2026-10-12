@@ -6,6 +6,13 @@ export const description = "Nosso deploy demora demais e o time perde a manhã."
 export const statement = "O deploy leva 40 minutos e bloqueia o time durante a manhã.";
 export const costConstraint = "O custo da infraestrutura não pode passar de 500 reais por mês";
 
+export const runner = "Trocar o runner por um maior";
+export const cache = "Cachear as dependências no GitHub Actions";
+
+export const firstStep = "Ativar o cache de dependências no workflow de deploy nesta sexta.";
+export const successCriteria = "O deploy cai para menos de 20 minutos em duas semanas.";
+export const planB = "Se o deploy não cair, trocar o runner por um maior.";
+
 // Chamadas que o frontend faz, sobre um TestApp que pode ser trocado entre os testes.
 export function processApi(current: () => TestApp) {
   const inject = (options: InjectOptions) => current().app.inject(options);
@@ -187,8 +194,42 @@ export function processApi(current: () => TestApp) {
   const reviseConstraint = (id: string, constraintId: string, replacement: Record<string, unknown> | null) =>
     inject({ method: "POST", url: `/api/processes/${id}/constraints/${constraintId}/revision`, payload: { replacement, note: "Mudou." } });
 
+  const choose = (id: string, payload: Record<string, unknown>) => inject({ method: "POST", url: `/api/processes/${id}/chosen-options`, payload });
+
+  // Processo na Etapa E: na Etapa O, duas Opções viáveis; na B, o cache escolhido, com o runner descartado.
+  async function processInStageE() {
+    const { id, constraintId } = await processInStageO();
+    const runnerId = (await addOption(id, { statement: runner })).json().option.id as string;
+    const cacheId = (await addOption(id, { statement: cache, description: "Cache do pnpm por hash do lockfile." })).json().option.id as string;
+    expect((await confirmStageO(id)).statusCode).toBe(201);
+    for (const key of ["gains_and_losses", "scalability", "maintenance"]) {
+      expect((await declareInapplicable(id, key, { justification: "Fora deste exemplo." })).statusCode).toBe(201);
+    }
+    expect((await choose(id, { optionId: cacheId, discards: [{ optionId: runnerId, reason: "Mais caro." }] })).statusCode).toBe(201);
+    expect((await confirmStage(id, { stageAssessmentId: null }, "B")).statusCode).toBe(201);
+    return { id, constraintId, runnerId, cacheId };
+  }
+
+  const recordElement = (id: string, element: string, payload: Record<string, unknown>) =>
+    inject({ method: "POST", url: `/api/processes/${id}/execution-plan/${element}`, payload });
+
+  // Registra os três elementos, cada um avaliado compatível pelo Jev falso, salvo roteiro.
+  async function recordPlan(id: string) {
+    for (const [element, text] of [
+      ["first_step", firstStep],
+      ["success_criteria", successCriteria],
+      ["plan_b", planB],
+    ]) {
+      expect((await recordElement(id, element!, { text })).statusCode).toBe(201);
+    }
+  }
+
   return {
     inject,
+    choose,
+    processInStageE,
+    recordElement,
+    recordPlan,
     processInStageO,
     addOption,
     confirmStageO,

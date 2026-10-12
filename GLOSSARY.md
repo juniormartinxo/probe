@@ -37,12 +37,12 @@ _Code_: `StagePoint`
 _Avoid_: Requisito da etapa, critério, checklist
 
 **Revisão final**:
-Apresentação consolidada de problema, restrições, Escolha, concessões e plano, feita antes da Finalização.
-_Code_: `FinalReview`
+Apresentação consolidada de problema, restrições, Escolha, concessões e plano, feita antes da Finalização, com o relatório como ficaria congelado e o que ainda impede finalizar. Abre com a Confirmação da Etapa E; até a Finalização, o plano e a Escolha ainda podem ser revistos.
+_Code_: `FinalReview` (o que impede: `FinalizationBlocker`; a identidade do que foi apresentado: `fingerprint`)
 
 **Finalização**:
-Confirmação explícita do usuário que congela o Processo e produz a Decisão e o relatório.
-_Code_: `Finalization`
+Confirmação explícita do usuário que congela o Processo e produz a Decisão e o relatório. Refere-se à Revisão final que o usuário viu: se algo mudou desde a apresentação, ou se resta Pendência aberta, Reavaliação ou Conflito sem decisão, ela é recusada.
+_Code_: `Finalization` (o que congela: `ConfirmedSet` e `Report`)
 _Avoid_: Conclusão, encerramento, fechamento
 
 **Aberto**:
@@ -223,7 +223,7 @@ _Code_: `ChoiceDiscard`
 _Avoid_: Rejeição, eliminação
 
 **Plano de execução**:
-O que o usuário escreve na Etapa E para executar a Escolha: o primeiro passo concreto, como reconhecer sucesso e o plano B, um elemento por Ponto de E. Cada elemento cobre o seu Ponto (estado `planned`), que nenhum Bloco cobre e ninguém declara inaplicável; os Blocos de E perguntam sobre os Pontos ainda sem elemento, a partir da Escolha e das Restrições. Reescrever um elemento guarda o anterior no histórico. Os três são obrigatórios para confirmar E; depois da Confirmação de E, o Processo está pronto para a Revisão final, e o plano e a Escolha só mudam por ela.
+O que o usuário escreve na Etapa E para executar a Escolha: o primeiro passo concreto, como reconhecer sucesso e o plano B, um elemento por Ponto de E. Cada elemento cobre o seu Ponto (estado `planned`), que nenhum Bloco cobre e ninguém declara inaplicável; os Blocos de E perguntam sobre os Pontos ainda sem elemento, a partir da Escolha e das Restrições. Reescrever um elemento guarda o anterior no histórico. Os três são obrigatórios para confirmar E; depois da Confirmação de E, o Processo está pronto para a Revisão final, e o plano e a Escolha só mudam nela, até a Finalização.
 _Code_: `ExecutionPlan` (cada elemento: `ExecutionPlanElement`, `first_step`, `success_criteria`, `plan_b`)
 _Avoid_: Plano de ação, próximos passos
 

@@ -10,7 +10,9 @@ import type { ConfirmationBasis } from "../modules/process/reassessments.ts";
 import type { StatementOrigin } from "../modules/process/problem-statement.ts";
 import type { CoverageStatus } from "../modules/process/stage-point-coverage.ts";
 import type { SynthesisOrigin } from "../modules/process/syntheses.ts";
+import type { ConfirmedSet } from "../modules/process/finalization.ts";
 import type { ProcessStatus } from "../modules/process/process.ts";
+import type { Report } from "../modules/reports/report.ts";
 import type { Stage } from "../modules/process/stage.ts";
 
 export interface ProcessTable {
@@ -448,6 +450,16 @@ export interface SettingsTable {
   updatedAt: Generated<Date>;
 }
 
+// Finalização: o conjunto confirmado e o relatório congelados, com a impressão digital da Revisão final.
+export interface FinalizationTable {
+  processId: string;
+  chosenOptionId: string;
+  fingerprint: string;
+  confirmedSet: ColumnType<ConfirmedSet, string, never>;
+  report: ColumnType<Report, string, never>;
+  finalizedAt: Generated<Date>;
+}
+
 export interface Database {
   processes: ProcessTable;
   conversations: ConversationTable;
@@ -489,6 +501,7 @@ export interface Database {
   executionPlanElements: ExecutionPlanElementTable;
   planAssessments: PlanAssessmentTable;
   planDecisions: PlanDecisionTable;
+  finalizations: FinalizationTable;
   settings: SettingsTable;
 }
 
