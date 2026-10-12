@@ -13,8 +13,9 @@ import type {
 } from "../ai/assistant.ts";
 import type { SettingsModule } from "../settings/settings.ts";
 import { answersOf, type AnswerDraft, type Answer } from "./answers.ts";
-import { withChoiceCoverage } from "./chosen-options.ts";
-import { openPoints, stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
+import { choiceInForceOf, withChoiceCoverage } from "./chosen-options.ts";
+import { blockPointsOf, withPlanCoverage } from "./execution-plan.ts";
+import { stagePointStates, type StagePointState } from "./stage-point-coverage.ts";
 import { statementsInForceOf } from "./constraints-and-preferences.ts";
 import { knownOptionOf, optionsOf } from "./options.ts";
 import { confirmedStagesOf } from "./stage-readiness.ts";
@@ -58,9 +59,10 @@ export interface Block extends BlockSynthesisState {
 }
 
 export interface StageWork {
-  // Pontos da Etapa atual, cada um aberto, coberto, inaplicável ou, o da Escolha, coberto por ela.
+  // Pontos da Etapa atual, cada um aberto, coberto, inaplicável ou, o da Escolha e os do Plano de
+  // execução, cobertos por eles.
   stagePoints: StagePointState[];
-  // Os Pontos da Etapa atual ainda abertos.
+  // Os Pontos da Etapa atual que os Blocos ainda servem: os abertos e, em E, os sem elemento do plano.
   openStagePoints: StagePoint[];
   blockRequests: BlockRequest[];
   blocks: Block[];
@@ -146,7 +148,7 @@ async function lockOpenProcess(
     trx,
     confirmedSyntheses.map((row) => row.id),
   );
-  const openStagePoints = openPoints(await stagePointStates(trx, process, stage));
+  const openStagePoints = await blockPointsOf(trx, process, stage, await stagePointStates(trx, process, stage));
   const open = new Set(openStagePoints.map((point) => point.key));
   // Uma resposta ambígua só é oferecida para reformular enquanto não ganhou reformulação e ainda
   // serve a algum Ponto aberto: a reformulação também precisa servir a um Ponto aberto.
@@ -180,6 +182,7 @@ async function lockOpenProcess(
         options: (await optionsOf(trx, process))
           .filter((option) => option.status === "accepted")
           .map(knownOptionOf),
+        chosenOption: stage === "E" ? ((await choiceInForceOf(trx, processId))?.choice ?? null) : null,
       },
       usedVersionIds: currentVersionsOf(questions),
       questionIdsByRef: new Map(questions.map((question) => [question.ref, question.id])),
@@ -371,7 +374,11 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
             .execute()
         : [];
       const syntheses = await synthesesOf(db, process, blockRows);
-      const stagePoints = await withChoiceCoverage(db, process, await stagePointStates(db, process, process.currentStage));
+      const stagePoints = await withPlanCoverage(
+        db,
+        process,
+        await withChoiceCoverage(db, process, await stagePointStates(db, process, process.currentStage)),
+      );
       const reformulated = (id: string | null): Question["reformulates"] => {
         const original = id === null ? undefined : questionRows.find((question) => question.id === id);
         if (!original) return null;
@@ -380,7 +387,7 @@ export function blocks(deps: { db: Db; assistant: Assistant; runner: AiRequestRu
       };
       return {
         stagePoints,
-        openStagePoints: openPoints(stagePoints),
+        openStagePoints: await blockPointsOf(db, process, process.currentStage, stagePoints),
         blockRequests,
         blocks: blockRows.map((block) => ({
           ...block,

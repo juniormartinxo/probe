@@ -14,6 +14,7 @@ import { NewAttempt } from "@/components/new-attempt";
 import { Balancing } from "@/components/balancing";
 import { BlockSynthesis } from "@/components/block-synthesis";
 import { Conflicts } from "@/components/conflicts";
+import { ExecutionPlan } from "@/components/execution-plan";
 import { ConstraintsAndPreferences } from "@/components/constraints-and-preferences";
 import { Options } from "@/components/options";
 import { Questionnaire } from "@/components/questionnaire";
@@ -27,7 +28,7 @@ import { attemptProblem } from "@/refinement";
 import { stageName, stagePointStatusText } from "@/stages";
 
 // Etapa atual: os Pontos (abertos, cobertos, inaplicáveis ou com a ausência registrada), as
-// Restrições e Preferências, as Opções, o Balanceamento, o que precisa ser revisto, as respostas em conflito, as Pendências e os Blocos de Perguntas da IA, cada um com a sua síntese. Só aparece depois da Confirmação do enunciado.
+// Restrições e Preferências, as Opções, o Balanceamento, o Plano de execução, o que precisa ser revisto, as respostas em conflito, as Pendências e os Blocos de Perguntas da IA, cada um com a sua síntese. Só aparece depois da Confirmação do enunciado.
 // `onChange` recarrega o Processo depois de cada ação.
 export function StageSection({ process, onChange }: { process: ProcessDetail; onChange: () => void }) {
   const blockRequest = process.blockRequests.at(-1) ?? null;
@@ -47,6 +48,7 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
       <ConstraintsAndPreferences process={process} onChange={onChange} />
       <Options process={process} onChange={onChange} />
       <Balancing process={process} onChange={onChange} />
+      <ExecutionPlan process={process} onChange={onChange} />
       <Reassessments process={process} onChange={onChange} />
       <Conflicts process={process} onChange={onChange} />
       <OpenPendencies process={process} />
@@ -76,7 +78,9 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
         />
       )}
       {blockRequest && <AttemptList attempts={blockRequest.attempts} />}
-      {process.openStagePoints.length === 0 && !pendingRequest && <StageConfirmationPanel process={process} onChange={onChange} />}
+      {process.openStagePoints.length === 0 && !pendingRequest && !process.readyForFinalReview && (
+        <StageConfirmationPanel process={process} onChange={onChange} />
+      )}
     </section>
   );
 }
@@ -143,7 +147,7 @@ function StagePointItem({ processId, point, onChange }: { processId: string; poi
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={point.status === "open" ? "outline" : "secondary"}>{stagePointStatusText[point.status]}</Badge>
         <span title={point.description}>{point.name}</span>
-        {point.status === "open" && !point.coveredByChoice && !declaring && !confirmingAbsence && (
+        {point.status === "open" && !point.coveredByChoice && !point.coveredByPlan && !declaring && !confirmingAbsence && (
           <div className="ml-auto flex gap-1">
             {point.absence && (
               <Button
@@ -186,6 +190,9 @@ function StagePointItem({ processId, point, onChange }: { processId: string; poi
       {point.status === "absent" && <p className="text-muted-foreground text-xs">{point.absence}</p>}
       {point.coveredByChoice && point.status === "open" && (
         <p className="text-muted-foreground text-xs">Só a Escolha cobre este Ponto: registre-a, com o motivo de cada descarte, no Balanceamento.</p>
+      )}
+      {point.coveredByPlan && point.status === "open" && (
+        <p className="text-muted-foreground text-xs">Só o elemento do plano de execução cobre este Ponto: escreva-o no Plano de execução.</p>
       )}
       {!declaring && error && <p className="text-destructive text-xs">{error}</p>}
       {point.status === "inapplicable" && (

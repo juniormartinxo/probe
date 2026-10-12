@@ -1,6 +1,7 @@
 import { describeAnswer } from "./answers.ts";
 import type { StageWork } from "./blocks.ts";
 import type { ChosenOption } from "./chosen-options.ts";
+import type { ExecutionPlanElement, PlanCompatibilityStatus } from "./execution-plan.ts";
 import { inForceOf, statementsOf, type ConstraintsAndPreferencesState, type ItemStatements } from "./constraints-and-preferences.ts";
 import type { Option } from "./options.ts";
 import type { Pendency, PendencyReason } from "./pendencies.ts";
@@ -30,6 +31,9 @@ export interface Understanding extends ItemStatements {
   // A Escolha em vigor, com o motivo de cada descarte e se a Opção escolhida ainda é viável; null
   // enquanto não há.
   chosenOption: { statement: string; viable: boolean; discards: { statement: string; reason: string }[] } | null;
+  // O Plano de execução: cada elemento, com o texto que vale (null enquanto não há) e a compatibilidade
+  // com a Escolha em vigor.
+  executionPlan: { key: string; name: string; text: string | null; compatibility: PlanCompatibilityStatus }[];
 }
 
 export function understandingOf(process: {
@@ -41,6 +45,7 @@ export function understandingOf(process: {
   pendencies: Pendency[];
   options: Option[];
   chosenOptions: ChosenOption[];
+  executionPlan: ExecutionPlanElement[];
 } & ConstraintsAndPreferencesState): Understanding {
   const chosen = process.chosenOptions.at(-1);
   return {
@@ -83,5 +88,11 @@ export function understandingOf(process: {
           discards: chosen.discards.map(({ option, reason }) => ({ statement: option.statement, reason })),
         }
       : null,
+    executionPlan: process.executionPlan.map(({ key, name, current, compatibility }) => ({
+      key,
+      name,
+      text: current?.text ?? null,
+      compatibility: compatibility.status,
+    })),
   };
 }

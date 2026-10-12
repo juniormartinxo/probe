@@ -5,7 +5,8 @@ import { askedQuestionsText, confirmedStagesText, questionRef, stageNames, stage
 // Prompt versionado com o código. Tudo o que veio do usuário vai delimitado e só como dado; a CLI
 // roda sem ferramentas, então ela não tem como agir sobre o que o texto pedir.
 export function synthesisPrompt(input: SynthesisInput): string {
-  const points = stagePointsText(input.openStagePoints);
+  // Na Etapa E, nenhum: só os elementos do Plano de execução cobrem os Pontos.
+  const points = input.openStagePoints.length > 0 ? stagePointsText(input.openStagePoints) : "(nenhum; devolva coverage vazio)";
   return `Você conduz uma pessoa pela Etapa ${input.stage} (${stageNames[input.stage]}) do framework PROBE, que a ajuda a tomar uma decisão.
 
 Ela acabou de responder o Bloco ${input.blockNumber} de Perguntas. Devolva:

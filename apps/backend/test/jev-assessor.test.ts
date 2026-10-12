@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ConflictInput, ConstraintImpactInput, CoverageInput, ImpactInput, OptionViolationInput } from "../src/modules/assessments/assessor.ts";
+import type { ConflictInput, ConstraintImpactInput, CoverageInput, ImpactInput, OptionViolationInput, PlanCompatibilityInput } from "../src/modules/assessments/assessor.ts";
 import { createJevAssessor } from "../src/modules/assessments/jev-assessor.ts";
 import { stagePointsOf } from "../src/modules/process/stage-points.ts";
 
@@ -429,5 +429,51 @@ describe("option Assessment through the Jev API", () => {
     const { url } = await startJev(() => ({ model: "jev-1.13.0", answers: { par_0: validAnswers.real_problem }, usage: {} }));
 
     expect(await assessOptions(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
+  });
+});
+
+describe("compatibility Assessment of the execution plan through the Jev API", () => {
+  const planInput: PlanCompatibilityInput = {
+    problemStatement: "O deploy leva 40 minutos e bloqueia o time durante a manhã.",
+    chosenOption: {
+      statement: "Cachear as dependências",
+      description: "No GitHub Actions.",
+      discards: [{ statement: "Trocar o runner", reason: "Mais caro." }],
+    },
+    element: { key: "plan_b", name: "Plano B", description: "O que fazer se a Escolha não funcionar.", text: "Trocar o runner se o cache falhar." },
+  };
+  const assessPlan = (url: string) => createJevAssessor({ url, apiKey: API_KEY, model: "jev-latest", timeoutMs: 5_000 }).assessPlan(planInput);
+
+  it("sends the Choice and the element, as data, with one Choice question", async () => {
+    const { url, requests } = await startJev(() => ({ model: "jev-1.13.0", answers: { compatibilidade: validAnswers.real_problem }, usage: {} }));
+
+    const outcome = await assessPlan(url);
+
+    const body = requests[0]!.body as { state: unknown; questions: Record<string, { instructions: string; criteria: object }> };
+    expect(body.state).toEqual({
+      enunciado: planInput.problemStatement,
+      escolha: {
+        opcao: "Cachear as dependências",
+        detalhes: "No GitHub Actions.",
+        descartes: [{ opcao: "Trocar o runner", motivo: "Mais caro." }],
+      },
+      elemento: { ponto: "Plano B", texto: "Trocar o runner se o cache falhar." },
+    });
+    expect(Object.keys(body.questions)).toEqual(["compatibilidade"]);
+    expect(body.questions.compatibilidade!.instructions).toContain('O elemento "Plano B" do plano é compatível com a Escolha?');
+    // Um plano B que recorre a outra Opção não contradiz a Escolha.
+    expect(body.questions.compatibilidade!.instructions).toContain("Num plano B, recorrer a outra Opção");
+    expect(Object.keys(body.questions.compatibilidade!.criteria)).toEqual(["yes", "no", "insufficient"]);
+    expect(outcome).toEqual({
+      status: "completed",
+      model: "jev-1.13.0",
+      result: { choice: "yes", probabilities: { yes: 0.88, no: 0.1, insufficient: 0.02 }, confidence: 0.81 },
+    });
+  });
+
+  it("refuses an answer without the judgment as invalid output", async () => {
+    const { url } = await startJev(() => ({ model: "jev-1.13.0", answers: {}, usage: {} }));
+
+    expect(await assessPlan(url)).toMatchObject({ status: "failed", reason: "invalid_output" });
   });
 });

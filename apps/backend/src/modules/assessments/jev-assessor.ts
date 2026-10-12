@@ -9,6 +9,7 @@ import { conflictRequest } from "./conflict-rubric.ts";
 import { coverageRequest, type ChoiceQuestion } from "./coverage-rubric.ts";
 import { constraintImpactRequest, IMPACT_KEY, impactRequest } from "./impact-rubric.ts";
 import { optionRequest } from "./option-rubric.ts";
+import { PLAN_KEY, planRequest } from "./plan-rubric.ts";
 
 // Endpoint da API do Jev. Fixo: só os testes apontam o Assessor para outro endereço.
 export const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
@@ -57,9 +58,9 @@ function httpFailure(status: number): AssessorOutcome<never> {
   return failed("jev_error", `O Jev recusou a Avaliação (HTTP ${status}).`);
 }
 
-// O julgamento da pergunta única do impacto.
-const single = (outcome: AssessorOutcome<Record<string, Verdict>>): AssessorOutcome<Verdict> =>
-  outcome.status === "completed" ? { ...outcome, result: outcome.result[IMPACT_KEY]! } : outcome;
+// O julgamento da pergunta única de uma Avaliação, pela chave dela.
+const single = (outcome: AssessorOutcome<Record<string, Verdict>>, key = IMPACT_KEY): AssessorOutcome<Verdict> =>
+  outcome.status === "completed" ? { ...outcome, result: outcome.result[key]! } : outcome;
 
 // Assessor real: um POST à API do Jev por Avaliação, sem SDK e sem novas tentativas automáticas; uma
 // nova tentativa depende do usuário.
@@ -130,6 +131,10 @@ export function createJevAssessor({ url, apiKey, model, timeoutMs }: JevSettings
     assessOptions(input) {
       const { state, questions } = optionRequest(input);
       return ask(state, questions);
+    },
+    async assessPlan(input) {
+      const { state, questions } = planRequest(input);
+      return single(await ask(state, questions), PLAN_KEY);
     },
   };
 }

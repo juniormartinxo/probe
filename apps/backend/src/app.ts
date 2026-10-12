@@ -11,6 +11,7 @@ import { comparisonMatrix } from "./modules/process/comparison-matrix.ts";
 import { conflicts as conflictsModule } from "./modules/process/conflicts.ts";
 import { constraintReassessments as constraintReassessmentsModule } from "./modules/process/constraint-reassessments.ts";
 import { constraintsAndPreferences } from "./modules/process/constraints-and-preferences.ts";
+import { executionPlan } from "./modules/process/execution-plan.ts";
 import { options as optionsModule } from "./modules/process/options.ts";
 import { pendencies } from "./modules/process/pendencies.ts";
 import { problemStatements } from "./modules/process/problem-statement.ts";
@@ -88,6 +89,7 @@ export function buildApp({ db, assistant, assessor, defaultAiModel }: AppDepende
           comparisonMatrix: comparisonMatrix({ db }),
           recommendations: recommendations({ db, assistant, runner, settings }),
           chosenOptions: chosenOptions({ db }),
+          executionPlan: executionPlan({ db, assessor, log: app.log }),
         }),
       );
       await api.register(settingsRoutes({ settings }));

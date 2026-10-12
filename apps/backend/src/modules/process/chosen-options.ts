@@ -1,6 +1,7 @@
 import type { Db } from "../../db/database.ts";
+import type { AssessedChoice } from "../assessments/assessor.ts";
 import { optionsOf, type NamedOption, type Option } from "./options.ts";
-import { lockOpenProcessFrom } from "./process.ts";
+import { executionConfirmed, lockOpenProcessFrom } from "./process.ts";
 import type { StagePointState } from "./stage-point-coverage.ts";
 import type { Stage } from "./stage.ts";
 
@@ -56,6 +57,22 @@ export async function chosenOptionsOf(db: Db, processId: string): Promise<Chosen
   }));
 }
 
+// A Escolha em vigor como a IA e o Jev a recebem na Etapa E: a Opção escolhida, com a descrição, e os
+// descartes; null enquanto não há Escolha.
+export async function choiceInForceOf(db: Db, processId: string): Promise<{ id: string; choice: AssessedChoice } | null> {
+  const chosen = (await chosenOptionsOf(db, processId)).at(-1);
+  if (!chosen) return null;
+  const { description } = await db.selectFrom("options").select("description").where("id", "=", chosen.option.id).executeTakeFirstOrThrow();
+  return {
+    id: chosen.id,
+    choice: {
+      statement: chosen.option.statement,
+      description,
+      discards: chosen.discards.map(({ option, reason }) => ({ statement: option.statement, reason })),
+    },
+  };
+}
+
 // O que impede a Escolha em vigor de sustentar a Etapa B: alguma Opção aceita ainda sem decisão de
 // viabilidade, nenhuma Escolha, a Opção escolhida deixou de ser viável (uma Revisão de Restrição) ou
 // uma viável ficou sem motivo de descarte. Null quando a Escolha se sustenta.
@@ -77,9 +94,10 @@ async function choiceProblemOf(db: Db, process: { id: string; stagePointsVersion
 const othersToDiscard = (accepted: Option[], chosenId: string): Option[] =>
   accepted.filter((option) => option.id !== chosenId && option.viability === "viable");
 
-// Na Etapa B, o que a Escolha ainda segura na Confirmação da Etapa.
+// Nas Etapas B e E, o que a Escolha ainda segura na Confirmação da Etapa: o plano de E executa a
+// Escolha em vigor, que precisa continuar se sustentando.
 export async function choiceBlockingStage(db: Db, process: { id: string; stagePointsVersion: number }, stage: Stage): Promise<ChoiceNotReady | null> {
-  return stage === "B" ? choiceProblemOf(db, process) : null;
+  return stage === "B" || stage === "E" ? choiceProblemOf(db, process) : null;
 }
 
 // Os Pontos da Etapa com o da Escolha coberto ("chosen") enquanto a Escolha em vigor se sustenta.
@@ -103,13 +121,15 @@ export type ChoiceError =
   | "process_not_found"
   | "process_not_open"
   | "stage_not_current"
+  | "execution_confirmed"
   | "option_not_found"
   | "option_not_choosable"
   | "invalid_discards"
   | "discard_reasons_required";
 
 export interface ChosenOptions {
-  // Registra a Escolha (ou troca a que vale), da Etapa B em diante, enquanto o Processo está aberto.
+  // Registra a Escolha (ou troca a que vale), da Etapa B em diante, enquanto o Processo está aberto e a
+  // Etapa E não foi confirmada (ADR 0008).
   choose(processId: string, request: ChoiceRequest): Promise<{ ok: true; chosenOption: ChosenOption } | { ok: false; error: ChoiceError }>;
 }
 
@@ -119,6 +139,7 @@ export function chosenOptions({ db }: { db: Db }): ChosenOptions {
       return db.transaction().execute(async (trx) => {
         const locked = await lockOpenProcessFrom(trx, processId, "B");
         if (!locked.ok) return locked;
+        if (await executionConfirmed(trx, processId)) return { ok: false, error: "execution_confirmed" } as const;
         const options = await optionsOf(trx, locked.process);
         const chosen = options.find((option) => option.id === optionId);
         if (!chosen) return { ok: false, error: "option_not_found" } as const;

@@ -112,6 +112,21 @@ export interface OptionViolationInput {
   pairs: OptionPairInput[];
 }
 
+// A Escolha em vigor, como o Jev a recebe: a Opção escolhida e o motivo de cada descarte.
+export interface AssessedChoice {
+  statement: string;
+  description: string | null;
+  discards: { statement: string; reason: string }[];
+}
+
+// O que o Jev recebe para avaliar se um elemento do Plano de execução é compatível com a Escolha: o
+// elemento como o usuário o escreveu, com o Ponto de E que ele cobre.
+export interface PlanCompatibilityInput {
+  problemStatement: string;
+  chosenOption: AssessedChoice;
+  element: Pick<StagePoint, "key" | "name" | "description"> & { text: string };
+}
+
 export type AssessorFailureReason =
   // A chave do Jev não está no ambiente do backend.
   | "jev_not_configured"
@@ -150,4 +165,6 @@ export interface Assessor {
   assessConflicts(input: ConflictInput): Promise<AssessorOutcome<Record<string, Verdict>>>;
   // Um julgamento para cada par recebido, pela chave do par: `yes`, a Opção viola a Restrição.
   assessOptions(input: OptionViolationInput): Promise<AssessorOutcome<Record<string, Verdict>>>;
+  // Um julgamento: `yes`, o elemento do plano é compatível com a Escolha.
+  assessPlan(input: PlanCompatibilityInput): Promise<AssessorOutcome<Verdict>>;
 }

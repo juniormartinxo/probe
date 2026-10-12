@@ -222,6 +222,16 @@ Opção viável que a Escolha deixou de lado, com o motivo. Não muda o estado d
 _Code_: `ChoiceDiscard`
 _Avoid_: Rejeição, eliminação
 
+**Plano de execução**:
+O que o usuário escreve na Etapa E para executar a Escolha: o primeiro passo concreto, como reconhecer sucesso e o plano B, um elemento por Ponto de E. Cada elemento cobre o seu Ponto (estado `planned`), que nenhum Bloco cobre e ninguém declara inaplicável; os Blocos de E perguntam sobre os Pontos ainda sem elemento, a partir da Escolha e das Restrições. Reescrever um elemento guarda o anterior no histórico. Os três são obrigatórios para confirmar E; depois da Confirmação de E, o Processo está pronto para a Revisão final, e o plano e a Escolha só mudam por ela.
+_Code_: `ExecutionPlan` (cada elemento: `ExecutionPlanElement`, `first_step`, `success_criteria`, `plan_b`)
+_Avoid_: Plano de ação, próximos passos
+
+**Avaliação de compatibilidade**:
+Avaliação do Jev sobre se um elemento do Plano de execução é compatível com a Escolha em vigor, pedida ao gravar o elemento. Só `yes` confiante o dá por compatível; com `no`, `insufficient` ou confiança baixa, o usuário reescreve o elemento ou o mantém com justificativa, e com o Jev em falha tenta de novo ou o mantém sem Avaliação. Uma troca de Escolha a desatualiza.
+_Code_: `PlanAssessment` (estado do elemento: `PlanCompatibilityStatus`; a decisão do usuário: `PlanDecision`)
+_Avoid_: Validação do plano
+
 **Decisão**:
 Escolha e plano de execução congelados pela Finalização.
 _Code_: `Decision`

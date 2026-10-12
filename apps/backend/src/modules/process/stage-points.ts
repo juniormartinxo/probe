@@ -14,6 +14,9 @@ export interface StagePoint {
   needsConstraintsOrPreferences?: true;
   // Só a Escolha cobre o Ponto: nenhum Bloco pergunta sobre ele e ele não se declara inaplicável.
   coveredByChoice?: true;
+  // Só o elemento do Plano de execução com a mesma chave cobre o Ponto: Blocos perguntam sobre ele
+  // enquanto o elemento não existe, mas a síntese não o cobre, e ele não se declara inaplicável.
+  coveredByPlan?: true;
 }
 
 // A lista é mantida pela aplicação, não pela IA (ADR 0002). Ajustes vêm do uso e entram como uma
@@ -91,13 +94,19 @@ const lists: Record<number, Record<Stage, StagePoint[]>> = {
       },
     ],
     E: [
-      { key: "first_step", name: "Primeiro passo concreto", description: "A primeira ação concreta para executar a Escolha." },
+      {
+        key: "first_step",
+        name: "Primeiro passo concreto",
+        description: "A primeira ação concreta para executar a Escolha.",
+        coveredByPlan: true,
+      },
       {
         key: "success_criteria",
         name: "Como reconhecer sucesso",
         description: "Como saber, depois de executar, que a decisão deu certo.",
+        coveredByPlan: true,
       },
-      { key: "plan_b", name: "Plano B", description: "O que fazer se a Escolha não funcionar." },
+      { key: "plan_b", name: "Plano B", description: "O que fazer se a Escolha não funcionar.", coveredByPlan: true },
     ],
   },
 };

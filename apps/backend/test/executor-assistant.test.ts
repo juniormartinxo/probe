@@ -141,6 +141,7 @@ const blockInput: BlockInput = {
   confirmedSyntheses: [],
   ambiguousAnswers: [],
   options: [],
+  chosenOption: null,
 };
 
 const blockQuestions = [
@@ -434,6 +435,19 @@ describe("Block synthesis through the executor", () => {
     expect(prompt).not.toContain("- real_problem:");
   });
 
+  it("asks for no coverage when no Point is open, as in Stage E", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify({ ...synthesisJson, coverage: [] })));
+
+    const outcome = await createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).synthesizeBlock(
+      { ...synthesisInput, stage: "E", openStagePoints: [] },
+      attemptContext(),
+    );
+
+    const { prompt } = requests[0]!.body as { prompt: string };
+    expect(prompt).toContain("Pontos ainda em aberto (chave, nome e o que ele pede):\n(nenhum; devolva coverage vazio)");
+    expect(outcome).toMatchObject({ status: "completed", result: { coverage: [] } });
+  });
+
   it("brings the synthesis, the coverage it suggests for each open Point and the ambiguous answers", async () => {
     const { url } = await startExecutor(answering("```json\n" + JSON.stringify(synthesisJson) + "\n```"));
 
@@ -631,6 +645,39 @@ describe("Block generation in Stage O, through the executor", () => {
     const { prompt } = requests[0]!.body as { prompt: string };
     expect(prompt).toContain("<<<OPCOES\n- (aceita) Contratar uma plataforma de CI cara\nViola: Custo de até 500\nOPCOES>>>");
     expect(prompt).toMatch(/reversível/);
+  });
+});
+
+describe("Block generation in Stage E, through the executor", () => {
+  it("sends the Choice in force, with the reason of each discard, as data, and asks for no plan written by the AI", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify({ questions: [] })));
+    const input: BlockInput = {
+      ...blockInput,
+      stage: "E",
+      openStagePoints: stagePointsOf(1, "E"),
+      chosenOption: {
+        statement: "Cachear dependências",
+        description: "No GitHub Actions.",
+        discards: [{ statement: "Trocar o runner", reason: "Mais caro." }],
+      },
+    };
+
+    await createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).generateBlock(input, attemptContext());
+
+    const { prompt } = requests[0]!.body as { prompt: string };
+    expect(prompt).toContain(
+      "<<<ESCOLHA\nEscolhida: Cachear dependências\nNo GitHub Actions.\nDescartada: Trocar o runner\nMotivo: Mais caro.\nESCOLHA>>>",
+    );
+    expect(prompt).toMatch(/Não escreva o plano por ela nem reabra a Escolha/);
+  });
+
+  it("says there is no Choice before Stage E", async () => {
+    const { url, requests } = await startExecutor(answering(JSON.stringify({ questions: [] })));
+
+    await createExecutorAssistant({ url, token: TOKEN, deadlineMs: 10_000 }).generateBlock(blockInput, attemptContext());
+
+    const { prompt } = requests[0]!.body as { prompt: string };
+    expect(prompt).toContain("<<<ESCOLHA\n(nenhuma)\nESCOLHA>>>");
   });
 });
 
