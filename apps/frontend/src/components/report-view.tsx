@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import type { ComparisonCells, ItemStatement, OptionViability, OriginChange, Report, ReportAssumption, ReportHistoryEntry, ReportStage } from "@/api";
+import type { ComparisonCells, DecisionSummary, ItemStatement, OptionViability, OriginChange, Report, ReportAssumption, ReportHistoryEntry, ReportStage } from "@/api";
 import { dimensions } from "@/components/balancing";
 import { itemDetails } from "@/components/constraints-and-preferences";
 import { Badge } from "@/components/ui/badge";
@@ -81,19 +81,32 @@ function Items({ items, empty }: { items: ItemStatement[]; empty: string }) {
 // Uma mudança em relação à origem, como o relatório exportado a escreve: "—" no que não havia.
 const describeChange = ({ subject, before, after }: OriginChange): string => `${subject}: ${before ?? "—"} → ${after ?? "—"}`;
 
-// Num Processo derivado, de onde ele veio e o que mudou em relação à origem.
+// Num Processo derivado, de onde ele veio e, numa Reconsideração, o que mudou em relação à origem; num
+// Desdobramento, a Decisão da origem, só como contexto.
 export function OriginSection({ report }: { report: Report }) {
   const { origin } = report.identification;
   if (!origin) return null;
+  const from = (
+    <p className="text-muted-foreground text-xs">
+      {derivationText[origin.kind]} do{" "}
+      <Link to={`/processes/${origin.processId}`} className="underline">
+        Processo finalizado em {formatDate(origin.finalizedAt)}
+      </Link>
+      .
+    </p>
+  );
+  if (origin.kind === "spinoff") {
+    return (
+      <Section title="Decisão da origem">
+        {from}
+        <p className="text-muted-foreground text-xs">Só como contexto: não é resposta, Escolha nem plano deste Processo.</p>
+        <DecisionSummaryContent summary={origin.decision} />
+      </Section>
+    );
+  }
   return (
     <Section title="O que mudou em relação à origem">
-      <p className="text-muted-foreground text-xs">
-        {derivationText[origin.kind]} do{" "}
-        <Link to={`/processes/${origin.processId}`} className="underline">
-          Processo finalizado em {formatDate(origin.finalizedAt)}
-        </Link>
-        .
-      </p>
+      {from}
       {origin.changes.length === 0 ? (
         <p className="text-muted-foreground text-xs">Nada mudou em relação à origem.</p>
       ) : (
@@ -110,9 +123,17 @@ export function OriginSection({ report }: { report: Report }) {
 }
 
 export function DecisionSummarySection({ report }: { report: Report }) {
-  const { decisionSummary: summary } = report;
   return (
     <Section title="Resumo da Decisão">
+      <DecisionSummaryContent summary={report.decisionSummary} />
+    </Section>
+  );
+}
+
+// A Decisão em poucas linhas: o problema, a Escolha, os descartes e o plano.
+export function DecisionSummaryContent({ summary }: { summary: DecisionSummary }) {
+  return (
+    <>
       <p className="whitespace-pre-wrap">{summary.problemStatement}</p>
       <p>
         <span className="text-muted-foreground">Escolha: </span>
@@ -135,7 +156,7 @@ export function DecisionSummarySection({ report }: { report: Report }) {
           </li>
         ))}
       </ul>
-    </Section>
+    </>
   );
 }
 
@@ -242,7 +263,10 @@ function StageRecord({ stage }: { stage: ReportStage }) {
       </ul>
       {stage.blocks.map((block) => (
         <div key={block.number} className="flex flex-col gap-2">
-          <p className="text-muted-foreground text-xs">Bloco {block.number}</p>
+          <p className="text-muted-foreground text-xs">
+            Bloco {block.number}
+            {block.inherited && " · Respostas herdadas"}
+          </p>
           <ol className="flex flex-col gap-2">
             {block.questions.map((question) => (
               <li key={question.number}>

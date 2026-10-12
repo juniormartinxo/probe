@@ -67,7 +67,7 @@ function isComplete(question: Question, value: AnswerValue): boolean {
     : value.selectedChoices.length > 0;
 }
 
-function describe(question: Question, stored: Stored): string {
+export function describe(question: Pick<Question, "choices">, stored: Stored): string {
   if (stored.text !== null) return stored.text;
   return (stored.selectedChoices ?? []).map((choice) => question.choices[choice]).join("; ");
 }
@@ -165,7 +165,8 @@ export function Questionnaire({
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardDescription>
-            Bloco {block.number} · Pergunta {index + 1} de {total}
+            Bloco {block.number}
+            {block.inherited && " · Respostas herdadas"} · Pergunta {index + 1} de {total}
           </CardDescription>
           <nav className="flex gap-1" aria-label="Perguntas do Bloco">
             {block.questions.map((item, position) => {

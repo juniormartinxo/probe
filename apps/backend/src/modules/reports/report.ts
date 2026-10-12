@@ -4,7 +4,7 @@ import { comparisonNames } from "../ai/prompt-parts.ts";
 import { describeAnswer } from "../process/answers.ts";
 import type { Block } from "../process/blocks.ts";
 import type { ChosenOption } from "../process/chosen-options.ts";
-import type { Derivation, DerivationKind, OriginChange } from "../process/derivations.ts";
+import type { Derivation, OriginChange } from "../process/derivations.ts";
 import type { ComparisonMatrixRow } from "../process/comparison-matrix.ts";
 import {
   inForceOf,
@@ -31,13 +31,7 @@ export interface Report {
   // `origin`: a Derivação de que o Processo veio, com o que mudou desde a origem; null num Processo
   // que não é derivado.
   identification: { processId: string; createdAt: string; finalizedAt: string | null; origin: ReportOrigin | null };
-  // A Decisão em poucas linhas: o problema, a Escolha, os descartes e o plano.
-  decisionSummary: {
-    problemStatement: string;
-    chosenOption: string;
-    discards: { option: string; reason: string }[];
-    executionPlan: { key: string; name: string; text: string }[];
-  };
+  decisionSummary: DecisionSummary;
   problem: { originalDescription: string; statement: string; statementOrigin: StatementOrigin };
   // As Restrições e Preferências em vigor; as retiradas ficam no histórico.
   constraints: ItemStatement[];
@@ -73,13 +67,21 @@ export interface Report {
   history: HistoryEntry[];
 }
 
-export interface ReportOrigin {
-  kind: DerivationKind;
+// A Decisão em poucas linhas: o problema, a Escolha, os descartes e o plano.
+export interface DecisionSummary {
+  problemStatement: string;
+  chosenOption: string;
+  discards: { option: string; reason: string }[];
+  executionPlan: { key: string; name: string; text: string }[];
+}
+
+// A origem de um Processo derivado: numa Reconsideração, o que mudou desde ela; num Desdobramento, a
+// Decisão dela, só como contexto.
+export type ReportOrigin = {
   processId: string;
   // Quando a origem foi finalizada.
   finalizedAt: string;
-  changes: OriginChange[];
-}
+} & ({ kind: "reconsideration"; changes: OriginChange[] } | { kind: "spinoff"; decision: DecisionSummary });
 
 export interface ReportStage {
   stage: Stage;
@@ -87,6 +89,9 @@ export interface ReportStage {
   confirmation: Pick<StageConfirmation, "withoutAssessment" | "justification"> & { confirmedAt: string } | null;
   blocks: {
     number: number;
+    // Bloco de Respostas herdadas da origem, num Desdobramento. Ausente nos relatórios congelados antes do
+    // Desdobramento.
+    inherited?: boolean;
     // A síntese confirmada que vale; null enquanto não há.
     synthesis: string | null;
     questions: ReportQuestion[];
@@ -164,6 +169,7 @@ function stageOf(source: ReportSource, stage: Stage): ReportStage {
       .filter((block) => block.stage === stage)
       .map((block) => ({
         number: block.number,
+        inherited: block.inherited,
         synthesis: block.synthesis ? synthesisInForce(block.synthesis) : null,
         questions: block.questions.map((question, index) => ({
           number: index + 1,
@@ -309,6 +315,14 @@ function historyOf(source: ReportSource): HistoryEntry[] {
   ].toSorted((a, b) => a.recordedAt.localeCompare(b.recordedAt));
 }
 
+function originOf(derivation: Derivation): ReportOrigin {
+  const processId = derivation.originProcessId;
+  const finalizedAt = iso(derivation.originFinalizedAt);
+  return derivation.kind === "reconsideration"
+    ? { kind: derivation.kind, processId, finalizedAt, changes: derivation.changes }
+    : { kind: derivation.kind, processId, finalizedAt, decision: derivation.originDecision };
+}
+
 // O relatório de um Processo com a Etapa E confirmada: enunciado, Escolha e plano já existem.
 export function reportOf(source: ReportSource): Report {
   const statement = source.problemStatement!;
@@ -323,12 +337,7 @@ export function reportOf(source: ReportSource): Report {
       processId: source.id,
       createdAt: iso(source.createdAt),
       finalizedAt: null,
-      origin: source.derivation && {
-        kind: source.derivation.kind,
-        processId: source.derivation.originProcessId,
-        finalizedAt: iso(source.derivation.originFinalizedAt),
-        changes: source.derivation.changes,
-      },
+      origin: source.derivation && originOf(source.derivation),
     },
     decisionSummary: {
       problemStatement: statement.statement,

@@ -28,23 +28,35 @@ export const isBlockComplete = (block: Block) => block.questions.every((question
 
 // Síntese do Bloco: a IA propõe uma síntese e sugere a cobertura dos Pontos abertos; o usuário
 // confirma ou corrige, e escolhe quais Pontos dá por cobertos. `onChange` recarrega o Processo.
+// `awaitingStage`: o Bloco é de uma Etapa que ainda não abriu (um Bloco de Respostas herdadas), e a
+// síntese espera por ela.
 export function BlockSynthesis({
   processId,
   block,
   openStagePoints,
+  awaitingStage,
   onChange,
 }: {
   processId: string;
   block: Block;
   openStagePoints: StagePoint[];
+  awaitingStage: boolean;
   onChange: () => void;
 }) {
   const request = block.synthesisRequests.at(-1) ?? null;
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-4">
       <h3 className="text-sm font-semibold">Síntese do Bloco {block.number}</h3>
+      {block.inherited && !block.synthesis && (
+        <p className="text-muted-foreground text-xs">
+          Respostas herdadas do Processo de origem: só valem neste Processo depois que você confirmar a síntese deste Bloco. Antes disso,
+          você pode alterá-las.
+        </p>
+      )}
       {block.synthesis ? (
         <Confirmed synthesis={block.synthesis} />
+      ) : awaitingStage ? (
+        <p className="text-muted-foreground text-sm">A síntese deste Bloco fica para quando a Etapa {block.stage} abrir: é lá que ele cobre Pontos.</p>
       ) : (
         <UnconfirmedSynthesis processId={processId} block={block} request={request} openStagePoints={openStagePoints} onChange={onChange} />
       )}

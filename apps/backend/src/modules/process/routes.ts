@@ -21,7 +21,7 @@ import {
   type ItemStatement,
 } from "./constraints-and-preferences.ts";
 import type { ExecutionPlan, PlanDecision } from "./execution-plan.ts";
-import type { Reconsiderations } from "./derivations.ts";
+import type { Reconsiderations, SpinoffRequest, Spinoffs } from "./derivations.ts";
 import type { Finalization } from "./finalization.ts";
 import { optionChecksOf } from "./option-checks.ts";
 import type { OptionDecision, Options, OptionStatement, UserOption } from "./options.ts";
@@ -44,6 +44,17 @@ function descriptionFrom(body: unknown): string | undefined {
   if (typeof body !== "object" || body === null || !("description" in body)) return undefined;
   const { description } = body;
   return typeof description === "string" && description.trim() !== "" ? description : undefined;
+}
+
+// O problema novo de um Desdobramento e as Versões da origem a herdar (nenhuma, se omitidas).
+function spinoffRequestFrom(body: unknown): { ok: true; request: SpinoffRequest } | { ok: false; error: "description_required" | "invalid_inherited_answers" } {
+  const description = descriptionFrom(body);
+  if (description === undefined) return { ok: false, error: "description_required" };
+  const { answerVersionIds = [] } = body as Record<string, unknown>;
+  if (!Array.isArray(answerVersionIds) || answerVersionIds.some((id) => typeof id !== "string" || !uuidPattern.test(id))) {
+    return { ok: false, error: "invalid_inherited_answers" };
+  }
+  return { ok: true, request: { description, answerVersionIds } };
 }
 
 // Texto do enunciado a confirmar e, opcionalmente, a proposta da IA de que ele partiu.
@@ -382,6 +393,7 @@ const errorStatus = {
   ai_request_in_progress: 409,
   final_review_outdated: 409,
   process_not_finalized: 409,
+  invalid_inherited_answers: 422,
 } as const;
 
 // As exportações do relatório congelado, cada uma na sua extensão.
@@ -415,6 +427,7 @@ export const processRoutes =
     executionPlan,
     finalization,
     reconsiderations,
+    spinoffs,
   }: {
     db: Db;
     problemStatements: ProblemStatements;
@@ -436,6 +449,7 @@ export const processRoutes =
     executionPlan: ExecutionPlan;
     finalization: Finalization;
     reconsiderations: Reconsiderations;
+    spinoffs: Spinoffs;
   }): FastifyPluginAsync =>
   async (app) => {
     app.post("/processes", async (request, reply) => {
@@ -1010,6 +1024,18 @@ export const processRoutes =
       const { id } = request.params;
       if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
       const result = await reconsiderations.create(id);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ process: await processDetailOf(db, result.processId) });
+    });
+
+    // O Desdobramento de um Processo finalizado: um Processo novo, para o problema novo, com as respostas
+    // escolhidas da origem como Respostas herdadas. A origem continua como foi finalizada.
+    app.post<{ Params: { id: string } }>("/processes/:id/spinoffs", async (request, reply) => {
+      const { id } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      const body = spinoffRequestFrom(request.body);
+      if (!body.ok) return reply.code(body.error === "description_required" ? 400 : errorStatus[body.error]).send({ error: body.error });
+      const result = await spinoffs.create(id, body.request);
       if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
       return reply.code(201).send({ process: await processDetailOf(db, result.processId) });
     });

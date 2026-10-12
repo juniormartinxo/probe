@@ -7,6 +7,7 @@ import {
   requestBlock,
   type BlockRequest,
   type ProcessDetail,
+  type Stage,
   type StagePointState,
 } from "@/api";
 import { AttemptList } from "@/components/attempt-list";
@@ -25,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { attemptProblem } from "@/refinement";
-import { stageName, stagePointStatusText } from "@/stages";
+import { stageName, stagePointStatusText, stages } from "@/stages";
 
 // Etapa atual: os Pontos (abertos, cobertos, inaplicáveis ou com a ausência registrada), as
 // Restrições e Preferências, as Opções, o Balanceamento, o Plano de execução, o que precisa ser revisto, as respostas em conflito, as Pendências e os Blocos de Perguntas da IA, cada um com a sua síntese. Só aparece depois da Confirmação do enunciado.
@@ -52,7 +53,7 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
       <Reassessments process={process} onChange={onChange} />
       <Conflicts process={process} onChange={onChange} />
       <OpenPendencies process={process} />
-      {process.blocks.map((block) => (
+      {blocksInStageOrder(process).map((block) => (
         <div key={block.id} className="flex flex-col gap-2">
           <Questionnaire
             processId={process.id}
@@ -65,6 +66,7 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
             processId={process.id}
             block={block}
             openStagePoints={process.openStagePoints}
+            awaitingStage={stageIndex(block.stage) > stageIndex(process.currentStage)}
             onChange={onChange}
           />
         </div>
@@ -84,6 +86,13 @@ export function StageSection({ process, onChange }: { process: ProcessDetail; on
     </section>
   );
 }
+
+const stageIndex = (stage: Stage) => stages.findIndex((item) => item.stage === stage);
+
+// Os Blocos na ordem do PROBE e, em cada Etapa, na ordem em que vieram: os de Respostas herdadas nascem
+// com o Desdobramento, antes dos Blocos da IA das Etapas anteriores.
+const blocksInStageOrder = (process: ProcessDetail) =>
+  process.blocks.toSorted((a, b) => stageIndex(a.stage) - stageIndex(b.stage) || a.number - b.number);
 
 function StagePoints({
   processId,

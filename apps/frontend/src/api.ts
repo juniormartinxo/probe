@@ -11,8 +11,9 @@ export interface Process {
   createdAt: string;
 }
 
-// Derivação: por ora, a Reconsideração, que reabre uma Decisão finalizada para revisá-la.
-export type DerivationKind = "reconsideration";
+// Derivação: a Reconsideração reabre uma Decisão finalizada para revisá-la; o Desdobramento estabelece um
+// problema novo a partir dela.
+export type DerivationKind = "reconsideration" | "spinoff";
 
 // Processo como a lista o traz: com a Derivação de que veio, se veio de uma.
 export interface ListedProcess extends Process {
@@ -28,13 +29,19 @@ export interface OriginChange {
   after: string | null;
 }
 
-// A origem de um Processo derivado e o que mudou desde ela.
-export interface Derivation {
-  kind: DerivationKind;
-  originProcessId: string;
-  originFinalizedAt: string;
-  changes: OriginChange[];
+// A Decisão em poucas linhas: o problema, a Escolha, os descartes e o plano.
+export interface DecisionSummary {
+  problemStatement: string;
+  chosenOption: string;
+  discards: { option: string; reason: string }[];
+  executionPlan: { key: string; name: string; text: string }[];
 }
+
+// A origem de um Processo derivado: numa Reconsideração, o que mudou desde ela; num Desdobramento, a
+// Decisão dela, só como contexto (nunca é resposta, Escolha nem plano do Desdobramento).
+export type Derivation =
+  | { kind: "reconsideration"; originProcessId: string; originFinalizedAt: string; changes: OriginChange[] }
+  | { kind: "spinoff"; originProcessId: string; originFinalizedAt: string; originDecision: DecisionSummary };
 
 export interface ProcessWithConversation extends Process {
   conversation: { id: string };
@@ -220,6 +227,8 @@ export interface Block {
   id: string;
   number: number;
   stage: Stage;
+  // Bloco de Respostas herdadas da origem, num Desdobramento: provisórias até a Confirmação da síntese.
+  inherited: boolean;
   createdAt: string;
   questions: Question[];
   synthesis: ConfirmedSynthesis | null;
@@ -610,6 +619,7 @@ export interface Understanding {
   preferences: ItemStatement[];
   blocks: {
     number: number;
+    inherited: boolean;
     synthesis: string | null;
     answers: { questionId: string; wording: string; answer: string | null; confirmed: boolean; unknown: boolean }[];
   }[];
@@ -717,7 +727,7 @@ export interface ProcessDetail extends ProcessWithConversation {
   readyForFinalReview: boolean;
   // Quando a Finalização congelou o Processo; null enquanto ele está aberto.
   finalizedAt: string | null;
-  // A origem, num Processo derivado, e o que mudou desde ela; null nos demais.
+  // A origem, num Processo derivado: o que mudou desde ela ou, num Desdobramento, a Decisão dela; null nos demais.
   derivation: Derivation | null;
 }
 
@@ -725,14 +735,9 @@ export interface ProcessDetail extends ProcessWithConversation {
 // Começa pelo resumo da Decisão, segue com o registro por Etapa e termina no histórico.
 export interface Report {
   // `finalizedAt`: null na Revisão final; a data da Finalização no relatório congelado. `origin`: a
-  // Derivação de que o Processo veio, com o que mudou desde a origem; null num Processo não derivado.
+  // Derivação de que o Processo veio; null num Processo não derivado.
   identification: { processId: string; createdAt: string; finalizedAt: string | null; origin: ReportOrigin | null };
-  decisionSummary: {
-    problemStatement: string;
-    chosenOption: string;
-    discards: { option: string; reason: string }[];
-    executionPlan: { key: string; name: string; text: string }[];
-  };
+  decisionSummary: DecisionSummary;
   problem: { originalDescription: string; statement: string; statementOrigin: StatementOrigin };
   constraints: ItemStatement[];
   preferences: ItemStatement[];
@@ -755,12 +760,10 @@ export interface Report {
   history: ReportHistoryEntry[];
 }
 
-export interface ReportOrigin {
-  kind: DerivationKind;
-  processId: string;
-  finalizedAt: string;
-  changes: OriginChange[];
-}
+// Numa Reconsideração, o que mudou desde a origem; num Desdobramento, a Decisão da origem, só como contexto.
+export type ReportOrigin =
+  | { kind: "reconsideration"; processId: string; finalizedAt: string; changes: OriginChange[] }
+  | { kind: "spinoff"; processId: string; finalizedAt: string; decision: DecisionSummary };
 
 export interface ReportStage {
   stage: Stage;
@@ -768,6 +771,8 @@ export interface ReportStage {
   confirmation: { confirmedAt: string; withoutAssessment: boolean; justification: string | null } | null;
   blocks: {
     number: number;
+    // Bloco de Respostas herdadas. Ausente nos relatórios congelados antes do Desdobramento.
+    inherited?: boolean;
     synthesis: string | null;
     questions: {
       number: number;
@@ -1398,6 +1403,16 @@ export async function getFinalization(processId: string): Promise<Finalization> 
 // registrou. O finalizado continua como está.
 export async function reconsiderProcess(processId: string): Promise<ProcessDetail> {
   const { process } = await request<{ process: ProcessDetail }>(`${processPath(processId)}/reconsiderations`, { method: "POST" });
+  return process;
+}
+
+// Abre um Desdobramento do Processo finalizado: um Processo novo para o problema descrito, com as respostas
+// escolhidas (pelas Versões) como Respostas herdadas, a reconfirmar. O finalizado continua como está.
+export async function spinOffProcess(processId: string, description: string, answerVersionIds: string[]): Promise<ProcessDetail> {
+  const { process } = await request<{ process: ProcessDetail }>(`${processPath(processId)}/spinoffs`, {
+    method: "POST",
+    body: JSON.stringify({ description, answerVersionIds }),
+  });
   return process;
 }
 
