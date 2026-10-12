@@ -1,5 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { Db } from "../../db/database.ts";
+import { reportDocument, type ReportDocument } from "../reports/report-document.ts";
+import { reportMarkdown } from "../reports/report-markdown.ts";
+import { reportPdf } from "../reports/report-pdf.ts";
 import { comparisonCellsOf, comparisonDimensions, isCli, type Cli } from "../ai/assistant.ts";
 import type { ConfirmationRef } from "../assessments/impact-assessments.ts";
 import type { StageAssessments } from "../assessments/stage-assessments.ts";
@@ -379,6 +382,12 @@ const errorStatus = {
   final_review_outdated: 409,
   process_not_finalized: 409,
 } as const;
+
+// As exportações do relatório congelado, cada uma na sua extensão.
+const reportExports: { extension: string; contentType: string; render: (document: ReportDocument) => string | Promise<Buffer> }[] = [
+  { extension: "md", contentType: "text/markdown; charset=utf-8", render: reportMarkdown },
+  { extension: "pdf", contentType: "application/pdf", render: reportPdf },
+];
 
 // Restrições e Preferências seguem as mesmas rotas, cada uma no seu caminho.
 const itemKinds: ItemKind[] = ["constraint", "preference"];
@@ -975,6 +984,22 @@ export const processRoutes =
       if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
       return { finalization: result.finalization };
     });
+
+    // O relatório congelado em Markdown ou PDF: só lê a Finalização gravada, sem chamar a IA nem o Jev.
+    // Uma falha ao gerar o arquivo não muda nada, e o arquivo pode ser pedido de novo.
+    for (const { extension, contentType, render } of reportExports) {
+      app.get<{ Params: { id: string } }>(`/processes/:id/report.${extension}`, async (request, reply) => {
+        const { id } = request.params;
+        if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+        const result = await finalization.find(id);
+        if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+        const file = await render(reportDocument(result.finalization.report));
+        return reply
+          .type(contentType)
+          .header("content-disposition", `attachment; filename="relatorio-${id.slice(0, 8)}.${extension}"`)
+          .send(file);
+      });
+    }
 
     for (const kind of itemKinds) {
       const path = itemPaths[kind];

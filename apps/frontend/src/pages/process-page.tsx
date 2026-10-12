@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import { ApiError, getFinalization, getProcess, type Finalization, type ProcessDetail, type Stage } from "@/api";
+import { ApiError, getFinalization, getProcess, reportExportUrl, type Finalization, type ProcessDetail, type Stage } from "@/api";
 import { FinalReviewSection } from "@/components/final-review";
 import { ProblemStatementSection } from "@/components/problem-statement-section";
 import { ReportView } from "@/components/report-view";
 import { StageSection } from "@/components/stage-section";
 import { UnderstandingPanel } from "@/components/understanding-panel";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/format";
@@ -106,7 +107,22 @@ function FinalizedReport({ processId }: { processId: string }) {
       <CardHeader>
         <CardTitle className="text-sm">Relatório da Decisão</CardTitle>
         {finalization && finalization !== "error" && (
-          <p className="text-muted-foreground text-xs">Finalizado em {formatDate(finalization.finalizedAt)}. Somente leitura.</p>
+          <>
+            <p className="text-muted-foreground text-xs">Finalizado em {formatDate(finalization.finalizedAt)}. Somente leitura.</p>
+            {/* Cada clique gera o arquivo de novo a partir do relatório congelado, sem mudá-lo. */}
+            <div className="flex gap-2">
+              <Button asChild variant="outline" size="sm">
+                <a href={reportExportUrl(processId, "md")} download>
+                  Exportar Markdown
+                </a>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <a href={reportExportUrl(processId, "pdf")} download>
+                  Exportar PDF
+                </a>
+              </Button>
+            </div>
+          </>
         )}
       </CardHeader>
       <CardContent>

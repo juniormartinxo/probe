@@ -1355,3 +1355,10 @@ export async function getFinalization(processId: string): Promise<Finalization> 
   const { finalization } = await request<{ finalization: Finalization }>(`${processPath(processId)}/finalization`);
   return finalization;
 }
+
+export type ReportFormat = "md" | "pdf";
+
+// O endereço que baixa o relatório congelado no formato pedido; o backend o gera a cada pedido.
+export function reportExportUrl(processId: string, format: ReportFormat): string {
+  return `/api${processPath(processId)}/report.${format}`;
+}
