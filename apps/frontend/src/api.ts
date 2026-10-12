@@ -1372,5 +1372,6 @@ export async function downloadReport(processId: string, format: ReportFormat): P
   link.href = url;
   link.download = filename;
   link.click();
-  URL.revokeObjectURL(url);
+  // Revogado já, o endereço pode cancelar o download antes de ele começar (Firefox, Safari).
+  setTimeout(() => URL.revokeObjectURL(url));
 }

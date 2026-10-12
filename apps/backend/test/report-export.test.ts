@@ -1,5 +1,7 @@
+import { marked } from "marked";
 import { extractText, getDocumentProxy } from "unpdf";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { reportMarkdown } from "../src/modules/reports/report-markdown.ts";
 import { FakeAssessor } from "./support/fake-assessor.ts";
 import { FakeAssistant, completed, defaultBlock } from "./support/fake-assistant.ts";
 import { cache, costConstraint, description, firstStep, planB, processApi, runner, statement, successCriteria } from "./support/process-api.ts";
@@ -30,6 +32,9 @@ async function markdownOf(id: string): Promise<string> {
   expect(response.statusCode).toBe(200);
   return response.body;
 }
+
+// O Markdown como um leitor de Markdown o mostra.
+const rendered = (markdown: string): string => marked.parse(markdown, { async: false });
 
 async function pdfTextOf(pdf: Buffer): Promise<string> {
   const { text } = await extractText(await getDocumentProxy(new Uint8Array(pdf)), { mergePages: true });
@@ -104,23 +109,39 @@ describe("The Markdown export", () => {
   });
 
   it("keeps the text of the Process from being read as Markdown", async () => {
-    // A primeira Pergunta e a alternativa respondida trazem marcas de Markdown e quebras de linha.
+    // A primeira Pergunta e a alternativa respondida trazem marcas de Markdown, recuo, uma linha em
+    // branco e uma entidade HTML.
     const [first, ...rest] = defaultBlock.questions;
     assistant.block.willRespond(
-      completed({ questions: [{ ...first!, wording: "# A demora\n- é *o problema* | ou sintoma?", choices: ["É o problema | em si\n# sim", ...first!.choices.slice(1)] }, ...rest] }),
+      completed({
+        questions: [
+          { ...first!, wording: "# A demora\n\n    - é *o problema* | ou sintoma? &amp;", choices: ["É o problema | em si\n# sim", ...first!.choices.slice(1)] },
+          ...rest,
+        ],
+      }),
     );
     const { id } = await api.finalizedProcess();
 
-    const markdown = await markdownOf(id);
+    const html = rendered(await markdownOf(id));
 
-    // Nenhuma linha do texto vira título ou item de lista, nem quebra uma linha da tabela.
-    expect(markdown.match(/^# /gm)).toHaveLength(1);
-    expect(markdown).not.toMatch(/^\s*- é/m);
-    expect(markdown).toContain("\\# A demora");
-    expect(markdown).toContain("\\*o problema\\*");
-    const historyRows = markdown.split("\n").filter((line) => /^\| (válido|superado) \|/.test(line));
-    expect(historyRows.some((row) => row.includes("É o problema \\| em si<br>\\# sim"))).toBe(true);
-    for (const row of historyRows) expect(row.split(/(?<!\\)\|/)).toHaveLength(7);
+    // Nenhum título, item de lista, bloco de código ou ênfase sai do texto, e o item segue inteiro.
+    expect(html.match(/<h1/g)).toHaveLength(1);
+    expect(html).not.toContain("<pre>");
+    expect(html).not.toContain("<em>o problema</em>");
+    expect(html).toMatch(/<li>1\.1 # A demora<br>\s*<br>\s*- é \*o problema\* \| ou sintoma\? &amp;amp;<br>/);
+    // Na tabela do histórico, a quebra de linha não encerra a linha nem o `|` abre uma coluna.
+    expect(html).toContain("<td>É o problema | em si<br># sim</td>");
+    for (const row of html.match(/<tr>[\s\S]*?<\/tr>/g)!.filter((row) => row.includes("válido"))) {
+      expect(row.match(/<td>/g)).toHaveLength(5);
+    }
+  });
+
+  it("keeps a note with blank lines in one paragraph", () => {
+    const html = rendered(
+      reportMarkdown({ title: "Relatório da Decisão", finalizedAt: "2026-10-12T12:00:00.000Z", nodes: [{ kind: "paragraph", text: "Primeira\n\n    segunda", note: true }] }),
+    );
+
+    expect(html.trim()).toBe("<p><em>Primeira<br><br>segunda</em></p>");
   });
 });
 
