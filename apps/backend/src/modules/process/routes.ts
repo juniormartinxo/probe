@@ -47,12 +47,12 @@ function descriptionFrom(body: unknown): string | undefined {
 }
 
 // O problema novo de um Desdobramento e as Versões da origem a herdar (nenhuma, se omitidas).
-function spinoffRequestFrom(body: unknown): { ok: true; request: SpinoffRequest } | { ok: false; error: "description_required" | "invalid_inherited_answers" } {
+function spinoffRequestFrom(body: unknown): { ok: true; request: SpinoffRequest } | { ok: false; error: "description_required" | "invalid_answer_version_ids" } {
   const description = descriptionFrom(body);
   if (description === undefined) return { ok: false, error: "description_required" };
   const { answerVersionIds = [] } = body as Record<string, unknown>;
   if (!Array.isArray(answerVersionIds) || answerVersionIds.some((id) => typeof id !== "string" || !uuidPattern.test(id))) {
-    return { ok: false, error: "invalid_inherited_answers" };
+    return { ok: false, error: "invalid_answer_version_ids" };
   }
   return { ok: true, request: { description, answerVersionIds } };
 }
@@ -1034,7 +1034,7 @@ export const processRoutes =
       const { id } = request.params;
       if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
       const body = spinoffRequestFrom(request.body);
-      if (!body.ok) return reply.code(body.error === "description_required" ? 400 : errorStatus[body.error]).send({ error: body.error });
+      if (!body.ok) return reply.code(400).send({ error: body.error });
       const result = await spinoffs.create(id, body.request);
       if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
       return reply.code(201).send({ process: await processDetailOf(db, result.processId) });

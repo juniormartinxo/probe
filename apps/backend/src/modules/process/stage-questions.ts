@@ -20,6 +20,9 @@ export interface StageQuestion {
   currentVersionId: string | null;
   answer: string | null;
   unknown: boolean;
+  // Resposta herdada ainda não reconfirmada: a Pergunta está num Bloco de Respostas herdadas sem a
+  // síntese confirmada, e a resposta ainda não vale.
+  awaitingReconfirmation: boolean;
 }
 
 // As Perguntas da Etapa, na ordem dos Blocos e, dentro de cada um, na ordem em que foram feitas.
@@ -37,6 +40,7 @@ export async function stageQuestions(db: Db, processId: string, stage: Stage): P
       "questions.answerType",
       "questions.choices",
       "questions.reformulatesQuestionId",
+      "blocks.attemptId",
     ])
     .where("blocks.processId", "=", processId)
     .where("blocks.stage", "=", stage)
@@ -53,6 +57,11 @@ export async function stageQuestions(db: Db, processId: string, stage: Stage): P
     .orderBy("questionId")
     .orderBy("number", "desc")
     .execute();
+  const synthesized = await db
+    .selectFrom("blockSyntheses")
+    .select("blockId")
+    .where("blockId", "in", [...new Set(rows.map((row) => row.blockId))])
+    .execute();
   const unknown = await db
     .selectFrom("pendencies")
     .select("questionId")
@@ -60,10 +69,11 @@ export async function stageQuestions(db: Db, processId: string, stage: Stage): P
     .where("reason", "=", "unknown_information")
     .where("resolvedAt", "is", null)
     .execute();
-  return rows.map(({ position, ...row }) => {
+  return rows.map(({ position, attemptId, ...row }) => {
     const current = versions.find((version) => version.questionId === row.id);
     return {
       ...row,
+      awaitingReconfirmation: attemptId === null && !synthesized.some((synthesis) => synthesis.blockId === row.blockId),
       ref: `${row.blockNumber}.${position + 1}`,
       currentVersionId: current?.id ?? null,
       answer: current ? describeAnswer(row, current) : null,
@@ -71,6 +81,10 @@ export async function stageQuestions(db: Db, processId: string, stage: Stage): P
     };
   });
 }
+
+// As Perguntas sem as Respostas herdadas ainda não reconfirmadas: o que a IA pode tomar como dito no
+// Processo.
+export const heldQuestionsOf = (questions: StageQuestion[]): StageQuestion[] => questions.filter((question) => !question.awaitingReconfirmation);
 
 // As Versões que valem nas Perguntas, as que têm resposta.
 export const currentVersionsOf = (questions: StageQuestion[]): string[] =>

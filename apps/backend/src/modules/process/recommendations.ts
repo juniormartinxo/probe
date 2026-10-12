@@ -16,7 +16,7 @@ import { optionRefOf, optionsOf, type NamedOption } from "./options.ts";
 import { confirmedStatementOf } from "./problem-statement.ts";
 import { lockOpenProcess } from "./process.ts";
 import { confirmedStagesOf } from "./stage-readiness.ts";
-import { askedQuestionOf, currentVersionsOf, stageQuestions } from "./stage-questions.ts";
+import { askedQuestionOf, currentVersionsOf, heldQuestionsOf, stageQuestions } from "./stage-questions.ts";
 import { stagePointsOf } from "./stage-points.ts";
 
 const RECOMMENDATION_OPERATION = "recommend_option";
@@ -98,7 +98,8 @@ interface PreparedRecommendation {
 // O que a IA recebe para recomendar; chamar com o Processo travado.
 async function prepareRecommendation(trx: Db, process: { id: string; stagePointsVersion: number }): Promise<PreparedRecommendation> {
   const { originalDescription } = await trx.selectFrom("processes").select("originalDescription").where("id", "=", process.id).executeTakeFirstOrThrow();
-  const questions = await stageQuestions(trx, process.id, BALANCING_STAGE);
+  // Respostas herdadas só valem reconfirmadas: até lá, ficam fora do que a IA recebe.
+  const questions = heldQuestionsOf(await stageQuestions(trx, process.id, BALANCING_STAGE));
   const all = await optionsOf(trx, process);
   const matrix = await comparisonMatrixOf(trx, process);
   const options = matrix.map(({ option, viability, violations, comparison }) => ({

@@ -1,6 +1,6 @@
 import type { Db } from "../../db/database.ts";
 import { startConversation } from "../conversation/conversation.ts";
-import { describeAnswer } from "./answers.ts";
+import { confirmedVersionIdsOf, describeAnswer } from "./answers.ts";
 import type { Block } from "./blocks.ts";
 import type { ChosenOption } from "./chosen-options.ts";
 import type { ConstraintsAndPreferencesState, StatedItem } from "./constraints-and-preferences.ts";
@@ -223,9 +223,12 @@ export function spinoffs({ db }: { db: Db }): Spinoffs {
         const locked = await lockFinalizedOrigin(trx, originId);
         if (!locked.ok) return locked;
         const { origin, finalization } = locked;
-        // Só se herdam respostas: as Versões que valiam na Finalização da origem, cada uma uma vez.
-        const confirmed = new Set(finalization.confirmedSet.answerVersionIds);
-        if (new Set(answerVersionIds).size !== answerVersionIds.length || answerVersionIds.some((id) => !confirmed.has(id))) {
+        // Só se herdam respostas que valiam na Finalização da origem, cada uma uma vez: do conjunto confirmado
+        // e confirmadas por uma síntese de bloco (uma Resposta herdada nunca reconfirmada também está no
+        // conjunto, sem nunca ter valido).
+        const finalized = new Set(finalization.confirmedSet.answerVersionIds);
+        const held = await confirmedVersionIdsOf(trx, answerVersionIds);
+        if (new Set(answerVersionIds).size !== answerVersionIds.length || answerVersionIds.some((id) => !finalized.has(id) || !held.has(id))) {
           return { ok: false, error: "invalid_inherited_answers" } as const;
         }
         const inherited = await inheritedAnswersOf(trx, answerVersionIds);

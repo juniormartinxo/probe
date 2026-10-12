@@ -85,6 +85,55 @@ async function answerDeadline(id: string) {
   expect((await api.confirmSynthesis(id, block.id, { proposalId: proposal.id, synthesis: proposal.synthesis, coveredStagePoints: [] })).statusCode).toBe(201);
 }
 
+// Bloco da Etapa O com a reversibilidade, sintetizado sem cobrir Ponto.
+const stageOBlock: GeneratedBlock = {
+  questions: [
+    {
+      wording: "Se a mudança der errado, dá para voltar ao deploy de hoje?",
+      subject: "Reversibilidade",
+      contextRelation: "O time depende do deploy toda manhã.",
+      rationale: null,
+      stagePoints: ["reversibility"],
+      reformulates: null,
+      answerType: "free_text",
+      choices: [],
+    },
+  ],
+};
+
+const stageOSynthesis: GeneratedSynthesis = {
+  synthesis: "Voltar ao deploy de hoje leva uma tarde.",
+  coverage: ["eliminate_problem", "simplest_solution", "eighty_twenty", "reversibility"].map((stagePoint) => ({
+    stagePoint,
+    covered: stagePoint === "reversibility",
+    reason: "Do que foi dito.",
+  })),
+  ambiguousAnswers: [],
+};
+
+// Responde e sintetiza, na Etapa O da origem, o Bloco da reversibilidade, sem cobrir Ponto.
+async function answerReversibility(id: string) {
+  assistant.block.willRespond(completed(stageOBlock));
+  const block = await api.generateBlock(id);
+  expect((await api.answer(id, block.questions[0].id, { text: "Sim, em uma tarde.", basedOnVersionId: null })).statusCode).toBe(201);
+  assistant.synthesis.willRespond(completed(stageOSynthesis));
+  const proposal = await api.synthesize(id, block.id);
+  expect((await api.confirmSynthesis(id, block.id, { proposalId: proposal.id, synthesis: proposal.synthesis, coveredStagePoints: [] })).statusCode).toBe(201);
+}
+
+// A Pergunta da Etapa dada da origem, com a Versão que vale.
+async function questionOfStage(originId: string, stage: string): Promise<DetailQuestion> {
+  return (await api.getProcess(originId)).blocks.find((block: { stage: string }) => block.stage === stage).questions[0];
+}
+
+// Um Desdobramento que herda as Versões dadas e confirma o enunciado: pronto para o primeiro Bloco da IA.
+const startSpinoff = (originId: string, answerVersionIds: string[], created: { id?: string } = {}) => async () => {
+  const process = await createdSpinoff(originId, answerVersionIds);
+  created.id = process.id;
+  await api.confirmStatement(process.id);
+  return process.id as string;
+};
+
 describe("Creating a Spinoff", () => {
   it("opens a new Process for the new problem, at Stage P, identifying the origin", async () => {
     const { id: originId } = await api.finalizedProcess();
@@ -143,6 +192,33 @@ describe("Creating a Spinoff", () => {
       expect(response.json()).toEqual({ error: "invalid_inherited_answers" });
     }
     expect((await api.inject({ method: "GET", url: "/api/processes" })).json().processes).toEqual(before);
+  });
+
+  it("is refused for an answer the origin finalized without it ever holding, such as an inherited answer never reconfirmed", async () => {
+    const { id: originId } = await api.finalizedProcess({ inStageR: answerDeadline });
+    const deadline = await questionOfStage(originId, "R");
+    // O Desdobramento fecha a Etapa R sem sintetizar o Bloco herdado dela, e é finalizado assim.
+    const first: { id?: string } = {};
+    await api.finalizedProcess({ start: startSpinoff(originId, [deadline.answer.current.id], first) });
+    const neverHeld = await questionOfStage(first.id!, "R");
+    expect(neverHeld.answer.current.confirmed).toBe(false);
+    const held = (await api.getProcess(first.id!)).blocks.find((block: { inherited: boolean }) => !block.inherited).questions[0];
+
+    const refused = await requestSpinoff(first.id!, { description: newProblem, answerVersionIds: [held.answer.current.id, neverHeld.answer.current.id] });
+
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json()).toEqual({ error: "invalid_inherited_answers" });
+    expect((await createdSpinoff(first.id!, [held.answer.current.id])).blocks).toHaveLength(1);
+  });
+
+  it("is refused with 400 when the selection is not a list of ids", async () => {
+    const { id: originId } = await api.finalizedProcess();
+
+    for (const answerVersionIds of ["todas", ["não é um id"]]) {
+      const response = await requestSpinoff(originId, { description: newProblem, answerVersionIds });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({ error: "invalid_answer_version_ids" });
+    }
   });
 
   it("is refused without the new problem, for a Process that is not finalized and for one that does not exist", async () => {
@@ -274,6 +350,32 @@ function idsIn(value: unknown, found = new Set<string>()): Set<string> {
   return found;
 }
 
+describe("Inherited answers awaiting reconfirmation", () => {
+  it("stay out of what the AI receives to propose Options until their Block synthesis is confirmed", async () => {
+    const { id: originId } = await api.finalizedProcess({ inStageO: answerReversibility });
+    const reversibility = await questionOfStage(originId, "O");
+    // A IA não sugere Opção: nada fica à espera de aceite na Etapa O.
+    const askedOptions = async (id: string) => {
+      assistant.options.willRespond(completed({ options: [] }));
+      expect((await api.inject({ method: "POST", url: `/api/processes/${id}/option-proposals` })).statusCode).toBe(202);
+      await waitFor(async () => (await api.getProcess(id)).optionProposals.at(-1).status !== "running");
+      return assistant.options.attempts.at(-1)!.input.askedQuestions.map((question) => question.wording);
+    };
+
+    await api.processInStageE({
+      start: startSpinoff(originId, [reversibility.answer.current.id]),
+      inStageO: async (id) => {
+        expect(await askedOptions(id)).toEqual([]);
+        const block = (await api.getProcess(id)).blocks.find((item: { stage: string }) => item.stage === "O");
+        assistant.synthesis.willRespond(completed(stageOSynthesis));
+        const proposal = await api.synthesize(id, block.id);
+        expect((await api.confirmSynthesis(id, block.id, { proposalId: proposal.id, synthesis: proposal.synthesis, coveredStagePoints: [] })).statusCode).toBe(201);
+        expect(await askedOptions(id)).toEqual([reversibility.wording]);
+      },
+    });
+  });
+});
+
 describe("The origin's Decision in a Spinoff", () => {
   it("comes only as context, never as an answer, Choice or plan", async () => {
     const { id: originId } = await api.finalizedProcess();
@@ -343,6 +445,33 @@ describe("Finalizing a Spinoff", () => {
     expect(markdown.body).toContain(`Desdobramento do Processo ${originId}`);
     expect(markdown.body).toContain("Decisão da origem");
     expect(markdown.body).toContain("Bloco 1 · Respostas herdadas");
+  });
+
+  it("can be reconsidered, and the copy keeps the Block of inherited answers identified", async () => {
+    const { id: originId } = await api.finalizedProcess();
+    const [first] = await originQuestions(originId);
+    const spinoff: { id?: string } = {};
+    const start = async () => {
+      const id = await startSpinoff(originId, [first!.answer.current.id], spinoff)();
+      const [block] = (await api.getProcess(id)).blocks;
+      const proposal = await api.synthesize(id, block.id);
+      expect((await api.confirmSynthesis(id, block.id, { proposalId: proposal.id, synthesis: proposal.synthesis, coveredStagePoints: [] })).statusCode).toBe(201);
+      return id;
+    };
+    await api.finalizedProcess({ start });
+    const { report: frozen } = await frozenReport(spinoff.id!);
+
+    const response = await api.inject({ method: "POST", url: `/api/processes/${spinoff.id}/reconsiderations` });
+
+    expect(response.statusCode).toBe(201);
+    const reconsidered = response.json().process;
+    expect(reconsidered.blocks[0]).toMatchObject({ inherited: true, synthesis: expect.objectContaining({ origin: "proposal" }) });
+    expect(reconsidered.blocks[0].questions[0].answer.current).toMatchObject({ selectedChoices: first!.answer.current.selectedChoices, confirmed: true });
+    const review = (await api.inject({ method: "GET", url: `/api/processes/${reconsidered.id}/final-review` })).json().finalReview;
+    expect(review.blockers).toEqual([]);
+    const { identification: _, ...content } = review.report;
+    const { identification: __, ...frozenContent } = frozen;
+    expect(content).toEqual(frozenContent);
   });
 
   it("can itself be spun off and reconsidered", async () => {

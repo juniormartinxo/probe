@@ -67,7 +67,7 @@ function isComplete(question: Question, value: AnswerValue): boolean {
     : value.selectedChoices.length > 0;
 }
 
-export function describe(question: Pick<Question, "choices">, stored: Stored): string {
+export function describeAnswer(question: Pick<Question, "choices">, stored: Stored): string {
   if (stored.text !== null) return stored.text;
   return (stored.selectedChoices ?? []).map((choice) => question.choices[choice]).join("; ");
 }
@@ -513,7 +513,7 @@ function SavedAnswer({
         Resposta salva · Versão {current.number} · {formatDate(current.createdAt)} ·{" "}
         {savedAnswerStatus(current.confirmed, synthesized, reassessing)}
       </p>
-      <p className="whitespace-pre-wrap">{describe(question, current)}</p>
+      <p className="whitespace-pre-wrap">{describeAnswer(question, current)}</p>
       {impactAssessments.length > 0 && (
         <details className="text-muted-foreground text-xs">
           <summary className="cursor-pointer">Avaliações de impacto desta Versão ({impactAssessments.length})</summary>
@@ -533,7 +533,7 @@ function SavedAnswer({
           <ol className="mt-2 flex flex-col gap-1">
             {previous.map((version) => (
               <li key={version.id}>
-                Versão {version.number} · {formatDate(version.createdAt)}: {describe(question, version)}
+                Versão {version.number} · {formatDate(version.createdAt)}: {describeAnswer(question, version)}
               </li>
             ))}
           </ol>

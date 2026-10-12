@@ -15,7 +15,7 @@ import {
 } from "@/api";
 import { FinalReviewSection } from "@/components/final-review";
 import { ProblemStatementSection } from "@/components/problem-statement-section";
-import { describe } from "@/components/questionnaire";
+import { describeAnswer } from "@/components/questionnaire";
 import { DecisionSummaryContent, ReportView } from "@/components/report-view";
 import { StageSection } from "@/components/stage-section";
 import { UnderstandingPanel } from "@/components/understanding-panel";
@@ -240,6 +240,14 @@ function SpinOff({ process }: { process: ProcessDetail }) {
       return next;
     });
 
+  // Cancelar descarta o que foi preenchido: reaberto, o formulário começa limpo.
+  const cancel = () => {
+    setOpen(false);
+    setDescription("");
+    setSelected(new Set());
+    setFailed(false);
+  };
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setCreating(true);
@@ -299,7 +307,7 @@ function SpinOff({ process }: { process: ProcessDetail }) {
                   <span className="text-sm">
                     Etapa {block.stage} · {block.number}.{index + 1} {question.wording}
                   </span>
-                  <span className="text-muted-foreground text-xs whitespace-pre-wrap">{describe(question, version)}</span>
+                  <span className="text-muted-foreground text-xs whitespace-pre-wrap">{describeAnswer(question, version)}</span>
                 </Label>
               </li>
             );
@@ -308,7 +316,7 @@ function SpinOff({ process }: { process: ProcessDetail }) {
       </fieldset>
       {failed && <p className="text-destructive text-xs">Não foi possível abrir o Desdobramento. Seu texto e a seleção continuam aqui; tente de novo.</p>}
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" disabled={creating} onClick={() => setOpen(false)}>
+        <Button type="button" variant="ghost" size="sm" disabled={creating} onClick={cancel}>
           Cancelar
         </Button>
         <Button type="submit" size="sm" disabled={creating || description.trim() === ""}>
