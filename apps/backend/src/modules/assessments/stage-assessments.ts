@@ -122,10 +122,17 @@ export async function stageAssessmentsOf(db: Db, process: ProcessPoints, stage: 
     .execute();
   if (runs.length === 0) return [];
   const ids = runs.map((run) => run.id);
+  // Na ordem em que as Perguntas foram feitas: sem ela, a leitura não tem ordem estável.
   const versions = await db
     .selectFrom("stageAssessmentAnswerVersions")
-    .select(["stageAssessmentId", "answerVersionId"])
-    .where("stageAssessmentId", "in", ids)
+    .innerJoin("answerVersions", "answerVersions.id", "stageAssessmentAnswerVersions.answerVersionId")
+    .innerJoin("questions", "questions.id", "answerVersions.questionId")
+    .innerJoin("blocks", "blocks.id", "questions.blockId")
+    .select(["stageAssessmentAnswerVersions.stageAssessmentId", "stageAssessmentAnswerVersions.answerVersionId"])
+    .where("stageAssessmentAnswerVersions.stageAssessmentId", "in", ids)
+    .orderBy("blocks.number")
+    .orderBy("questions.position")
+    .orderBy("answerVersions.number")
     .execute();
   const verdicts = await db
     .selectFrom("assessments")

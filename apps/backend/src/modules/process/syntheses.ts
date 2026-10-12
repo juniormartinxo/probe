@@ -7,7 +7,7 @@ import { openStagePointsOf, type ProcessPoints } from "./stage-point-coverage.ts
 import { constraintsAndPreferencesOf, hasAny, inForceOf, type ItemsRequired } from "./constraints-and-preferences.ts";
 import { confirmedStagesOf } from "./stage-readiness.ts";
 import { askedQuestionOf, currentVersionsOf, stageQuestions } from "./stage-questions.ts";
-import { findStagePoint, namedStagePoint } from "./stage-points.ts";
+import { findStagePoint, namedStagePoint, stagePointsOf } from "./stage-points.ts";
 import type { Stage } from "./stage.ts";
 
 // Como a síntese confirmada nasceu: aceita como a IA propôs ou corrigida pelo usuário.
@@ -267,7 +267,10 @@ export async function synthesesOf(
             origin: confirmed.origin,
             proposalId: confirmed.proposalId,
             confirmedAt: confirmed.confirmedAt,
-            coveredStagePoints: coverageRows.filter((row) => row.blockId === block.id).map((row) => pointRef(row.stagePoint)),
+            // Na ordem da lista de Pontos: a leitura não tem outra ordem estável.
+            coveredStagePoints: stagePointsOf(process.stagePointsVersion, block.stage)
+              .filter((point) => coverageRows.some((row) => row.blockId === block.id && row.stagePoint === point.key))
+              .map((point) => pointRef(point.key)),
             corrections: corrections.get(block.id)!,
           }
         : null,
