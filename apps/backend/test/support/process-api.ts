@@ -226,8 +226,21 @@ export function processApi(current: () => TestApp) {
     }
   }
 
+  // Processo finalizado sobre a Revisão final apresentada: a Etapa E confirmada e nada impedindo.
+  async function finalizedProcess() {
+    const ids = await processInStageE();
+    await recordPlan(ids.id);
+    expect((await confirmStage(ids.id, { stageAssessmentId: null }, "E")).statusCode).toBe(201);
+    const review = await inject({ method: "GET", url: `/api/processes/${ids.id}/final-review` });
+    const { fingerprint } = review.json().finalReview;
+    const finalization = await inject({ method: "POST", url: `/api/processes/${ids.id}/finalization`, payload: { fingerprint } });
+    expect(finalization.statusCode).toBe(201);
+    return ids;
+  }
+
   return {
     inject,
+    finalizedProcess,
     choose,
     processInStageE,
     recordElement,

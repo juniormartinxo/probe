@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import { ApiError, getFinalization, getProcess, type Finalization, type ProcessDetail, type Stage } from "@/api";
+import {
+  ApiError,
+  downloadReport,
+  getFinalization,
+  getProcess,
+  type Finalization,
+  type ProcessDetail,
+  type ReportFormat,
+  type Stage,
+} from "@/api";
 import { FinalReviewSection } from "@/components/final-review";
 import { ProblemStatementSection } from "@/components/problem-statement-section";
 import { ReportView } from "@/components/report-view";
 import { StageSection } from "@/components/stage-section";
 import { UnderstandingPanel } from "@/components/understanding-panel";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/format";
@@ -106,7 +116,10 @@ function FinalizedReport({ processId }: { processId: string }) {
       <CardHeader>
         <CardTitle className="text-sm">Relatório da Decisão</CardTitle>
         {finalization && finalization !== "error" && (
-          <p className="text-muted-foreground text-xs">Finalizado em {formatDate(finalization.finalizedAt)}. Somente leitura.</p>
+          <>
+            <p className="text-muted-foreground text-xs">Finalizado em {formatDate(finalization.finalizedAt)}. Somente leitura.</p>
+            <ReportExports processId={processId} />
+          </>
         )}
       </CardHeader>
       <CardContent>
@@ -115,6 +128,41 @@ function FinalizedReport({ processId }: { processId: string }) {
         {finalization && finalization !== "error" && <ReportView report={finalization.report} />}
       </CardContent>
     </Card>
+  );
+}
+
+const reportFormats: { format: ReportFormat; label: string }[] = [
+  { format: "md", label: "Exportar Markdown" },
+  { format: "pdf", label: "Exportar PDF" },
+];
+
+// Cada clique gera o arquivo de novo a partir do relatório congelado, sem mudá-lo: uma falha só pede
+// outra tentativa.
+function ReportExports({ processId }: { processId: string }) {
+  const [exporting, setExporting] = useState<ReportFormat>();
+  const [failed, setFailed] = useState(false);
+  const exportReport = (format: ReportFormat) => {
+    setExporting(format);
+    setFailed(false);
+    downloadReport(processId, format).then(
+      () => setExporting(undefined),
+      () => {
+        setExporting(undefined);
+        setFailed(true);
+      },
+    );
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-2">
+        {reportFormats.map(({ format, label }) => (
+          <Button key={format} variant="outline" size="sm" disabled={exporting !== undefined} onClick={() => exportReport(format)}>
+            {exporting === format ? "Gerando…" : label}
+          </Button>
+        ))}
+      </div>
+      {failed && <p className="text-destructive text-xs">Não foi possível gerar o arquivo. Tente de novo.</p>}
+    </div>
   );
 }
 
