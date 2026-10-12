@@ -1,3 +1,4 @@
+import type { AssessedChoice } from "../assessments/assessor.ts";
 import type { StagePoint } from "../process/stage-points.ts";
 import type { ItemStatement, ItemStatements } from "../process/constraints-and-preferences.ts";
 import type { OptionStatus, OptionViability } from "../process/options.ts";
@@ -43,6 +44,10 @@ export function confirmedStagesText(confirmed: ConfirmedStageAnswers[]): string 
 
 // O que cada Etapa pede de particular às Perguntas, além dos Pontos.
 const stageGuidance: Partial<Record<Stage, string>> = {
+  E:
+    "Nesta Etapa, ajude a pessoa a transformar a Escolha (abaixo) num plano de execução: o primeiro passo concreto, como ela vai " +
+    "reconhecer que a decisão deu certo e o que fazer se não der. Pergunte o que ela sabe do próprio caso para isso (quem faz, quando, " +
+    "com que recursos, que sinal observar), respeitando as Restrições. Não escreva o plano por ela nem reabra a Escolha: o plano é registrado por ela à parte.",
   B:
     "Nesta Etapa, ajude a pessoa a enxergar as concessões entre as Opções que ela aceitou (abaixo): o que cada uma ganha e perde, " +
     "como se comporta quando a demanda cresce e o esforço de mantê-la. Opções que violam uma Restrição são inviáveis e nada as compensa. " +
@@ -73,6 +78,16 @@ const itemsText = (items: ItemStatement[]): string => (items.length > 0 ? items.
 // dentro dos delimitadores de dado.
 export const constraintsAndPreferencesText = ({ constraints, preferences }: ItemStatements): string =>
   `Restrições (inegociáveis):\n${itemsText(constraints)}\nPreferências (negociáveis):\n${itemsText(preferences)}`;
+
+// A Escolha em vigor, como entra nos prompts da Etapa E: a Opção escolhida e o motivo de cada
+// descarte. O texto é do usuário e vai dentro dos delimitadores de dado.
+export function chosenOptionText(choice: AssessedChoice | null): string {
+  if (!choice) return "(nenhuma)";
+  const lines = [`Escolhida: ${choice.statement}`];
+  if (choice.description) lines.push(choice.description);
+  for (const { statement, reason } of choice.discards) lines.push(`Descartada: ${statement}\nMotivo: ${reason}`);
+  return lines.join("\n");
+}
 
 const viabilityNames: Record<OptionViability, string> = { viable: "viável", inviable: "inviável", undecided: "viabilidade sem decisão" };
 

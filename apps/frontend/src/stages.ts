@@ -22,6 +22,7 @@ export const stagePointStatusText: Record<StagePointStatus, string> = {
   inapplicable: "inaplicável",
   absent: "ausência registrada",
   chosen: "coberto pela Escolha",
+  planned: "coberto pelo plano",
 };
 
 export const pendencyReasonText: Record<PendencyReason, string> = {

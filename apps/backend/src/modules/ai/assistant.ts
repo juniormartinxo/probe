@@ -1,6 +1,6 @@
 // Porta da IA. A implementação real chama o executor; nos testes, uma versão falsa a substitui.
 
-import type { ConflictClarification } from "../assessments/assessor.ts";
+import type { AssessedChoice, ConflictClarification } from "../assessments/assessor.ts";
 import type { ItemStatements } from "../process/constraints-and-preferences.ts";
 import type { OptionStatus, OptionViability } from "../process/options.ts";
 import type { StagePoint } from "../process/stage-points.ts";
@@ -135,6 +135,8 @@ export interface BlockInput extends ItemStatements {
   ambiguousAnswers: AmbiguousAnswer[];
   // As Opções aceitas, a partir da Etapa O; nenhuma antes.
   options: KnownOption[];
+  // Na Etapa E, a Escolha em vigor, que o plano executa; null nas outras.
+  chosenOption: AssessedChoice | null;
 }
 
 // O que a IA recebe para sintetizar um Bloco e sugerir a cobertura dos Pontos ainda abertos.

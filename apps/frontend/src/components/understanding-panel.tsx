@@ -108,6 +108,22 @@ function UnderstandingView({ understanding }: { understanding: Understanding }) 
           )}
         </div>
       )}
+      {understanding.executionPlan.some((element) => element.text !== null) && (
+        <div className="flex flex-col gap-1">
+          <p className="text-muted-foreground text-xs">Plano de execução</p>
+          <ul className="flex flex-col gap-1">
+            {understanding.executionPlan.map((element) => (
+              <li key={element.key}>
+                <span className="font-medium">{element.name}:</span>{" "}
+                {element.text ?? <span className="text-muted-foreground">ainda não escrito</span>}
+                {element.text !== null && (
+                  <span className="text-muted-foreground text-xs"> · {planCompatibilityText[element.compatibility]}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {understanding.blocks.map((block) => (
         <div key={block.number} className="flex flex-col gap-1">
           <p className="text-muted-foreground text-xs">Bloco {block.number}</p>
@@ -143,6 +159,16 @@ function UnderstandingView({ understanding }: { understanding: Understanding }) 
     </>
   );
 }
+
+const planCompatibilityText: Record<Understanding["executionPlan"][number]["compatibility"], string> = {
+  not_recorded: "ainda não escrito",
+  not_assessed: "sem Avaliação do Jev",
+  outdated: "Avaliação de uma Escolha anterior",
+  assessment_failed: "a Avaliação do Jev falhou",
+  awaiting_decision: "o Jev não confirma a compatibilidade com a Escolha",
+  compatible: "compatível com a Escolha",
+  kept: "mantido por você",
+};
 
 function viabilitySummary({ viability, violations }: Understanding["options"][number]): string {
   if (viability === "viable") return "viável";

@@ -41,6 +41,11 @@ describe("Understanding of the Process", () => {
       openPendencies: [],
       options: [],
       chosenOption: null,
+      executionPlan: [
+        { key: "first_step", name: "Primeiro passo concreto", text: null, compatibility: "not_recorded" },
+        { key: "success_criteria", name: "Como reconhecer sucesso", text: null, compatibility: "not_recorded" },
+        { key: "plan_b", name: "Plano B", text: null, compatibility: "not_recorded" },
+      ],
     });
   });
 
@@ -90,6 +95,11 @@ describe("Understanding of the Process", () => {
       openPendencies: [{ reason: "unknown_information", wording: free.wording }],
       options: [],
       chosenOption: null,
+      executionPlan: [
+        { key: "first_step", name: "Primeiro passo concreto", text: null, compatibility: "not_recorded" },
+        { key: "success_criteria", name: "Como reconhecer sucesso", text: null, compatibility: "not_recorded" },
+        { key: "plan_b", name: "Plano B", text: null, compatibility: "not_recorded" },
+      ],
     });
     expect(assistant.block.attempts.length + assistant.synthesis.attempts.length).toBe(calls);
   });

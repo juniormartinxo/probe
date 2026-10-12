@@ -94,6 +94,7 @@ describe("Block", () => {
       confirmedSyntheses: [],
       ambiguousAnswers: [],
       options: [],
+      chosenOption: null,
     });
     expect(assistant.block.attempts[0]!.context.model).toBe(TEST_MODEL);
     const [block] = process.blocks;

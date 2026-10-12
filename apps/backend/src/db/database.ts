@@ -400,6 +400,40 @@ export interface ChoiceDiscardTable {
   reason: string;
 }
 
+// Elemento do Plano de execução, escrito pelo usuário; o mais recente de cada um vale.
+export interface ExecutionPlanElementTable {
+  id: Generated<string>;
+  processId: string;
+  // A chave do Ponto de E que o elemento cobre.
+  element: string;
+  text: string;
+  recordedAt: Generated<Date>;
+}
+
+// Avaliação de compatibilidade de um elemento com a Escolha em vigor quando foi pedida.
+export interface PlanAssessmentTable {
+  id: Generated<string>;
+  processId: string;
+  elementId: string;
+  chosenOptionId: string;
+  status: "completed" | "failed";
+  requestedModel: string;
+  jevModel: string | null;
+  rubricRevision: string;
+  choice: AssessmentChoice | null;
+  confidence: number | null;
+  probabilities: ColumnType<Record<AssessmentChoice, number> | null, string | null, never>;
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  createdAt: Generated<Date>;
+}
+
+export interface PlanDecisionTable {
+  planAssessmentId: string;
+  justification: string | null;
+  decidedAt: Generated<Date>;
+}
+
 // Linha única de configurações não sensíveis.
 export interface SettingsTable {
   id: Generated<boolean>;
@@ -452,6 +486,9 @@ export interface Database {
   optionComparisons: OptionComparisonTable;
   chosenOptions: ChosenOptionTable;
   choiceDiscards: ChoiceDiscardTable;
+  executionPlanElements: ExecutionPlanElementTable;
+  planAssessments: PlanAssessmentTable;
+  planDecisions: PlanDecisionTable;
   settings: SettingsTable;
 }
 

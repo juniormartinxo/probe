@@ -202,8 +202,9 @@ export interface Block {
 }
 
 // `absent`: o usuário registrou que não há o que o Ponto pede (prazo, sistemas); conta como cobertura.
-// `chosen`: o Ponto da Escolha, coberto enquanto a Escolha em vigor se sustenta.
-export type StagePointStatus = "open" | "covered" | "inapplicable" | "absent" | "chosen";
+// `chosen`: o Ponto da Escolha, coberto enquanto a Escolha em vigor se sustenta. `planned`: um Ponto de E,
+// coberto pelo elemento do Plano de execução.
+export type StagePointStatus = "open" | "covered" | "inapplicable" | "absent" | "chosen" | "planned";
 
 export interface StagePointState extends StagePoint {
   // Como se registra a ausência, nos Pontos que a admitem; null nos outros.
@@ -214,6 +215,9 @@ export interface StagePointState extends StagePoint {
   recordedAt: string | null;
   // Só a Escolha cobre o Ponto: nenhum Bloco pergunta sobre ele e ele não se declara inaplicável.
   coveredByChoice?: true;
+  // Só o elemento do Plano de execução cobre o Ponto: Blocos perguntam sobre ele, mas a síntese não o
+  // cobre, e ele não se declara inaplicável.
+  coveredByPlan?: true;
 }
 
 // Confirmação que depende de respostas: a síntese de um Bloco ou a de uma Etapa.
@@ -520,6 +524,56 @@ export interface ChosenOption {
   supersededAt: string | null;
 }
 
+// Avaliação de compatibilidade: o julgamento do Jev, bruto, sobre se um elemento do plano é compatível
+// com a Escolha que valia quando foi pedida. `needsDecision`: incompatível ou incerto; você decide.
+export interface PlanAssessment {
+  id: string;
+  elementId: string;
+  chosenOptionId: string;
+  status: "completed" | "failed";
+  requestedModel: string;
+  jevModel: string | null;
+  rubricRevision: string;
+  choice: AssessmentChoice | null;
+  confidence: number | null;
+  probabilities: Record<AssessmentChoice, number> | null;
+  needsDecision: boolean;
+  failureReason: AssessorFailureReason | null;
+  message: string | null;
+  createdAt: string;
+}
+
+// `outdated`: as Avaliações do elemento são de uma Escolha anterior; `kept`: você manteve o elemento.
+export type PlanCompatibilityStatus =
+  | "not_recorded"
+  | "not_assessed"
+  | "outdated"
+  | "assessment_failed"
+  | "awaiting_decision"
+  | "compatible"
+  | "kept";
+
+export interface PlanElementText {
+  id: string;
+  text: string;
+  recordedAt: string;
+}
+
+// Elemento do Plano de execução (primeiro passo, critério de sucesso, plano B), com o Ponto de E que
+// ele cobre, os textos anteriores e a compatibilidade com a Escolha em vigor.
+export interface ExecutionPlanElement {
+  key: string;
+  name: string;
+  description: string;
+  current: PlanElementText | null;
+  history: PlanElementText[];
+  compatibility: {
+    status: PlanCompatibilityStatus;
+    assessment: PlanAssessment | null;
+    decision: { justification: string | null; decidedAt: string } | null;
+  };
+}
+
 // Resumo do entendimento atual do Processo, montado sem chamar a IA.
 export interface Understanding {
   originalDescription: string;
@@ -539,6 +593,8 @@ export interface Understanding {
   options: Pick<Option, "statement" | "viability" | "violations">[];
   // A Escolha em vigor, com o motivo de cada descarte e se a Opção escolhida ainda é viável.
   chosenOption: { statement: string; viable: boolean; discards: { statement: string; reason: string }[] } | null;
+  // O Plano de execução: o texto que vale de cada elemento e a compatibilidade com a Escolha.
+  executionPlan: { key: string; name: string; text: string | null; compatibility: PlanCompatibilityStatus }[];
 }
 
 export type AssessmentChoice = "yes" | "no" | "insufficient";
@@ -630,6 +686,10 @@ export interface ProcessDetail extends ProcessWithConversation {
   comparisonMatrix: ComparisonMatrixRow[];
   recommendations: Recommendation[];
   chosenOptions: ChosenOption[];
+  // Na Etapa E: cada elemento do plano, com a compatibilidade com a Escolha em vigor.
+  executionPlan: ExecutionPlanElement[];
+  // A Etapa E foi confirmada: o Processo espera a Revisão final.
+  readyForFinalReview: boolean;
 }
 
 // Configurações não sensíveis; segredos ficam no ambiente do backend e nunca chegam aqui.
@@ -1120,6 +1180,36 @@ export async function chooseOption(processId: string, choice: { optionId: string
     body: JSON.stringify(choice),
   });
   return chosenOption;
+}
+
+// Registra (ou reescreve) um elemento do plano; o Jev avalia a compatibilidade dele com a Escolha.
+export async function recordPlanElement(processId: string, element: string, text: string): Promise<ExecutionPlanElement[]> {
+  const { executionPlan } = await request<{ executionPlan: ExecutionPlanElement[] }>(
+    `${processPath(processId)}/execution-plan/${encodeURIComponent(element)}`,
+    { method: "POST", body: JSON.stringify({ text }) },
+  );
+  return executionPlan;
+}
+
+// Pede ao Jev a Avaliação de cada elemento sem uma que valha sobre a Escolha em vigor.
+export async function assessExecutionPlan(processId: string): Promise<ExecutionPlanElement[]> {
+  const { executionPlan } = await request<{ executionPlan: ExecutionPlanElement[] }>(`${processPath(processId)}/execution-plan/assessments`, {
+    method: "POST",
+  });
+  return executionPlan;
+}
+
+// Mantém o elemento sobre a Avaliação que você viu: com justificativa, se incompatível ou incerta.
+export async function keepPlanElement(
+  processId: string,
+  element: string,
+  decision: { planAssessmentId: string; justification: string | null },
+): Promise<ExecutionPlanElement[]> {
+  const { executionPlan } = await request<{ executionPlan: ExecutionPlanElement[] }>(
+    `${processPath(processId)}/execution-plan/${encodeURIComponent(element)}/decision`,
+    { method: "POST", body: JSON.stringify(decision) },
+  );
+  return executionPlan;
 }
 
 export async function getUnderstanding(processId: string): Promise<Understanding> {

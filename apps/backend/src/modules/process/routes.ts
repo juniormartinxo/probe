@@ -19,6 +19,7 @@ import {
   type ItemReplacement,
   type ItemStatement,
 } from "./constraints-and-preferences.ts";
+import { executionConfirmed, executionPlanOf, type ExecutionPlan, type PlanDecision } from "./execution-plan.ts";
 import { optionChecksOf } from "./option-checks.ts";
 import { optionProposalsOf, optionsOf, type OptionDecision, type Options, type OptionStatement, type UserOption } from "./options.ts";
 import type { Pendencies } from "./pendencies.ts";
@@ -154,6 +155,24 @@ function choiceFrom(body: unknown): ChoiceRequest | undefined {
   if (parsed.some((discard) => discard === undefined)) return undefined;
   return { optionId, discards: parsed as ChoiceRequest["discards"] };
 }
+
+// O texto de um elemento do Plano de execução. Os espaços, o módulo tira.
+function planElementTextFrom(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { text } = body as Record<string, unknown>;
+  return typeof text === "string" && text.trim() !== "" ? text : undefined;
+}
+
+// A Avaliação de compatibilidade que o usuário viu e, se houver, a justificativa para manter o elemento.
+function planDecisionFrom(body: unknown): PlanDecision | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const { planAssessmentId } = body as Record<string, unknown>;
+  if (!isUuid(planAssessmentId)) return undefined;
+  return { planAssessmentId, justification: filledTextFrom(body, "justification")?.trim() ?? null };
+}
+
+// A chave de um elemento do plano é a de um Ponto de E; se é uma delas, o módulo decide.
+const planElementPattern = /^[a-z_]+$/;
 
 // A Avaliação que o usuário viu (a concluída ou a que falhou) e, se houver, a justificativa.
 function stageConfirmationFrom(body: unknown): StageConfirmationRequest | undefined {
@@ -341,6 +360,13 @@ const errorStatus = {
   discard_reasons_required: 422,
   choice_required: 409,
   chosen_option_not_viable: 409,
+  stage_point_covered_by_plan: 409,
+  execution_confirmed: 409,
+  plan_element_not_found: 404,
+  plan_element_not_recorded: 409,
+  plan_element_decided: 409,
+  execution_plan_incomplete: 409,
+  undecided_plan_compatibility: 409,
 } as const;
 
 // Restrições e Preferências seguem as mesmas rotas, cada uma no seu caminho.
@@ -365,6 +391,7 @@ export const processRoutes =
     comparisonMatrix,
     recommendations,
     chosenOptions,
+    executionPlan,
   }: {
     db: Db;
     problemStatements: ProblemStatements;
@@ -383,6 +410,7 @@ export const processRoutes =
     comparisonMatrix: ComparisonMatrix;
     recommendations: Recommendations;
     chosenOptions: ChosenOptions;
+    executionPlan: ExecutionPlan;
   }): FastifyPluginAsync =>
   async (app) => {
     app.post("/processes", async (request, reply) => {
@@ -429,6 +457,10 @@ export const processRoutes =
         comparisonMatrix: await comparisonMatrixOf(db, process),
         recommendations: await recommendationsOf(db, process),
         chosenOptions: await chosenOptionsOf(db, id),
+        // Na Etapa E: cada elemento do plano, com a compatibilidade com a Escolha em vigor.
+        executionPlan: await executionPlanOf(db, process),
+        // A Etapa E foi confirmada: o Processo espera a Revisão final.
+        readyForFinalReview: await executionConfirmed(db, id),
       };
     }
 
@@ -903,6 +935,38 @@ export const processRoutes =
       const result = await chosenOptions.choose(id, choice);
       if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
       return reply.code(201).send({ chosenOption: result.chosenOption });
+    });
+
+    // Elementos sem uma Avaliação de compatibilidade que valha sobre a Escolha em vigor (nenhuma, falha
+    // ou de uma Escolha anterior): pede ao Jev.
+    app.post<{ Params: { id: string } }>("/processes/:id/execution-plan/assessments", async (request, reply) => {
+      const { id } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      const result = await executionPlan.assessOpen(id);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ executionPlan: result.executionPlan });
+    });
+
+    app.post<{ Params: { id: string; element: string } }>("/processes/:id/execution-plan/:element", async (request, reply) => {
+      const { id, element } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      if (!planElementPattern.test(element)) return reply.code(404).send({ error: "plan_element_not_found" });
+      const text = planElementTextFrom(request.body);
+      if (text === undefined) return reply.code(400).send({ error: "plan_element_required" });
+      const result = await executionPlan.record(id, element, text);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ executionPlan: result.executionPlan });
+    });
+
+    app.post<{ Params: { id: string; element: string } }>("/processes/:id/execution-plan/:element/decision", async (request, reply) => {
+      const { id, element } = request.params;
+      if (!uuidPattern.test(id)) return reply.code(404).send({ error: "process_not_found" });
+      if (!planElementPattern.test(element)) return reply.code(404).send({ error: "plan_element_not_found" });
+      const decision = planDecisionFrom(request.body);
+      if (!decision) return reply.code(400).send({ error: "decision_required" });
+      const result = await executionPlan.keep(id, element, decision);
+      if (!result.ok) return reply.code(errorStatus[result.error]).send({ error: result.error });
+      return reply.code(201).send({ executionPlan: result.executionPlan });
     });
 
     for (const kind of itemKinds) {

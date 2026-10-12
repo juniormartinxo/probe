@@ -6,13 +6,13 @@ import type { Stage } from "./stage.ts";
 // declara inaplicável, com justificativa; ou registra explicitamente a ausência do que ele pede (não
 // há prazo, nenhum sistema envolvido), o que também conta como cobertura. Sugestão da IA nunca cobre
 // nada sozinha. O Ponto que só a Escolha cobre fica fora disso: está coberto ("chosen") enquanto a
-// Escolha em vigor se sustenta.
+// Escolha em vigor se sustenta; os de E, cobertos ("planned") pelo elemento do Plano de execução.
 export type CoverageStatus = "covered" | "inapplicable" | "absent";
 
 export interface StagePointState extends Omit<StagePoint, "absence"> {
   // Como se diz a ausência, nos Pontos que a admitem; null nos outros.
   absence: string | null;
-  status: "open" | CoverageStatus | "chosen";
+  status: "open" | CoverageStatus | "chosen" | "planned";
   // O Bloco cuja síntese confirmou a cobertura.
   blockId: string | null;
   justification: string | null;
@@ -45,10 +45,10 @@ export async function stagePointStates(db: Db, process: ProcessPoints, stage: St
   });
 }
 
-// Os Pontos abertos que os Blocos cobrem; o da Escolha não entra.
+// Os Pontos abertos que os Blocos cobrem; o da Escolha e os do Plano de execução não entram.
 export const openPoints = (states: StagePointState[]): StagePoint[] =>
   states
-    .filter((point) => point.status === "open" && !point.coveredByChoice)
+    .filter((point) => point.status === "open" && !point.coveredByChoice && !point.coveredByPlan)
     .map(({ key, name, description }) => ({ key, name, description }));
 
 export async function openStagePointsOf(db: Db, process: ProcessPoints, stage: Stage): Promise<StagePoint[]> {
@@ -60,7 +60,8 @@ export type InapplicabilityError =
   | "process_not_open"
   | "stage_point_not_found"
   | "stage_point_closed"
-  | "stage_point_covered_by_choice";
+  | "stage_point_covered_by_choice"
+  | "stage_point_covered_by_plan";
 
 export type AbsenceError = InapplicabilityError | "absence_not_allowed";
 
@@ -92,6 +93,7 @@ async function lockOpenPoint(
   const point = (await stagePointStates(trx, process, process.currentStage)).find((item) => item.key === key);
   if (!point) return { ok: false, error: "stage_point_not_found" };
   if (point.coveredByChoice) return { ok: false, error: "stage_point_covered_by_choice" };
+  if (point.coveredByPlan) return { ok: false, error: "stage_point_covered_by_plan" };
   if (point.status !== "open") return { ok: false, error: "stage_point_closed" };
   return { ok: true, stage: process.currentStage, point };
 }

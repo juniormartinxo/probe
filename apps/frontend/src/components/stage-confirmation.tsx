@@ -50,6 +50,10 @@ const confirmErrorText: Record<string, string> = {
   choice_required: "Registre a sua Escolha, com o motivo de cada descarte, antes de confirmar.",
   chosen_option_not_viable: "A Opção escolhida deixou de ser viável. Registre uma nova Escolha.",
   discard_reasons_required: "Há uma Opção viável sem motivo de descarte na Escolha. Registre a Escolha de novo.",
+  execution_plan_incomplete: "Escreva os três elementos do plano de execução antes de confirmar.",
+  undecided_plan_compatibility:
+    "Há elementos do plano cuja compatibilidade com a Escolha ainda espera o Jev ou a sua decisão. Decida antes de confirmar.",
+  execution_confirmed: "A Etapa E já foi confirmada.",
 };
 
 // Na Etapa O, o que as Opções seguram na Confirmação, na ordem em que o backend verifica; null quando nada.
@@ -63,9 +67,9 @@ function optionsProblem(process: ProcessDetail): string | null {
   return accepted.some((option) => option.viability === "viable") ? null : "no_viable_option";
 }
 
-// Na Etapa B, o que a Escolha segura na Confirmação, na ordem em que o backend verifica; null quando nada.
+// Nas Etapas B e E, o que a Escolha segura na Confirmação, na ordem em que o backend verifica; null quando nada.
 function choiceProblem(process: ProcessDetail): string | null {
-  if (process.currentStage !== "B") return null;
+  if (process.currentStage !== "B" && process.currentStage !== "E") return null;
   const matrix = process.comparisonMatrix;
   if (matrix.some((row) => row.viability === "undecided")) return "undecided_options";
   const chosen = process.chosenOptions.at(-1);
@@ -74,6 +78,14 @@ function choiceProblem(process: ProcessDetail): string | null {
   const discarded = new Set(chosen.discards.map((discard) => discard.option.id));
   const unjustified = matrix.some((row) => row.viability === "viable" && row.option.id !== chosen.option.id && !discarded.has(row.option.id));
   return unjustified ? "discard_reasons_required" : null;
+}
+
+// Na Etapa E, o que o plano segura na Confirmação, na ordem em que o backend verifica; null quando nada.
+function planProblem(process: ProcessDetail): string | null {
+  if (process.currentStage !== "E") return null;
+  if (process.executionPlan.some((element) => element.current === null)) return "execution_plan_incomplete";
+  const decided = process.executionPlan.every((element) => ["compatible", "kept"].includes(element.compatibility.status));
+  return decided ? null : "undecided_plan_compatibility";
 }
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;
@@ -107,7 +119,7 @@ export function StageConfirmationPanel({ process, onChange }: { process: Process
       ),
     ),
   ];
-  const options = optionsProblem(process) ?? choiceProblem(process);
+  const options = optionsProblem(process) ?? choiceProblem(process) ?? planProblem(process);
   const blocking = [...unknown, ...reviews, ...conflicts, ...(options ? [options] : [])];
 
   const [assessing, setAssessing] = useState(false);

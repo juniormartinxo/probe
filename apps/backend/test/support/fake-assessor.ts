@@ -9,6 +9,7 @@ import type {
   ImpactInput,
   OptionPairInput,
   OptionViolationInput,
+  PlanCompatibilityInput,
   Verdict,
 } from "../../src/modules/assessments/assessor.ts";
 
@@ -68,7 +69,8 @@ type ConflictStep = AssessorOutcome<Verdicts> | ((input: ConflictInput) => Asses
 
 // `Assessor` falso: desfechos na ordem; sem roteiro, `yes` em todos os Pontos, no impacto (de uma Versão
 // nova ou de uma Revisão de Restrição) `no` com confiança (a Confirmação continua valendo) e, no
-// conflito e na violação de Restrição por Opção, `no` com confiança em todos os pares.
+// conflito e na violação de Restrição por Opção, `no` com confiança em todos os pares e, na
+// compatibilidade de um elemento do plano com a Escolha, `yes` com confiança.
 export class FakeAssessor implements Assessor {
   readonly model = JEV_MODEL;
   readonly inputs: CoverageInput[] = [];
@@ -76,11 +78,23 @@ export class FakeAssessor implements Assessor {
   readonly conflictInputs: ConflictInput[] = [];
   readonly constraintImpactInputs: ConstraintImpactInput[] = [];
   readonly optionInputs: OptionViolationInput[] = [];
+  readonly planInputs: PlanCompatibilityInput[] = [];
   private readonly steps: Step[] = [];
   private readonly impactSteps: AssessorOutcome<Verdict>[] = [];
   private readonly conflictSteps: ConflictStep[] = [];
   private readonly constraintImpactSteps: AssessorOutcome<Verdict>[] = [];
   private readonly optionSteps: OptionStep[] = [];
+  private readonly planSteps: AssessorOutcome<Verdict>[] = [];
+
+  willAssessPlan(...outcomes: AssessorOutcome<Verdict>[]): this {
+    this.planSteps.push(...outcomes);
+    return this;
+  }
+
+  async assessPlan(input: PlanCompatibilityInput): Promise<AssessorOutcome<Verdict>> {
+    this.planInputs.push(input);
+    return this.planSteps.shift() ?? impactOutcome("yes");
+  }
 
   willAssessOptions(...steps: OptionStep[]): this {
     this.optionSteps.push(...steps);

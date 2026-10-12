@@ -1,6 +1,7 @@
 import type { Db } from "../../db/database.ts";
 import { stageAssessmentsOf } from "../assessments/stage-assessments.ts";
 import { choiceBlockingStage, type ChoiceNotReady } from "./chosen-options.ts";
+import { executionConfirmed, planBlockingStage, type PlanNotReady } from "./execution-plan.ts";
 import { undecidedConflictsBlocking } from "./conflicts.ts";
 import { undecidedConstraintReassessmentsBlocking } from "./constraint-reassessments.ts";
 import { optionsBlockingStage, type OptionImpediment } from "./options.ts";
@@ -37,6 +38,8 @@ export type StageConfirmationError =
   | "undecided_options"
   | "no_viable_option"
   | ChoiceNotReady
+  | PlanNotReady
+  | "execution_confirmed"
   | "unknown_assessment"
   | "assessment_outdated"
   | "assessment_required"
@@ -79,6 +82,8 @@ export function stageConfirmations({ db }: { db: Db }): StageConfirmations {
         const found = await readyStage(trx, processId, stage, { lock: true });
         if (!found.ok) return found;
         const process: ProcessPoints = found.ready.process;
+        // E, a última, continua a atual depois de confirmada: o Processo espera a Revisão final.
+        if (stage === "E" && (await executionConfirmed(trx, processId))) return { ok: false, error: "execution_confirmed" } as const;
         const pendencyIds = await pendenciesBlockingStage(trx, processId, stage);
         if (pendencyIds.length > 0) return { ok: false, error: "blocking_pendencies", pendencyIds } as const;
         // Uma Confirmação em que se apoia esta, com o impacto de uma mudança (uma Versão nova ou uma
@@ -97,9 +102,12 @@ export function stageConfirmations({ db }: { db: Db }): StageConfirmations {
         // Na Etapa O, as Opções: nenhuma sugestão sem resposta, nenhum par sem decisão e alguma viável.
         const options = await optionsBlockingStage(trx, process, stage);
         if (options) return { ok: false, ...options } as const;
-        // Na Etapa B, a Escolha: viável, com o motivo de cada descarte, e nenhuma Opção sem decisão.
+        // Nas Etapas B e E, a Escolha: viável, com o motivo de cada descarte, e nenhuma Opção sem decisão.
         const choice = await choiceBlockingStage(trx, process, stage);
         if (choice) return { ok: false, error: choice } as const;
+        // Na Etapa E, o plano: os três elementos, cada um compatível com a Escolha ou mantido pelo usuário.
+        const plan = await planBlockingStage(trx, process, stage);
+        if (plan) return { ok: false, error: plan } as const;
 
         // Nenhuma Avaliação confirma nada: ela só precisa ser a que o usuário viu, e valer ainda.
         if (stageAssessmentId === null) {
