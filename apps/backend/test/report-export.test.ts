@@ -139,6 +139,7 @@ describe("The PDF export", () => {
     expect(text).toContain("Relatório da Decisão");
     const positions = sections.map((section) => text.indexOf(`${section}\n`));
     expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual(positions.toSorted((a, b) => a - b));
     for (const content of [statement, costConstraint, cache, firstStep, planB]) expect(text.replace(/\s+/g, " ")).toContain(content);
     expect(text).toContain("Estado Data Tipo Assunto Texto");
     expect(text).toMatch(/Página 1 de \d+/);

@@ -3,6 +3,7 @@ import { comparisonNames, stageNames } from "../ai/prompt-parts.ts";
 import type { ItemStatement } from "../process/constraints-and-preferences.ts";
 import type { OptionViability } from "../process/options.ts";
 import type { StagePointState } from "../process/stage-point-coverage.ts";
+import type { FrozenFinalization } from "../process/finalization.ts";
 import type { Assumption, HistoryEntry, Report, ReportQuestion, ReportStage } from "./report.ts";
 
 // O relatório congelado como documento: títulos, parágrafos, listas e tabelas, na ordem da tela. As
@@ -86,7 +87,7 @@ const items = (statements: ItemStatement[], empty: string): DocumentNode =>
 
 const cells = (row: ComparisonCells): DocumentNode => ({
   kind: "table",
-  header: ["Dimensão", "Avaliação"],
+  header: ["Dimensão", "Texto"],
   columns: ["narrow", "wide"],
   rows: comparisonDimensions.map((dimension) => [comparisonNames[dimension], row[dimension]]),
 });
@@ -112,7 +113,7 @@ function stageRecord(stage: ReportStage): DocumentNode[] {
         block.questions.map((question) => [
           `${block.number}.${question.number} ${question.wording}${question.reformulates ? ` (reformula a ${question.reformulates})` : ""}`,
           ...(question.choices.length > 0 ? [`Alternativas apresentadas: ${question.choices.join("; ")}`] : []),
-          `Resposta (${questionStatusText[question.status]}): ${question.answer ?? "—"}`,
+          `${question.answer ?? "—"} (${questionStatusText[question.status]})`,
         ]),
       ),
       ...(block.synthesis ? [paragraph(block.synthesis, { label: "Síntese" })] : []),
@@ -120,7 +121,7 @@ function stageRecord(stage: ReportStage): DocumentNode[] {
   ];
 }
 
-function optionsOf(report: Report): DocumentNode[] {
+function options(report: Report): DocumentNode[] {
   return [
     heading(2, "Opções"),
     list(
@@ -162,16 +163,18 @@ function comparison(report: Report): DocumentNode[] {
 }
 
 // A Escolha e o que a justifica (a linha dela na matriz).
-function choice({ choice }: Report): DocumentNode[] {
+function choice(report: Report): DocumentNode[] {
+  const { option, description, comparison } = report.choice;
   return [
     heading(2, "Escolha e justificativa"),
-    paragraph(choice.option),
-    ...(choice.description ? [paragraph(choice.description, { note: true })] : []),
-    choice.comparison ? cells(choice.comparison) : paragraph("A Opção escolhida não tem linha na Matriz qualitativa.", { note: true }),
+    paragraph(option),
+    ...(description ? [paragraph(description, { note: true })] : []),
+    comparison ? cells(comparison) : paragraph("A Opção escolhida não tem linha na Matriz qualitativa.", { note: true }),
   ];
 }
 
-function discards(report: Report): DocumentNode[] {
+// As Opções deixadas de lado por qualquer caminho, não só os descartes da Escolha.
+function discardedOptions(report: Report): DocumentNode[] {
   return [
     heading(2, "Opções descartadas"),
     report.discardedOptions.length === 0
@@ -208,15 +211,14 @@ function history(report: Report): DocumentNode[] {
   ];
 }
 
-// O relatório de um Processo finalizado, do geral ao detalhe, como a tela o mostra.
-export function reportDocument(report: Report): ReportDocument {
-  const finalizedAt = report.identification.finalizedAt!;
+// O relatório que a Finalização congelou, do geral ao detalhe, como a tela o mostra.
+export function reportDocument({ finalizedAt, report }: FrozenFinalization): ReportDocument {
   return {
     title: "Relatório da Decisão",
-    finalizedAt,
+    finalizedAt: finalizedAt.toISOString(),
     nodes: [
       heading(1, "Relatório da Decisão"),
-      paragraph(`Finalizado em ${formatDate(finalizedAt)}.`, { note: true }),
+      paragraph(`Finalizado em ${formatDate(finalizedAt.toISOString())}.`, { note: true }),
       ...decisionSummary(report),
       heading(2, "Problema"),
       paragraph(report.problem.originalDescription, { label: "Descrição original" }),
@@ -227,11 +229,11 @@ export function reportDocument(report: Report): ReportDocument {
       items(report.preferences, "Nenhuma Preferência em vigor."),
       heading(2, "Registro por Etapa"),
       ...report.stages.flatMap(stageRecord),
-      ...optionsOf(report),
+      ...options(report),
       ...assumptions(report),
       ...comparison(report),
       ...choice(report),
-      ...discards(report),
+      ...discardedOptions(report),
       ...plan(report),
       ...history(report),
     ],

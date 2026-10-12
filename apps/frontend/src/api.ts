@@ -816,19 +816,22 @@ export class ApiError extends Error {
   }
 }
 
+// O erro de uma resposta da API, com o código que o corpo traz, se traz.
+function apiErrorOf(response: Response, body: unknown): ApiError {
+  const code =
+    typeof body === "object" && body !== null && "error" in body && typeof body.error === "string"
+      ? body.error
+      : undefined;
+  return new ApiError(response.status, code);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
     ...init,
     headers: init?.body ? { "content-type": "application/json", ...init.headers } : init?.headers,
   });
   const body: unknown = await response.json().catch(() => undefined);
-  if (!response.ok) {
-    const code =
-      typeof body === "object" && body !== null && "error" in body && typeof body.error === "string"
-        ? body.error
-        : undefined;
-    throw new ApiError(response.status, code);
-  }
+  if (!response.ok) throw apiErrorOf(response, body);
   return body as T;
 }
 
@@ -1358,7 +1361,16 @@ export async function getFinalization(processId: string): Promise<Finalization> 
 
 export type ReportFormat = "md" | "pdf";
 
-// O endereço que baixa o relatório congelado no formato pedido; o backend o gera a cada pedido.
-export function reportExportUrl(processId: string, format: ReportFormat): string {
-  return `/api${processPath(processId)}/report.${format}`;
+// Baixa o relatório congelado no formato pedido; o backend gera o arquivo a cada pedido, sem mudar
+// nada, então uma falha pode ser tentada de novo.
+export async function downloadReport(processId: string, format: ReportFormat): Promise<void> {
+  const response = await fetch(`/api${processPath(processId)}/report.${format}`);
+  if (!response.ok) throw apiErrorOf(response, await response.json().catch(() => undefined));
+  const filename = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? `relatorio.${format}`;
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
